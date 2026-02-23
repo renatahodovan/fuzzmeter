@@ -1,0 +1,7 @@
+parent: libfuzzer
+build:
+  seed_cache:
+    enabled: true
+    version: 1
+    extra_paths:
+      - grammarinator

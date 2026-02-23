@@ -1,0 +1,16 @@
+fuzzers:
+  - aflplusplus
+  - libfuzzer
+  - fuzzer: libfuzzer_entropic
+    parent: libfuzzer
+    runtime:
+      args:
+        - -entropic=1
+targets:
+  - jerryscript:jerry
+run:
+  time_seconds: 300
+  repetitions: 3
+  parallel_jobs: 16
+  snapshot:
+    every_seconds: 60

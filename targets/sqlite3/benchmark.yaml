@@ -1,0 +1,38 @@
+project: sqlite3
+fuzz_target: sqlite
+input_mode: in_process
+timeout_s: 1
+fuzzers:
+  afl_grammarinator:
+    build:
+      env:
+        GRAMMARINATOR_RULE: parse
+        GRAMMARINATOR_PARSER_GRAMMARS:
+          - grammarinator/SQLiteLexer.g4
+          - grammarinator/SQLiteParser.g4
+        GRAMMARINATOR_GENERATOR_GRAMMARS:
+          - grammarinator/SQLiteLexer.g4
+          - grammarinator/SQLiteParser.g4
+        GRAMMARINATOR_SERIALIZER: grammarinator::runtime::SimpleSpaceSerializer
+  libfuzzer_grammarinator:
+    build:
+      env:
+        GRAMMARINATOR_RULE: parse
+        GRAMMARINATOR_PARSER_GRAMMARS:
+          - grammarinator/SQLiteLexer.g4
+          - grammarinator/SQLiteParser.g4
+        GRAMMARINATOR_GENERATOR_GRAMMARS:
+          - grammarinator/SQLiteLexer.g4
+          - grammarinator/SQLiteParser.g4
+        GRAMMARINATOR_SERIALIZER: grammarinator::runtime::SimpleSpaceSerializer
+  grammarinator:
+    build:
+      env:
+        GRAMMARINATOR_RULE: parse
+        GRAMMARINATOR_PARSER_GRAMMARS:
+          - grammarinator/SQLiteLexer.g4
+          - grammarinator/SQLiteParser.g4
+        GRAMMARINATOR_GENERATOR_GRAMMARS:
+          - grammarinator/SQLiteLexer.g4
+          - grammarinator/SQLiteParser.g4
+        GRAMMARINATOR_SERIALIZER: grammarinator::runtime::SimpleSpaceSerializer

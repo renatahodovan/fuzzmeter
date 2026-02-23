@@ -1,0 +1,557 @@
+<!--
+  Copyright (c) 2026 Renata Hodovan, Akos Kiss.
+
+  Licensed under the BSD 3-Clause License
+  <LICENSE.rst or https://opensource.org/licenses/BSD-3-Clause>.
+  This file may not be copied, modified, or distributed except
+  according to those terms.
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>fuzzmeter runs</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='report.css') }}"/>
+  <style>
+    .runs-toolbar{
+      display:flex;
+      gap:12px;
+      align-items:center;
+      justify-content:space-between;
+      flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+    .runs-toolbar-left,.runs-toolbar-right{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .runs-search{
+      min-width:min(420px, 100%);
+      flex:1 1 320px;
+    }
+    .runs-list{
+      display:grid;
+      gap:14px;
+    }
+    .run-card{
+      border:1px solid var(--border);
+      background:var(--panel);
+      border-radius:16px;
+      padding:14px;
+      display:grid;
+      gap:14px;
+      cursor:pointer;
+    }
+    .run-card.selected{
+      border-color:rgba(90, 170, 255, .55);
+      background:rgba(90, 170, 255, .12);
+      box-shadow:0 0 0 1px rgba(90, 170, 255, .25);
+    }
+    .run-card-head{
+      display:flex;
+      justify-content:space-between;
+      gap:14px;
+      align-items:flex-start;
+      flex-wrap:wrap;
+    }
+    .run-card-main{
+      display:flex;
+      gap:12px;
+      align-items:flex-start;
+      min-width:0;
+      flex:1 1 520px;
+    }
+    .run-card-title{
+      font-size:16px;
+      font-weight:700;
+      word-break:break-word;
+    }
+    .run-card-subtitle{
+      color:var(--muted);
+      font-size:12px;
+      margin-top:4px;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .run-card-badges{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:flex-end;
+    }
+    .run-badge{
+      border:1px solid var(--border);
+      border-radius:999px;
+      padding:4px 9px;
+      font-size:12px;
+      color:var(--text);
+      background:rgba(255,255,255,.04);
+    }
+    .run-badge.running{ background:rgba(64, 200, 120, .12); border-color:rgba(64, 200, 120, .35); }
+    .run-badge.done{ background:rgba(90, 170, 255, .12); border-color:rgba(90, 170, 255, .35); }
+    .run-badge.issues{ background:rgba(255, 150, 90, .12); border-color:rgba(255, 150, 90, .35); }
+    .run-badge.static{ background:rgba(188, 156, 255, .12); border-color:rgba(188, 156, 255, .35); }
+    .run-badge.error{ background:rgba(255, 96, 96, .12); border-color:rgba(255, 96, 96, .35); }
+    .run-summary{
+      display:grid;
+      grid-template-columns:repeat(auto-fit, minmax(120px, 1fr));
+      gap:10px;
+    }
+    .summary-chip{
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:10px 12px;
+      background:rgba(255,255,255,.03);
+    }
+    .summary-chip-label{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+      color:var(--muted);
+      margin-bottom:4px;
+    }
+    .summary-chip-value{
+      font-size:18px;
+      font-weight:700;
+    }
+    .summary-chip-note{
+      font-size:12px;
+      color:var(--muted);
+      margin-top:2px;
+    }
+    .run-actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+      flex-wrap:wrap;
+      border-top:1px solid var(--border);
+      padding-top:12px;
+    }
+    .run-actions-main,.run-actions-side{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .run-action-help{
+      color:var(--muted);
+      font-size:12px;
+    }
+    .config-card{
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:10px 12px;
+      background:rgba(255,255,255,.03);
+    }
+    .config-card-title{
+      font-size:12px;
+      color:var(--muted);
+      margin-bottom:8px;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+    }
+    .config-kv{
+      display:grid;
+      grid-template-columns:auto 1fr;
+      gap:6px 10px;
+      font-size:13px;
+    }
+    .config-kv dt{
+      color:var(--muted);
+    }
+    .config-kv dd{
+      margin:0;
+      word-break:break-word;
+    }
+    .chip-list{
+      display:flex;
+      gap:6px;
+      flex-wrap:wrap;
+    }
+    .config-chip{
+      border:1px solid var(--border);
+      border-radius:999px;
+      padding:4px 8px;
+      font-size:12px;
+      background:rgba(255,255,255,.05);
+    }
+    .run-empty{
+      border:1px dashed var(--border);
+      border-radius:16px;
+      padding:24px;
+      text-align:center;
+      color:var(--muted);
+    }
+    @media (max-width: 900px){
+      .run-card-head,.run-actions{
+        flex-direction:column;
+        align-items:stretch;
+      }
+      .run-card-badges{
+        justify-content:flex-start;
+      }
+      .run-actions-main,.run-actions-side{
+        width:100%;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">fm</div>
+      <div class="brand-text">
+        <div class="title">fuzzmeter</div>
+        <div class="subtitle">runs</div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn" id="btnSelectAll">Select visible</button>
+      <button class="btn danger" id="btnDeleteSelected" disabled>Delete selected</button>
+      <button class="btn" id="btnRefresh">Refresh</button>
+    </div>
+  </header>
+
+  <main class="content">
+    <section class="panel">
+      <div class="panel-h">
+        <div>
+          <div class="panel-title">Runs</div>
+          <div class="panel-sub">Open the live report from the current database, or generate a saved static snapshot under <code>run/report/</code>.</div>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div class="runs-toolbar">
+          <div class="runs-toolbar-left">
+            <input id="searchRuns" class="input runs-search" placeholder="Search runs, fuzzers, targets, or config…"/>
+          </div>
+          <div class="runs-toolbar-right muted small">
+            <span>`Open live` reads the current run state.</span>
+            <span>`Generate static` builds a saved report you can reopen quickly.</span>
+          </div>
+        </div>
+        <div id="runsList" class="runs-list"></div>
+        <div class="muted small" id="statusLine"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const RUNS_STATE = {
+  runs: [],
+  filterText: '',
+  selectedRuns: new Set(),
+};
+
+async function fetchJSON(url, opts={}){
+  const res = await fetch(url, { cache: "no-store", ...opts });
+  if (!res.ok) throw new Error(url + ": " + res.status);
+  return await res.json();
+}
+
+function el(tag, cls, text){
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function fmtInt(value){
+  return value == null || Number.isNaN(Number(value)) ? "—" : String(Math.round(Number(value)));
+}
+
+function formatTs(ts){
+  if (!ts || !Number.isFinite(Number(ts))) return "—";
+  return new Date(Number(ts) * 1000).toLocaleString();
+}
+
+function formatDuration(seconds){
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value <= 0) return "—";
+  if (value < 3600) return `${Math.round(value / 60)}m`;
+  if (value < 86400) {
+    const hours = Math.floor(value / 3600);
+    const minutes = Math.round((value % 3600) / 60);
+    return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  const days = Math.floor(value / 86400);
+  const hours = Math.round((value % 86400) / 3600);
+  return hours ? `${days}d ${hours}h` : `${days}d`;
+}
+
+function selectedRunIds(){
+  return Array.from(RUNS_STATE.selectedRuns);
+}
+
+function updateSelectionUi(){
+  const selected = selectedRunIds();
+  document.querySelectorAll('.run-card').forEach((card) => {
+    card.classList.toggle('selected', RUNS_STATE.selectedRuns.has(card.dataset.runId));
+  });
+  document.getElementById('btnDeleteSelected').disabled = selected.length === 0;
+}
+
+function normalizedStatusCounts(run){
+  const counts = run.summary?.status_counts || {};
+  return Object.entries(counts).reduce((acc, [name, value]) => {
+    const status = String(name || '');
+    const count = Number(value || 0);
+    if (!count) return acc;
+    if (status === 'running') acc.running += count;
+    else if (status === 'interrupted') acc.interrupted += count;
+    else if (status === 'done') acc.done += count;
+    else if (status.startsWith('failed')) acc.failed += count;
+    else acc.other += count;
+    return acc;
+  }, { running: 0, interrupted: 0, failed: 0, done: 0, other: 0 });
+}
+
+function statusBadge(run){
+  const counts = normalizedStatusCounts(run);
+  if (counts.running > 0) return ['running', 'Running'];
+  if (counts.interrupted > 0) return ['issues', 'Interrupted'];
+  if (counts.failed > 0) return ['error', 'Failed'];
+  if (counts.done > 0 && counts.done === Number(run.summary?.trials || 0)) return ['done', 'Done'];
+  return ['', 'Recorded'];
+}
+
+function statusSummaryText(run){
+  const counts = normalizedStatusCounts(run);
+  const items = [];
+  if (counts.running) items.push(`running: ${counts.running}`);
+  if (counts.interrupted) items.push(`interrupted: ${counts.interrupted}`);
+  if (counts.failed) items.push(`failed: ${counts.failed}`);
+  if (counts.done) items.push(`done: ${counts.done}`);
+  if (counts.other) items.push(`other: ${counts.other}`);
+  return items.length ? items.join(' · ') : '—';
+}
+
+function matchesFilter(run, filterText){
+  if (!filterText) return true;
+  const haystack = [
+    run.run_id,
+    ...(run.summary?.config?.fuzzers || []),
+    ...(run.summary?.config?.targets || []),
+    Object.keys(run.summary?.status_counts || {}),
+    run.error || "",
+  ].join("\n").toLowerCase();
+  return haystack.includes(filterText);
+}
+
+function makeBadge(cls, text){
+  const badge = el("span", `run-badge ${cls}`.trim(), text);
+  return badge;
+}
+
+function appendChipList(host, values){
+  if (!values.length) {
+    host.appendChild(el("div", "muted small", "—"));
+    return;
+  }
+  const wrap = el("div", "chip-list");
+  values.forEach((value) => wrap.appendChild(el("span", "config-chip", value)));
+  host.appendChild(wrap);
+}
+
+function configSection(title, builder){
+  const card = el("section", "config-card");
+  card.appendChild(el("div", "config-card-title", title));
+  builder(card);
+  return card;
+}
+
+function appendPolicy(host, policy){
+  const dl = el("dl", "config-kv");
+  const rows = [
+    ["Run time", formatDuration(policy.time_seconds)],
+    ["Repetitions", fmtInt(policy.repetitions)],
+    ["Parallel jobs", fmtInt(policy.parallel_jobs)],
+    ["Snapshot every", formatDuration(policy.snapshot_every_seconds)],
+  ];
+  rows.forEach(([name, value]) => {
+    dl.appendChild(el("dt", null, name));
+    dl.appendChild(el("dd", null, value));
+  });
+  host.appendChild(dl);
+}
+
+function renderRunCard(run){
+  const card = el('article', 'run-card');
+  card.dataset.runId = run.run_id;
+  card.addEventListener('click', (event) => {
+    if (event.target.closest('button, a')) return;
+    if (RUNS_STATE.selectedRuns.has(run.run_id)) RUNS_STATE.selectedRuns.delete(run.run_id);
+    else RUNS_STATE.selectedRuns.add(run.run_id);
+    updateSelectionUi();
+  });
+  const [statusClass, statusText] = statusBadge(run);
+  const summary = run.summary || {};
+  const config = summary.config || {};
+
+  const head = el('div', 'run-card-head');
+  const main = el('div', 'run-card-main');
+
+  const titleWrap = el('div');
+  titleWrap.appendChild(el('div', 'run-card-title mono', run.run_id));
+  const subtitle = el('div', 'run-card-subtitle');
+  subtitle.appendChild(el('span', null, `Created: ${formatTs(summary.created_ts)}`));
+  subtitle.appendChild(el('span', null, `Updated: ${formatTs(run.updated_ts)}`));
+  subtitle.appendChild(el('span', null, `Path: ${run.path}`));
+  titleWrap.appendChild(subtitle);
+  main.appendChild(titleWrap);
+  head.appendChild(main);
+
+  const badges = el('div', 'run-card-badges');
+  badges.appendChild(makeBadge(statusClass, statusText));
+  if (run.has_static_report) badges.appendChild(makeBadge('static', 'Static report available'));
+  if (run.error) badges.appendChild(makeBadge('error', 'Metadata read error'));
+  head.appendChild(badges);
+  card.appendChild(head);
+
+  const summaryRow = el('div', 'run-summary');
+  const chips = [
+    ['Fuzzers', summary.fuzzer_count, config.fuzzers?.length ? `${config.fuzzers.join(', ')}` : 'from trials'],
+    [
+      'Targets',
+      summary.target_count,
+      config.targets?.length
+        ? config.targets.join(', ')
+        : '—'
+    ],
+    ['Trials', summary.trials, statusSummaryText(run)],
+    ['Snapshots', summary.snapshots, 'captured'],
+    ['Bugs', summary.bugs, 'unique records'],
+  ];
+  chips.forEach(([label, value, note]) => {
+    const chip = el('div', 'summary-chip');
+    chip.appendChild(el('div', 'summary-chip-label', label));
+    chip.appendChild(el('div', 'summary-chip-value', fmtInt(value)));
+    chip.appendChild(el('div', 'summary-chip-note', note));
+    summaryRow.appendChild(chip);
+  });
+  summaryRow.appendChild(configSection('Run policy', (host) => appendPolicy(host, config.policy || {})));
+  card.appendChild(summaryRow);
+
+  const actions = el("div", "run-actions");
+  const actionsMain = el("div", "run-actions-main");
+  const openLive = el("button", "btn", "Open live");
+  openLive.onclick = () => location.href = "/run/" + encodeURIComponent(run.run_id);
+  actionsMain.appendChild(openLive);
+
+  if (run.has_static_report) {
+    const openStatic = el("button", "btn", "Open static");
+    openStatic.onclick = () => window.open("/file/" + encodeURIComponent(run.run_id) + "/report/report.html", "_blank");
+    actionsMain.appendChild(openStatic);
+  }
+
+  const generateStatic = el("button", "btn", run.has_static_report ? "Refresh static" : "Generate static");
+  generateStatic.onclick = async () => {
+    generateStatic.disabled = true;
+    const original = generateStatic.textContent;
+    generateStatic.textContent = run.has_static_report ? "Refreshing…" : "Generating…";
+    try{
+      await fetchJSON("/api/run/" + encodeURIComponent(run.run_id) + "/generate", { method: "POST" });
+      window.open("/file/" + encodeURIComponent(run.run_id) + "/report/report.html", "_blank");
+    } finally {
+      generateStatic.disabled = false;
+      generateStatic.textContent = original;
+    }
+  };
+  actionsMain.appendChild(generateStatic);
+  actions.appendChild(actionsMain);
+
+  const actionsSide = el("div", "run-actions-side");
+  actionsSide.appendChild(el("div", "run-action-help", "Live reads the current DB. Static opens a saved snapshot report."));
+  const deleteBtn = el("button", "btn danger", "Delete");
+  deleteBtn.onclick = async () => {
+    if (!confirm("Delete run " + run.run_id + "?")) return;
+    await fetchJSON("/api/run/" + encodeURIComponent(run.run_id), { method: "DELETE" });
+    await refresh();
+  };
+  actionsSide.appendChild(deleteBtn);
+  actions.appendChild(actionsSide);
+  card.appendChild(actions);
+
+  if (run.error) {
+    card.appendChild(el('div', 'muted small', `Metadata read error: ${run.error}`));
+  }
+  return card;
+}
+
+function renderRuns(){
+  const list = document.getElementById("runsList");
+  const status = document.getElementById("statusLine");
+  list.textContent = "";
+
+  const filterText = RUNS_STATE.filterText.trim().toLowerCase();
+  const visibleRuns = RUNS_STATE.runs.filter((run) => matchesFilter(run, filterText));
+  if (!visibleRuns.length) {
+    const empty = el("div", "run-empty", RUNS_STATE.runs.length ? "No runs match the current filter." : "No runs found.");
+    list.appendChild(empty);
+    status.textContent = RUNS_STATE.runs.length ? `Showing 0 of ${RUNS_STATE.runs.length} runs.` : "No runs found.";
+    updateSelectionUi();
+    return;
+  }
+
+  visibleRuns
+    .slice()
+    .sort((a, b) => String(b.run_id).localeCompare(String(a.run_id)))
+    .forEach((run) => list.appendChild(renderRunCard(run)));
+  status.textContent = `Showing ${visibleRuns.length} of ${RUNS_STATE.runs.length} runs.`;
+  updateSelectionUi();
+}
+
+async function deleteSelectedRuns(){
+  const runIds = selectedRunIds();
+  if (!runIds.length) return;
+  if (!confirm(`Delete ${runIds.length} selected run(s)?`)) return;
+  await fetchJSON("/api/runs/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run_ids: runIds }),
+  });
+  await refresh();
+}
+
+async function refresh(){
+  const status = document.getElementById("statusLine");
+  status.textContent = "Loading runs…";
+  const data = await fetchJSON("/api/runs");
+  RUNS_STATE.runs = data.runs || [];
+  const runIds = new Set(RUNS_STATE.runs.map((run) => run.run_id));
+  RUNS_STATE.selectedRuns = new Set(Array.from(RUNS_STATE.selectedRuns).filter((runId) => runIds.has(runId)));
+  renderRuns();
+}
+
+document.getElementById("searchRuns").addEventListener("input", (event) => {
+  RUNS_STATE.filterText = event.target.value || "";
+  renderRuns();
+});
+
+document.getElementById("btnSelectAll").onclick = () => {
+  const visibleRunIds = RUNS_STATE.runs
+    .filter((run) => matchesFilter(run, RUNS_STATE.filterText.trim().toLowerCase()))
+    .map((run) => run.run_id);
+  const shouldSelectAll = visibleRunIds.some((runId) => !RUNS_STATE.selectedRuns.has(runId));
+  visibleRunIds.forEach((runId) => {
+    if (shouldSelectAll) RUNS_STATE.selectedRuns.add(runId);
+    else RUNS_STATE.selectedRuns.delete(runId);
+  });
+  updateSelectionUi();
+};
+
+document.getElementById("btnDeleteSelected").onclick = deleteSelectedRuns;
+document.getElementById("btnRefresh").onclick = refresh;
+refresh();
+</script>
+</body>
+</html>

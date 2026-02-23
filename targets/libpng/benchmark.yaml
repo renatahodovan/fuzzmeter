@@ -1,0 +1,4 @@
+project: libpng
+fuzz_target: libpng_read_fuzzer
+timeout_s: 1
+input_mode: in_process

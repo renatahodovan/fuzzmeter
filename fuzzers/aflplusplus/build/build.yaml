@@ -1,0 +1,4 @@
+reporting_parent: afl
+build:
+  quiet: 1
+  map_size: 2621440

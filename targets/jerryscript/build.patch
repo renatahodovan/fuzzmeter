@@ -1,0 +1,52 @@
+diff --git a/jerry-main/CMakeLists.txt b/jerry-main/CMakeLists.txt
+index 82706d71..9fcf61a8 100644
+--- a/jerry-main/CMakeLists.txt
++++ b/jerry-main/CMakeLists.txt
+@@ -64,7 +64,7 @@ endif()
+ 
+ # Jerry standalones
+ if(JERRY_CMDLINE)
+-  jerry_create_executable("jerry" "main-desktop.c" "arguments/options.c" "arguments/cli.c")
++  jerry_create_executable("jerry" "main-desktop.c" "arguments/options.c" "arguments/cli.c" "jerry_port_fatal_abort.c")
+   target_link_libraries("jerry" jerry-ext jerry-port)
+ endif()
+ 
+diff --git a/jerry-main/main-libfuzzer.c b/jerry-main/main-libfuzzer.c
+index a7e9b7b9..9032e1c6 100644
+--- a/jerry-main/main-libfuzzer.c
++++ b/jerry-main/main-libfuzzer.c
+@@ -16,6 +16,26 @@
+ #include <stdlib.h>
+ 
+ #include "jerryscript.h"
++#include "jerryscript-port.h"
++
++#include <stdint.h>
++#include <stddef.h>
++
++
++void
++jerry_port_fatal (jerry_fatal_code_t code) /**< cause of error */
++{
++  if (code != 0 && code != JERRY_FATAL_OUT_OF_MEMORY && code != JERRY_FATAL_REF_COUNT_LIMIT)
++  {
++    abort();
++  }
++
++  exit ((int) code);
++} /* jerry_port_fatal */
++
++#ifdef __cplusplus
++extern "C" {
++#endif
+ 
+ int
+ LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
+@@ -45,3 +65,7 @@ LLVMFuzzerTestOneInput (const uint8_t *data, size_t size)
+ 
+   return 0;
+ } /* LLVMFuzzerTestOneInput */
++
++#ifdef __cplusplus
++}
++#endif

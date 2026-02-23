@@ -1,0 +1,7 @@
+allowed_benchmarks:
+  - jerryscript:jerry
+  - sqlite3:sqlite
+  - jsoncpp:jsoncpp
+runtime:
+  generator:
+    batch_size: 1000

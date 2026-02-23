@@ -1,0 +1,212 @@
+<!--
+  Copyright (c) 2026 Renata Hodovan, Akos Kiss.
+
+  Licensed under the BSD 3-Clause License
+  <LICENSE.rst or https://opensource.org/licenses/BSD-3-Clause>.
+  This file may not be copied, modified, or distributed except
+  according to those terms.
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>fuzzmeter report</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='report.css') }}" />
+  <!-- Charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">fm</div>
+        <div class="brand-text">
+          <div class="title">fuzzmeter report</div>
+          <div class="subtitle" id="subTitle">Loading…</div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="control">
+          <label>Target</label>
+          <select id="targetSel"></select>
+        </div>
+        <div class="control">
+          <label>Fuzzer</label>
+          <select id="fuzzerSel"></select>
+        </div>
+        <div class="control">
+          <label>View</label>
+          <select id="viewSel">
+            <option value="dashboard">Dashboard</option>
+            <option value="trials">Trials</option>
+            <option value="rankings">Rankings</option>
+          </select>
+        </div>
+      </div>
+    </header>
+
+    <main class="content">
+      <!-- Summary cards -->
+      <section class="grid cards" id="cards">
+        <div class="card">
+          <div class="card-h">Run</div>
+          <div class="card-v" id="cardRun">—</div>
+          <div class="card-f" id="cardCreated">—</div>
+        </div>
+        <div class="card">
+          <div class="card-h">Trials</div>
+          <div class="card-v" id="cardTrials">—</div>
+          <div class="card-f">total trials</div>
+        </div>
+        <div class="card">
+          <div class="card-h">Snapshots</div>
+          <div class="card-v" id="cardSnaps">—</div>
+          <div class="card-f">total snapshots</div>
+        </div>
+        <div class="card">
+          <div class="card-h">Bugs</div>
+          <div class="card-v" id="cardBugs">—</div>
+          <div class="card-f">unique bug keys</div>
+        </div>
+      </section>
+
+      <!-- Dashboard layout -->
+      <section class="grid maingrid" id="dashboard">
+        <div class="panel">
+          <div class="panel-h">
+            <div class="panel-title">Coverage over time</div>
+            <div class="panel-sub" id="covSub">lines% / branches% / functions%</div>
+          </div>
+          <div class="panel-b">
+            <canvas id="covChart" height="120"></canvas>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">
+            <div class="panel-title">Bug hits over time</div>
+            <div class="panel-sub">sum of bug_hits per snapshot</div>
+          </div>
+          <div class="panel-b">
+            <canvas id="bugChart" height="120"></canvas>
+          </div>
+        </div>
+
+        <div class="panel span2">
+          <div class="panel-h">
+            <div class="panel-title">Latest trials</div>
+            <div class="panel-sub" id="latestSub">filtered by Target/Fuzzer</div>
+          </div>
+          <div class="panel-b">
+            <table class="table" id="latestTable">
+              <thead>
+                <tr>
+                  <th>Trial</th>
+                  <th>Status</th>
+                  <th>Lines</th>
+                  <th>Branches</th>
+                  <th>Functions</th>
+                  <th>Bug hits</th>
+                  <th>Coverage HTML</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Trials view -->
+      <section class="panel hidden" id="trialsView">
+        <div class="panel-h">
+          <div class="panel-title">All trials</div>
+          <div class="panel-sub">sortable table (client-side)</div>
+        </div>
+        <div class="panel-b">
+          <div class="toolbar">
+            <input id="searchBox" placeholder="Search… (fuzzer / target / status)" />
+            <button class="btn" id="btnExport">Export filtered JSON</button>
+          </div>
+          <table class="table" id="trialsTable">
+            <thead>
+              <tr>
+                <th data-sort="trial_id">ID</th>
+                <th data-sort="benchmark">Benchmark</th>
+                <th data-sort="fuzz_target">Target</th>
+                <th data-sort="fuzzer">Fuzzer</th>
+                <th data-sort="rep">Rep</th>
+                <th data-sort="status">Status</th>
+                <th data-sort="lines_pct">Lines%</th>
+                <th data-sort="bug_hits_total">Bug hits</th>
+                <th>Coverage</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Rankings view -->
+      <section class="grid maingrid hidden" id="rankingsView">
+        <div class="panel">
+          <div class="panel-h">
+            <div class="panel-title">Top trials</div>
+            <div class="panel-sub">sorted by lines%, then bug hits</div>
+          </div>
+          <div class="panel-b">
+            <table class="table" id="rankTrials">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Benchmark</th>
+                  <th>Target</th>
+                  <th>Fuzzer</th>
+                  <th>Rep</th>
+                  <th>Lines%</th>
+                  <th>Bug hits</th>
+                  <th>Coverage</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">
+            <div class="panel-title">Best by fuzzer+target</div>
+            <div class="panel-sub">best rep for each (benchmark,target,fuzzer)</div>
+          </div>
+          <div class="panel-b">
+            <table class="table" id="rankGroups">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Benchmark</th>
+                  <th>Target</th>
+                  <th>Fuzzer</th>
+                  <th>Lines%</th>
+                  <th>Bug hits</th>
+                  <th>Coverage</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div class="muted">
+          Generated by <b>fuzzmeter</b> · Static report · Data source: <code>fuzzmeter.db</code>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='report.js') }}"></script>
+</body>
+</html>

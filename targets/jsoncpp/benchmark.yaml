@@ -1,0 +1,35 @@
+project: jsoncpp
+fuzz_target: jsoncpp
+input_mode: in_process
+timeout_s: 1
+fuzzers:
+  afl_grammarinator:
+    build:
+      env:
+        GRAMMARINATOR_RULE: json
+        GRAMMARINATOR_PARSER_GRAMMARS:
+          - grammarinator/JSONLexer.g4
+          - grammarinator/JSONParser.g4
+        GRAMMARINATOR_GENERATOR_GRAMMARS:
+          - grammarinator/JSONLexer.g4
+          - grammarinator/JSONParser.g4
+  libfuzzer_grammarinator:
+    build:
+      env:
+        GRAMMARINATOR_RULE: json
+        GRAMMARINATOR_PARSER_GRAMMARS:
+          - grammarinator/JSONLexer.g4
+          - grammarinator/JSONParser.g4
+        GRAMMARINATOR_GENERATOR_GRAMMARS:
+          - grammarinator/JSONLexer.g4
+          - grammarinator/JSONParser.g4
+  grammarinator:
+    build:
+      env:
+        GRAMMARINATOR_RULE: json
+        GRAMMARINATOR_PARSER_GRAMMARS:
+          - grammarinator/JSONLexer.g4
+          - grammarinator/JSONParser.g4
+        GRAMMARINATOR_GENERATOR_GRAMMARS:
+          - grammarinator/JSONLexer.g4
+          - grammarinator/JSONParser.g4

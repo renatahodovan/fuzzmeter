@@ -1,0 +1,17 @@
+runtime:
+  args:
+    - -print_final_stats=1
+    - -fork=1
+    - -ignore_ooms=1
+    - -ignore_timeouts=1
+    - -ignore_crashes=1
+    - -cross_over=1
+    - -max_len=500000
+    - -mutate_depth=15
+    - -timeout=1
+    - -detect_leaks=0
+    - -create_missing_dirs=1
+    # - -entropic=1
+    # - -keep_seed=1
+    # - -cross_over_uniform_dist=1
+    # - -entropic_scale_per_exec_time=1

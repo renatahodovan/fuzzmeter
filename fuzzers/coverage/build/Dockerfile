@@ -1,0 +1,1 @@
+FROM parent_image

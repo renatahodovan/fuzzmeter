@@ -1,0 +1,47 @@
+project: jerryscript
+fuzz_target: jerry
+input_mode: in_process
+timeout_s: 1
+fuzzers:
+  afl_grammarinator:
+    build:
+      env:
+        GRAMMARINATOR_RULE: program
+        GRAMMARINATOR_PARSER_GRAMMARS:
+          - grammarinator/JavaScriptLexer.g4
+          - grammarinator/JavaScriptParser.g4
+          - grammarinator/JavaScriptLexerBase.py
+          - grammarinator/JavaScriptParserBase.py
+        GRAMMARINATOR_GENERATOR_GRAMMARS:
+          - grammarinator/JavaScriptLexer.g4
+          - grammarinator/generate/JavaScriptParser.g4
+        GRAMMARINATOR_SERIALIZER: grammarinator/JavaScriptSerializer.hpp
+        GRAMMARINATOR_CONFIG: grammarinator/JerryscriptConfig.hpp
+  libfuzzer_grammarinator:
+    build:
+      env:
+        GRAMMARINATOR_RULE: program
+        GRAMMARINATOR_PARSER_GRAMMARS:
+          - grammarinator/JavaScriptLexer.g4
+          - grammarinator/JavaScriptParser.g4
+          - grammarinator/JavaScriptLexerBase.py
+          - grammarinator/JavaScriptParserBase.py
+        GRAMMARINATOR_GENERATOR_GRAMMARS:
+          - grammarinator/JavaScriptLexer.g4
+          - grammarinator/generate/JavaScriptParser.g4
+        GRAMMARINATOR_SERIALIZER: grammarinator/JavaScriptSerializer.hpp
+        GRAMMARINATOR_CONFIG: grammarinator/JerryscriptConfig.hpp
+  grammarinator:
+    build:
+      env:
+        GRAMMARINATOR_RULE: program
+        GRAMMARINATOR_PARSER_GRAMMARS:
+          - grammarinator/JavaScriptLexer.g4
+          - grammarinator/JavaScriptParser.g4
+          - grammarinator/JavaScriptLexerBase.py
+          - grammarinator/JavaScriptParserBase.py
+        GRAMMARINATOR_GENERATOR_GRAMMARS:
+          - grammarinator/JavaScriptLexer.g4
+          - grammarinator/generate/JavaScriptParser.g4
+        GRAMMARINATOR_SERIALIZER: grammarinator/JavaScriptSerializer.hpp
+        GRAMMARINATOR_CONFIG: grammarinator/JerryscriptConfig.hpp

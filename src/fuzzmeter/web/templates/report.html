@@ -1,0 +1,357 @@
+<!--
+  Copyright (c) 2026 Renata Hodovan, Akos Kiss.
+
+  Licensed under the BSD 3-Clause License
+  <LICENSE.rst or https://opensource.org/licenses/BSD-3-Clause>.
+  This file may not be copied, modified, or distributed except
+  according to those terms.
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FuzzMeter Report</title>
+
+  {% if run_id %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='report.css') }}" />
+  {% else %}
+    <link rel="stylesheet" href="report.css" />
+  {% endif %}
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">fm</div>
+      <div class="brand-text">
+        <div class="title">FuzzMeter</div>
+        <div class="subtitle" id="runSubtitle">report</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <input id="searchBox" class="input" type="search" placeholder="Search target" />
+      <div class="filter-wrap">
+        <button id="fuzzerFilterToggle" class="btn" type="button" aria-haspopup="dialog" aria-expanded="false">Fuzzers</button>
+        <div id="fuzzerFilterPanel" class="filter-panel hidden" aria-hidden="true">
+          <div class="filter-panel-head">
+            <div class="filter-panel-title">Visible fuzzers</div>
+            <div id="fuzzerFilterCount" class="muted small"></div>
+          </div>
+          <div class="filter-panel-actions">
+            <button id="fuzzerFilterSelectAll" class="btn" type="button">Select all</button>
+            <button id="fuzzerFilterClearAll" class="btn" type="button">Clear all</button>
+          </div>
+          <div id="fuzzerFilterOptions" class="filter-options"></div>
+        </div>
+      </div>
+      <div class="filter-wrap">
+        <button id="benchmarkFilterToggle" class="btn" type="button" aria-haspopup="dialog" aria-expanded="false">Benchmarks</button>
+        <div id="benchmarkFilterPanel" class="filter-panel hidden" aria-hidden="true">
+          <div class="filter-panel-head">
+            <div class="filter-panel-title">Visible benchmarks</div>
+            <div id="benchmarkFilterCount" class="muted small"></div>
+          </div>
+          <div class="filter-panel-actions">
+            <button id="benchmarkFilterSelectAll" class="btn" type="button">Select all</button>
+            <button id="benchmarkFilterClearAll" class="btn" type="button">Clear all</button>
+          </div>
+          <div id="benchmarkFilterOptions" class="filter-options"></div>
+        </div>
+      </div>
+      <button id="themeToggle" class="btn" type="button" aria-label="Toggle light and dark theme">Theme</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-inner">
+        <!-- <div class="side-title">Navigate</div> -->
+        <div class="side-title" id="tocOverview"></div>
+        <div class="side-title side-title-targets">Targets</div>
+        <div class="toc" id="tocTargets"></div>
+      </div>
+    </aside>
+
+    <main class="content">
+      <section class="panel overview-group" id="overviewPanel">
+        <div class="section-banner card-title target-banner-title">Overview</div>
+        <div class="overview-body">
+          <section id="highlightsPanel">
+            <div id="summaryHighlights" class="winner-strip"></div>
+          </section>
+          <section id="summaryPanel">
+            <div class="subcard-head summary-head">
+              <div class="block-title">FUZZER RANKING</div>
+              <div class="chart-actions" id="summaryPanelActions"></div>
+            </div>
+        <!-- <div class="muted small">
+          Coverage score compares median region coverage, and AUC score compares median branch coverage-time AUC, both normalized to the best fuzzer on each target. Click a column header to sort.
+        </div> -->
+            <table class="table ranking-table">
+          <thead>
+            <tr>
+              <th title="Fuzzer name with the same color used in charts and target tables.">Fuzzer</th>
+              <th class="num">
+                <button
+                  class="sort-btn"
+                  type="button"
+                  data-sort-key="coverage_score"
+                  title="Average per-target coverage score: 100 times the fuzzer median region coverage divided by the best median region coverage on that target."
+                >
+                  <span>Coverage score</span>
+                  <span class="sort-arrow" data-sort-arrow="coverage_score"></span>
+                </button>
+              </th>
+              <th class="num">
+                <button
+                  class="sort-btn"
+                  type="button"
+                  data-sort-key="auc_score"
+                  title="Average per-target AUC score: 100 times the fuzzer median branch coverage-time AUC divided by the best median branch coverage-time AUC on that target."
+                >
+                  <span>AUC score</span>
+                  <span class="sort-arrow" data-sort-arrow="auc_score"></span>
+                </button>
+              </th>
+              <th class="num">
+                <button
+                  class="sort-btn"
+                  type="button"
+                  data-sort-key="relcov_score"
+                  title="Average novelty- and reliability-weighted branch coverage score across visible targets."
+                >
+                  <span>RelCovScore</span>
+                  <span class="sort-arrow" data-sort-arrow="relcov_score"></span>
+                </button>
+              </th>
+              <th class="num">
+                <button
+                  class="sort-btn"
+                  type="button"
+                  data-sort-key="exclusive_coverage_count"
+                  title="Sum of branch coverage reached only by this fuzzer across the visible targets."
+                >
+                  <span>Exclusive coverage</span>
+                  <span class="sort-arrow" data-sort-arrow="exclusive_coverage_count"></span>
+                </button>
+              </th>
+              <th class="num">
+                <button
+                  class="sort-btn"
+                  type="button"
+                  data-sort-key="relbug_score"
+                  title="Average novelty- and reliability-weighted bug discovery score across visible targets."
+                >
+                  <span>RelBugScore</span>
+                  <span class="sort-arrow" data-sort-arrow="relbug_score"></span>
+                </button>
+              </th>
+              <th class="num">
+                <button
+                  class="sort-btn"
+                  type="button"
+                  data-sort-key="unique_bug_count"
+                  title="Sum of unique bug counts across the visible targets."
+                >
+                  <span>Unique bugs</span>
+                  <span class="sort-arrow" data-sort-arrow="unique_bug_count"></span>
+                </button>
+              </th>
+              <th class="num">
+                <button
+                  class="sort-btn"
+                  type="button"
+                  data-sort-key="exclusive_bug_count"
+                  title="Sum of bug counts that only this fuzzer found across the visible targets."
+                >
+                  <span>Exclusive bugs</span>
+                  <span class="sort-arrow" data-sort-arrow="exclusive_bug_count"></span>
+                </button>
+              </th>
+              <th class="num">
+                <button
+                  class="sort-btn"
+                  type="button"
+                  data-sort-key="median_execs_done"
+                  title="Median of the per-target median executed test counts."
+                >
+                  <span>Median executed tests</span>
+                  <span class="sort-arrow" data-sort-arrow="median_execs_done"></span>
+                </button>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="tblRankings"></tbody>
+            </table>
+          </section>
+        </div>
+      </section>
+
+      <section class="panel" id="targetsPanel">
+        <div id="targets"></div>
+      </section>
+
+      <footer class="footer muted">
+        Generated by fuzzmeter • Open this report via a local HTTP server if you use <span class="mono">file://</span> and the charts stay empty.
+      </footer>
+    </main>
+  </div>
+</div>
+
+<div id="configModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="configModalTitle">
+    <div class="modal-head">
+      <div id="configModalTitle" class="modal-title">Config</div>
+      <button id="configModalClose" class="btn" type="button">Close</button>
+    </div>
+    <pre id="configModalBody" class="modal-body mono"></pre>
+  </div>
+</div>
+
+<div id="bugModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="bugModalTitle">
+    <div class="modal-head">
+      <div id="bugModalTitle" class="modal-title">Bug details</div>
+      <button id="bugModalClose" class="btn" type="button">Close</button>
+    </div>
+    <div id="bugModalBody" class="modal-body"></div>
+  </div>
+</div>
+
+<template id="tplTargetSection">
+  <section class="target-card">
+    <div class="card-header">
+      <div>
+        <h2 class="card-title" data-part="title"></h2>
+        <div class="muted small" data-part="subtitle"></div>
+      </div>
+      <div class="chart-actions">
+        <button class="btn" type="button" data-part="target-table-export">Export</button>
+      </div>
+    </div>
+    <table class="table" data-part="fuzzer-table">
+      <thead>
+        <tr>
+          <th title="Fuzzer name, version summary, config action, and coverage report link.">Fuzzer</th>
+          <th class="num" data-sort-key="branches_union" title="Final branch coverage per target and per fuzzer. The large number is the union of branches covered across all trials, with per-trial min, max, and median shown below.">
+            <div class="th-stack">
+              <span data-part="coverage-head">Branches</span>
+            </div>
+          </th>
+          <th class="num" data-sort-key="branch_per_10k_median" title="Branch coverage efficiency normalized to ten thousand executed tests. The large number is the median, with min and max shown below.">
+            <div class="th-stack">
+              <span>Branch/10k exec</span>
+            </div>
+          </th>
+          <th class="num" data-sort-key="convergence_median" title="Coverage convergence percentage: 100 times branch coverage-time AUC divided by max branch coverage times runtime. The large number is the median, with min and max shown below.">
+            <div class="th-stack">
+              <span>AUC Score</span>
+            </div>
+          </th>
+          <th class="num" data-sort-key="exclusive_coverage_total" title="Branches covered by this fuzzer across any trial and by no other fuzzer on this target.">
+            <div class="th-stack">
+              <span>Exclusive Coverage</span>
+            </div>
+          </th>
+          <th class="num" data-sort-key="execs_done_median" title="Total executed tests at the end of each trial. The large number is the median, with min and max shown below.">
+            <div class="th-stack">
+              <span>Exec</span>
+            </div>
+          </th>
+          <th class="num" data-sort-key="execs_per_sec_median" title="Executed tests per second at the end of each trial. The large number is the median, with min and max shown below.">
+            <div class="th-stack">
+              <span>Exec/Sec</span>
+            </div>
+          </th>
+          <th class="num" data-sort-key="corpus_median" title="Final corpus file count. The large number is the median, with min, max, and median shown below across trials.">
+            <div class="th-stack">
+              <span>Corpus</span>
+            </div>
+          </th>
+          <th class="num" data-sort-key="unique_bug_total" title="Unique bug count across all trials for this fuzzer-target pair. The large number is the total unique bug count, with per-trial min, max, and median shown below.">
+            <div class="th-stack">
+              <span>Unique Bugs</span>
+            </div>
+          </th>
+          <th class="num" data-sort-key="exclusive_bug_total" title="Bugs found by this fuzzer that no other fuzzer found on this target. The large number is the total across all trials, with per-trial min, max, and median shown below.">
+            <div class="th-stack">
+              <span>Exclusive Bugs</span>
+            </div>
+          </th>
+          <th class="num" data-sort-key="all_bug_hits_median" title="Total bug hit count across trials. The large number is the median, with min and max shown below.">
+            <div class="th-stack">
+              <span>All Bugs</span>
+            </div>
+          </th>
+        </tr>
+      </thead>
+      <tbody data-part="fuzzer-body"></tbody>
+    </table>
+    <div class="block-stack" data-part="blocks"></div>
+  </section>
+</template>
+
+<template id="tplReportBlock">
+  <section class="block">
+    <div class="block-head">
+      <div>
+        <div class="block-title" data-part="title"></div>
+        <div class="block-subtitle" data-part="subtitle"></div>
+      </div>
+      <div class="block-controls" data-part="controls"></div>
+    </div>
+    <div data-part="body"></div>
+  </section>
+</template>
+
+<template id="tplCanvasCard">
+  <div class="subcard">
+    <div class="subcard-head">
+      <div>
+        <div class="subcard-title" data-part="title"></div>
+        <div class="subcard-subtitle" data-part="subtitle"></div>
+      </div>
+      <div class="chart-actions">
+        <button class="btn" type="button" data-part="download">Export</button>
+      </div>
+    </div>
+    <div class="canvas-shell" data-part="shell">
+      <canvas data-part="canvas"></canvas>
+      <div class="chart-legend" data-part="legend"></div>
+    </div>
+  </div>
+</template>
+
+<template id="tplMatrixCard">
+  <div class="subcard">
+    <div class="subcard-head">
+      <div>
+        <div class="subcard-title" data-part="title"></div>
+        <div class="subcard-subtitle" data-part="subtitle"></div>
+      </div>
+      <div class="chart-actions">
+        <button class="btn" type="button" data-part="download">Export</button>
+      </div>
+    </div>
+    <div class="matrix-wrap" data-part="body"></div>
+  </div>
+</template>
+
+<script>
+  window.FM_RUN_ID = {{ (run_id or '')|tojson }};
+  if (window.FM_RUN_ID) {
+    window.FM_DATA_URL = "/api/run/" + window.FM_RUN_ID + "/data";
+  }
+</script>
+
+{% if run_id %}
+<script type="module" src="{{ url_for('static', filename='report.js') }}"></script>
+{% else %}
+<script type="module" src="report.js"></script>
+{% endif %}
+
+</body>
+</html>

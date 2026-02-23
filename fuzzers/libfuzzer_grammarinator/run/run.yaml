@@ -1,0 +1,5 @@
+parent: libfuzzer
+allowed_benchmarks:
+  - jerryscript:jerry
+  - sqlite3:sqlite
+  - jsoncpp:jsoncpp
