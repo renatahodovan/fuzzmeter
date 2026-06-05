@@ -27,22 +27,6 @@ def _default_repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _resolve_existing_file(path: Path) -> Path:
-    resolved = path.expanduser().resolve()
-    if not resolved.is_file():
-        raise FileNotFoundError(f'Config file not found: {path}')
-    return resolved
-
-
-def _resolve_runs_root(path: Path) -> Path:
-    path = path.expanduser().resolve()
-    if (path / 'runs').is_dir():
-        return (path / 'runs').resolve()
-    if path.name == 'runs' and path.is_dir():
-        return path.resolve()
-    return path.resolve()
-
-
 def _docker_available() -> bool:
     try:
         result = subprocess.run(
@@ -120,21 +104,26 @@ def main(argv: list[str] | None = None) -> int:
         from .reporting.api import generate_report
         from .run.runner import run_experiment
 
-        try:
-            config_path = _resolve_existing_file(args.config)
-        except FileNotFoundError as exc:
-            logger.error('Missing config file: %r', args.config, exc_info=exc)
-            return 1
+        config_path = args.config.expanduser().resolve()
+        if not config_path.is_file():
+            ap.error(f'Config file is not a file: {config_path}')
+
+        fm_out = args.out.expanduser().resolve()
+        if fm_out.exists() and not fm_out.is_dir():
+            ap.error(f'Output directory is not a directory: {fm_out}')
+        fm_out.mkdir(parents=True, exist_ok=True)
 
         repo = _default_repo_root()
-        fm_out = args.out.expanduser().resolve()
-        fm_out.mkdir(parents=True, exist_ok=True)
+        try:
+            suite_yaml = config_path.read_text(encoding='utf-8')
+            campaign_config = load_campaign_config(repo, suite_yaml)
+        except (OSError, UnicodeDecodeError, TypeError, ValueError, RuntimeError) as exc:
+            ap.error(str(exc))
+
         if not _validate_docker():
             return 1
 
         os.environ['FM_OUT_SRC'] = str(fm_out)
-        suite_yaml = config_path.read_text(encoding='utf-8')
-        campaign_config = load_campaign_config(repo, suite_yaml)
         try:
             logger.info('Start experiment')
             run_dir = run_experiment(
@@ -155,8 +144,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == 'serve':
         import fuzzmeter.web.app as webapp
 
-        root = args.root.expanduser().resolve()
-        webapp.RUNS_ROOT = _resolve_runs_root(root)
+        try:
+            root = args.root.expanduser().resolve()
+            webapp.RUNS_ROOT = (root / 'runs').resolve() if (root / 'runs').is_dir() else root
+            if not webapp.RUNS_ROOT.is_dir():
+                raise NotADirectoryError(f'Runs root is not a directory: {webapp.RUNS_ROOT}')
+        except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
+            logger.error('Invalid runs root: %s', exc)
+            return 1
+
         os.environ['FM_RUNS_ROOT'] = str(webapp.RUNS_ROOT)
         os.environ['FM_OUT_ROOT'] = (
             str(webapp.RUNS_ROOT.parent) if webapp.RUNS_ROOT.name == 'runs' else str(webapp.RUNS_ROOT)

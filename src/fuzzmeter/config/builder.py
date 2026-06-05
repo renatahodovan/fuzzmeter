@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ import yaml
 
 from .models import CampaignCase, CampaignConfig, CampaignSettings
 
+IDENTIFIER_RE = re.compile(r'^[a-zA-Z0-9_.-]+$')
 LOG = logging.getLogger(__name__)
 
 
@@ -39,22 +41,23 @@ def _merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _target_id(benchmark: str, fuzz_target: str) -> str:
-    return f'{benchmark}-{fuzz_target}'.replace('/', '_')
-
-
 def _parse_target_spec(spec: str) -> tuple[str, str, str]:
     if ':' not in spec:
-        raise RuntimeError(f'Unexpected target spec format: %s (missinig \':\')', spec)
+        raise ValueError(f'Unexpected target spec format: {spec!r} (missing \':\')')
     project, fuzz_target = spec.split(':', 1)
     project = project.strip()
     fuzz_target = fuzz_target.strip()
-    if not project or not fuzz_target:
-        raise ValueError(f'Invalid target spec: {spec!r}')
-    return project, fuzz_target, _target_id(project, fuzz_target)
+    if not IDENTIFIER_RE.fullmatch(project):
+        raise ValueError(f'Target spec benchmark must match [a-zA-Z0-9_.-]+: {project!r}')
+    if not IDENTIFIER_RE.fullmatch(fuzz_target):
+        raise ValueError(f'Target spec target must match [a-zA-Z0-9_.-]+: {fuzz_target!r}')
+    return project, fuzz_target, f'{project}-{fuzz_target}'
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
+    path = path.expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f'YAML file is not a file: {path}')
     data = yaml.safe_load(path.read_text(encoding='utf-8')) or {}
     if not isinstance(data, dict):
         raise TypeError(f'Expected mapping in {path}')
@@ -63,16 +66,18 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 def _load_target_config(path: Path) -> dict[str, Any]:
     data = _load_yaml(path)
-    benchmark = str(data.get('project') or '')
-    fuzz_target = str(data.get('fuzz_target') or '')
+    benchmark = str(data.get('project') or '').strip()
+    fuzz_target = str(data.get('fuzz_target') or '').strip()
+    if not IDENTIFIER_RE.fullmatch(benchmark):
+        raise ValueError(f'Target config {path} benchmark must match [a-zA-Z0-9_.-]+: {benchmark!r}')
+    if not IDENTIFIER_RE.fullmatch(fuzz_target):
+        raise ValueError(f'Target config {path} target must match [a-zA-Z0-9_.-]+: {fuzz_target!r}')
     input_mode = str(data.get('input_mode') or '')
-    if not benchmark or not fuzz_target:
-        raise RuntimeError(f'Missing {benchmark=} or {fuzz_target=}')
     return {
         'benchmark': benchmark,
         'fuzz_target': fuzz_target,
         'input_mode': input_mode,
-        'target_id': _target_id(benchmark, fuzz_target),
+        'target_id': f'{benchmark}-{fuzz_target}',
         'config_path': str(path),
         'metadata': data,
     }
@@ -111,14 +116,24 @@ def _snapshot_export_every_ticks(*, snap_data: dict[str, Any], time_seconds: int
 
 
 def _config_slice(key: str, data: dict[str, Any]) -> dict[str, Any]:
-    allowed_benchmarks = data.get('allowed_benchmarks', [])
-    allowed_benchmarks = set(allowed_benchmarks if isinstance(allowed_benchmarks, list) else [allowed_benchmarks])
+    allowed_benchmarks = data.get('allowed_benchmarks') or []
+    raw_allowed_benchmarks = allowed_benchmarks if isinstance(allowed_benchmarks, list) else [allowed_benchmarks]
+    allowed_benchmarks = set()
+    for target_spec in raw_allowed_benchmarks:
+        benchmark, fuzz_target, _ = _parse_target_spec(str(target_spec))
+        allowed_benchmarks.add(f'{benchmark}:{fuzz_target}')
+    replay_trials = []
+    for path in data.get('replay_trials') or []:
+        path = Path(path).expanduser().resolve()
+        if not path.is_dir():
+            raise NotADirectoryError(f'Replay trial directory is not a directory: {path}')
+        replay_trials.append(path)
     return {
         'key': key,
         'allowed_benchmarks': allowed_benchmarks,
         'build': dict(data.get('build') or {}),
         'runtime': dict(data.get('runtime') or {}),
-        'replay_trials': tuple(Path(path).expanduser() for path in (data.get('replay_trials') or [])),
+        'replay_trials': tuple(replay_trials),
     }
 
 
@@ -128,6 +143,9 @@ def _load_fuzzer_config_chain(
     seen: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     seen = seen or set()
+    fuzzer_name = str(fuzzer_name).strip()
+    if not IDENTIFIER_RE.fullmatch(fuzzer_name):
+        raise ValueError(f'Fuzzer name must match [a-zA-Z0-9_.-]+: {fuzzer_name!r}')
     if fuzzer_name in seen:
         raise ValueError(f'Cyclic fuzzer parent chain detected at {fuzzer_name}')
     seen.add(fuzzer_name)
@@ -138,24 +156,30 @@ def _load_fuzzer_config_chain(
     parent_name = str(data.get('parent') or '').strip()
     if not parent_name:
         return chain
+    if not IDENTIFIER_RE.fullmatch(parent_name):
+        raise ValueError(f'Parent fuzzer for {fuzzer_name} must match [a-zA-Z0-9_.-]+: {parent_name!r}')
     chain.extend(_load_fuzzer_config_chain(source_root, parent_name, seen))
     return chain
 
 
 def _load_fuzzer_config(source_root: Path, fuzzer_name: str) -> dict[str, Any]:
-    fuzzer_root = source_root / 'fuzzers' / fuzzer_name
+    fuzzer_name = str(fuzzer_name).strip()
+    if not IDENTIFIER_RE.fullmatch(fuzzer_name):
+        raise ValueError(f'Fuzzer name must match [a-zA-Z0-9_.-]+: {fuzzer_name!r}')
+    fuzzer_root = (source_root / 'fuzzers' / fuzzer_name).resolve()
+    if not fuzzer_root.is_dir():
+        raise NotADirectoryError(f'Fuzzer directory is not a directory: {fuzzer_root}')
     build_path = fuzzer_root / 'build' / 'build.yaml'
     run_path = fuzzer_root / 'run' / 'run.yaml'
     if not build_path.is_file() and not run_path.is_file():
-        if fuzzer_root.is_dir():
-            return {}
-        raise FileNotFoundError(f'Fuzzer config not found: {build_path} or {run_path}')
+        return {}
     return _merge(_load_optional_fuzzer_yaml(build_path), _load_optional_fuzzer_yaml(run_path))
 
 
 def _load_optional_fuzzer_yaml(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {}
+    path = path.expanduser().resolve()
     data = yaml.safe_load(path.read_text(encoding='utf-8')) or {}
     if not isinstance(data, dict):
         raise TypeError(f'Expected mapping in {path}')
@@ -167,17 +191,17 @@ def _load_fuzzer_configs(data: dict[str, Any], source_root: Path) -> dict[str, l
     for item in data.get('fuzzers', []):
         if isinstance(item, str):
             fuzzer_name = item.strip()
-            if not fuzzer_name:
-                raise ValueError('Fuzzer entry cannot be empty')
+            if not IDENTIFIER_RE.fullmatch(fuzzer_name):
+                raise ValueError(f'Fuzzer name must match [a-zA-Z0-9_.-]+: {fuzzer_name!r}')
             base_name = fuzzer_name
             chain: list[dict[str, Any]] = []
         elif isinstance(item, dict):
             fuzzer_name = str(item.get('fuzzer') or '').strip()
-            if not fuzzer_name:
-                raise ValueError(f'Fuzzer entry must contain "fuzzer": {item!r}')
+            if not IDENTIFIER_RE.fullmatch(fuzzer_name):
+                raise ValueError(f'Fuzzer name must match [a-zA-Z0-9_.-]+: {fuzzer_name!r}')
             base_name = str(item.get('parent') or fuzzer_name).strip()
-            if not base_name:
-                raise ValueError(f'Fuzzer entry must define a non-empty parent/base: {item!r}')
+            if not IDENTIFIER_RE.fullmatch(base_name):
+                raise ValueError(f'Parent fuzzer for {fuzzer_name} must match [a-zA-Z0-9_.-]+: {base_name!r}')
             chain = [_config_slice(fuzzer_name, item)]
         else:
             raise TypeError(f'Unsupported fuzzer entry: {item!r}')
@@ -191,14 +215,11 @@ def _load_target_configs(data: dict[str, Any], source_root: Path) -> dict[str, d
     for target_spec in data.get('targets', []):
         project, requested_fuzz_target, _ = _parse_target_spec(str(target_spec))
         path = source_root / 'targets' / project / 'benchmark.yaml'
-        if not path.is_file():
-            LOG.error('Missing benchmark config: %s', path)
-            continue
         try:
             target_config = _load_target_config(path)
             benchmark = str(target_config['benchmark'])
             target_config['fuzz_target'] = requested_fuzz_target
-            target_config['target_id'] = _target_id(benchmark, requested_fuzz_target)
+            target_config['target_id'] = f'{benchmark}-{requested_fuzz_target}'
 
             fuzzer_overrides = target_config['metadata'].get('fuzzers') or {}
             if not isinstance(fuzzer_overrides, dict):
@@ -206,9 +227,12 @@ def _load_target_configs(data: dict[str, Any], source_root: Path) -> dict[str, d
 
             normalized_overrides: dict[str, dict[str, Any]] = {}
             for fuzzer_name, override in fuzzer_overrides.items():
+                fuzzer_name = str(fuzzer_name).strip()
+                if not IDENTIFIER_RE.fullmatch(fuzzer_name):
+                    raise ValueError(f'Benchmark fuzzer override in {path} must match [a-zA-Z0-9_.-]+: {fuzzer_name!r}')
                 if not isinstance(override, dict):
                     raise TypeError(f'Benchmark fuzzers.{fuzzer_name} must be a mapping')
-                normalized_overrides[str(fuzzer_name)] = override
+                normalized_overrides[fuzzer_name] = override
 
             targets[str(target_config['target_id'])] = {
                 'target_config': target_config,
@@ -288,6 +312,16 @@ def _fuzzer_allows_target(fuzzer_configs: list[dict[str, Any]], target_config: d
 
 def load_campaign_config(source_root: Path, text: str) -> CampaignConfig:
     '''Load a campaign configuration from YAML text.'''
+    source_root = source_root.expanduser().resolve()
+    source_roots = (
+        (source_root, 'Source root'),
+        (source_root / 'fuzzers', 'Fuzzer root'),
+        (source_root / 'targets', 'Target root'),
+    )
+    for path, label in source_roots:
+        if not path.is_dir():
+            raise NotADirectoryError(f'{label} is not a directory: {path}')
+
     data = yaml.safe_load(text) or {}
     if not isinstance(data, dict):
         raise TypeError('Top-level config must be a mapping')

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 
@@ -16,6 +17,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fuzzmeter import cli
+from fuzzmeter.web import app as webapp
 
 
 class HostCliTest(unittest.TestCase):
@@ -31,14 +33,19 @@ class HostCliTest(unittest.TestCase):
             with patch('pathlib.Path.cwd', return_value=root):
                 self.assertEqual(root.resolve(), cli._default_repo_root())
 
-    def test_resolve_runs_root_accepts_out_root(self) -> None:
-        '''Verify that an output root containing runs resolves to its runs directory.'''
+    def test_serve_accepts_out_root(self) -> None:
+        '''Verify that serving with an output root uses its runs directory.'''
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_root = Path(tmp_dir) / 'out'
             runs_root = out_root / 'runs'
             runs_root.mkdir(parents=True)
 
-            self.assertEqual(runs_root.resolve(), cli._resolve_runs_root(out_root))
+            with patch.object(webapp.app, 'run') as app_run:
+                self.assertEqual(0, cli.main(['--log-level', 'CRITICAL', 'serve', '--root', str(out_root)]))
+
+            self.assertEqual(runs_root.resolve(), webapp.RUNS_ROOT)
+            self.assertEqual(str(runs_root.resolve()), os.environ['FM_RUNS_ROOT'])
+            app_run.assert_called_once()
 
 
 if __name__ == '__main__':
