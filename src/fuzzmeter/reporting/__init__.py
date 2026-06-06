@@ -7,6 +7,6 @@
 
 from __future__ import annotations
 
-from .api import build_payload, generate_report
+from .api import build_payload
 
-__all__ = ['build_payload', 'generate_report']
+__all__ = ['build_payload']

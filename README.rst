@@ -133,13 +133,15 @@ Run it with::
 The output is written under ``out/runs/<run_id>/``. On successful completion,
 FuzzMeter also exports a static HTML report under the same directory.
 
-The command-line interface contains two main subcommands::
+The command-line interface contains three main subcommands::
 
     fuzzmeter run --config <config.yaml> --out <output-root>
+    fuzzmeter report <run-dir>
     fuzzmeter serve --root <output-root-or-runs-dir> --host 127.0.0.1 --port 8000
 
 ``run`` executes the campaign and exports a static report. ``serve`` starts the
-dynamic database-backed web UI for existing runs.
+dynamic database-backed web UI for existing runs. ``report`` exports a static
+report for an existing run.
 
 
 Campaign Configuration
@@ -297,7 +299,7 @@ To serve existing runs dynamically::
 
 To regenerate a static report from an existing run directory::
 
-    python3 -m fuzzmeter.reporting.generate out/runs/<run_id>
+    fuzzmeter report out/runs/<run_id>
 
 
 Output Layout
