@@ -14,7 +14,6 @@ import unittest
 import zipfile
 
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from fuzzmeter.trial import workspace

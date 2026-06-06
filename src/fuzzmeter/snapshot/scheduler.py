@@ -285,7 +285,6 @@ class SnapshotScheduler:
         db.commit()
 
         plan = self._collector.collect(
-            db=db,
             tick_idx=tick_idx,
             ts=ts,
             active_trials=active_trials,

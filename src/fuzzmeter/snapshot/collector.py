@@ -53,7 +53,6 @@ class SnapshotCollector:
     def collect(
         self,
         *,
-        db: DB,
         tick_idx: int,
         ts: int,
         active_trials: list[ActiveTrial],
@@ -136,9 +135,7 @@ class SnapshotCollector:
             previous_snapshot = db_snapshot.latest_trial_snapshot(db, trial_row_id=trial.trial_row_id)
             interval_start_ts = self._snapshot_interval_start_ts(trial=trial, previous_snapshot=previous_snapshot)
             new_corpus_files = self._detect_new_files(
-                db,
                 kind='corpus',
-                trial_row_id=trial.trial_row_id,
                 trial=trial,
                 src_root=trial.corpus_root,
                 start_ts=interval_start_ts,
@@ -164,9 +161,7 @@ class SnapshotCollector:
                 jobs=preprocess_jobs,
             )
             new_crash_files = self._detect_new_files(
-                db,
                 kind='crashes',
-                trial_row_id=trial.trial_row_id,
                 trial=trial,
                 src_root=trial.crashes_root,
                 start_ts=interval_start_ts,
@@ -189,7 +184,7 @@ class SnapshotCollector:
                 return _CollectedTrialSnapshot()
 
             coverage_task = None
-            if self._should_run_coverage(db=db, trial=trial, copied_corpus=copied_corpus, tick_idx=tick_idx):
+            if self._should_run_coverage(db=db, trial=trial, copied_corpus=copied_corpus):
                 coverage_task = CoverageTask(
                     trial=trial,
                     snap_dir=snap_dir,
@@ -253,10 +248,8 @@ class SnapshotCollector:
 
     def _detect_new_files(
         self,
-        db: DB,
         *,
         kind: repro_ingest.OutputFileKind,
-        trial_row_id: int,
         trial: ActiveTrial,
         src_root: Path,
         start_ts: int,
@@ -271,9 +264,7 @@ class SnapshotCollector:
                 end_ts=end_ts,
             )
         return repro_ingest.detect_new_files(
-            db,
             kind=kind,
-            trial_row_id=trial_row_id,
             src_root=src_root,
             start_ts=start_ts,
             end_ts=end_ts,
@@ -417,7 +408,7 @@ class SnapshotCollector:
         return copied_corpus
 
     @staticmethod
-    def _should_run_coverage(*, db: DB, trial: ActiveTrial, copied_corpus: int, tick_idx: int) -> bool:
+    def _should_run_coverage(*, db: DB, trial: ActiveTrial, copied_corpus: int) -> bool:
         if (
             SnapshotCollector._seed_baseline_exists(trial)
             and not db_snapshot.trial_has_coverage_snapshots(db, trial_row_id=trial.trial_row_id)

@@ -384,7 +384,6 @@ class RunnerLoopTest(unittest.TestCase):
         trials = [_bare_active_trial(trial_row_id=idx, root=Path('/tmp'), started_ts=100) for idx in (1, 2, 3)]
 
         plan = collector.collect(
-            db=None,
             tick_idx=1,
             ts=200,
             active_trials=trials,

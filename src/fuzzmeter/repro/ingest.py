@@ -19,8 +19,6 @@ from typing import Callable
 from typing import Iterator
 from typing import Literal
 
-from ..db import DB
-
 LOG = logging.getLogger(__name__)
 
 OutputFileKind = Literal['corpus', 'crashes']
@@ -38,10 +36,8 @@ class DetectedFile:
 
 
 def detect_new_files(
-    db: DB,
     *,
     kind: OutputFileKind,
-    trial_row_id: int,
     src_root: Path,
     start_ts: int,
     end_ts: int,
@@ -54,7 +50,7 @@ def detect_new_files(
     start_mtime_ns = int(start_ts) * 1_000_000_000
     end_mtime_ns = int(end_ts) * 1_000_000_000
 
-    for path, rel_path, stat, mtime_ns in iter_visible_files_in_time_range(
+    for path, rel_path, _, mtime_ns in iter_visible_files_in_time_range(
         src_root,
         start_mtime_ns=start_mtime_ns,
         end_mtime_ns=end_mtime_ns,

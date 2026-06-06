@@ -299,7 +299,8 @@ class CoverageAnalysis:
         '''Build per-trial metric rows for a fuzzer entry.'''
 
         rows: list[dict[str, Any]] = []
-        sort_key = lambda row: (
+        def sort_key(row: dict[str, Any]) -> tuple[str, int, int]:
+            return (
             str(row.get('fuzzer') or ''),
             int(row.get('rep') or 0),
             int(row.get('trial_id') or 0),

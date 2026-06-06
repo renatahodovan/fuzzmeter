@@ -19,7 +19,7 @@ from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.db.snapshot import upsert_agg_snapshot, update_agg_snapshot_coverage
 from fuzzmeter.reporting.analyzers.coverage_analysis import CoverageAnalysis
 from fuzzmeter.reporting.generate import ReportBuilder
-from fuzzmeter.reporting.metrics import mann_whitney_u_pvalue, vargha_delaney_a12
+from fuzzmeter.reporting.metrics import mann_whitney_u_pvalue
 from fuzzmeter.snapshot.aggregate import SnapshotAggregateUpdater
 
 

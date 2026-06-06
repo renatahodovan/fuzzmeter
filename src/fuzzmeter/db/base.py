@@ -11,7 +11,7 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Sequence
 
 
 def _row_factory(cur: sqlite3.Cursor, row: tuple) -> dict:

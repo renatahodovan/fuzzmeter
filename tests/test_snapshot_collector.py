@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import tempfile
 import threading
@@ -103,9 +102,7 @@ class SnapshotCollectorTest(unittest.TestCase):
 
             try:
                 detected = detect_new_files(
-                    db,
                     kind='corpus',
-                    trial_row_id=1,
                     src_root=corpus_root,
                     start_ts=100,
                     end_ts=200,
@@ -159,7 +156,7 @@ class SnapshotCollectorTest(unittest.TestCase):
             collector = SnapshotCollector(db_path=db_path, run_id='run-1', docker_runtime=None)
             seen_intervals: list[tuple[int, int]] = []
 
-            def _capture_detect_new_files(_db, *, kind, trial_row_id, src_root, start_ts, end_ts, replay_time_fn=None):
+            def _capture_detect_new_files(*, kind, src_root, start_ts, end_ts, replay_time_fn=None):
                 seen_intervals.append((int(start_ts), int(end_ts)))
                 return []
 
@@ -233,27 +230,21 @@ class SnapshotCollectorTest(unittest.TestCase):
             db = DB.open(root / 'unused.db')
             try:
                 first_tick = collector._detect_new_files(
-                    db,
                     kind='corpus',
-                    trial_row_id=1,
                     trial=trial,
                     src_root=trial.corpus_root,
                     start_ts=100,
                     end_ts=110,
                 )
                 second_tick = collector._detect_new_files(
-                    db,
                     kind='corpus',
-                    trial_row_id=1,
                     trial=trial,
                     src_root=trial.corpus_root,
                     start_ts=110,
                     end_ts=120,
                 )
                 crashes = collector._detect_new_files(
-                    db,
                     kind='crashes',
-                    trial_row_id=1,
                     trial=trial,
                     src_root=trial.crashes_root,
                     start_ts=100,
@@ -428,8 +419,7 @@ class SnapshotCollectorTest(unittest.TestCase):
                         SnapshotCollector._should_run_coverage(
                             db=db,
                             trial=trial,
-                            copied_corpus=0,
-                            tick_idx=2,
+                            copied_corpus=0
                         )
                     )
             finally:
@@ -452,8 +442,7 @@ class SnapshotCollectorTest(unittest.TestCase):
                     SnapshotCollector._should_run_coverage(
                         db=db,
                         trial=trial,
-                        copied_corpus=0,
-                        tick_idx=29,
+                        copied_corpus=0
                     )
                 )
 
@@ -465,8 +454,7 @@ class SnapshotCollectorTest(unittest.TestCase):
                     SnapshotCollector._should_run_coverage(
                         db=db,
                         trial=trial,
-                        copied_corpus=0,
-                        tick_idx=30,
+                        copied_corpus=0
                     )
                 )
             finally:

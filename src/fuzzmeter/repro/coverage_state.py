@@ -24,7 +24,7 @@ def seed_coverage_root(run_dir: Path, fuzzer: str, benchmark: str, fuzz_target: 
     return Path(run_dir) / 'coverage_seed' / fuzzer / benchmark / fuzz_target
 
 
-def collect_inputs(corpus_dir: Path, seen: set[str] | None = None) -> tuple[list[Path], list[str]]:
+def collect_inputs(corpus_dir: Path) -> tuple[list[Path], list[str]]:
     '''Collect corpus files whose content hash is not in the seen set.'''
     return sorted(path for path in corpus_dir.rglob('*') if path.is_file())
 

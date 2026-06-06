@@ -14,7 +14,6 @@
 """Integration code for Honggfuzz fuzzer."""
 
 import os
-import shutil
 import subprocess
 
 from pathlib import Path

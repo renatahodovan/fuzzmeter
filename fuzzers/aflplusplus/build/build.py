@@ -1,10 +1,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
-
-from pathlib import Path
-from typing import Any, Dict
 
 from fuzzers import utils
 from fuzzers.aflplusplus.common import get_cmplog_build_directory

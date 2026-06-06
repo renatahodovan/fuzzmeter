@@ -13,11 +13,8 @@
 # limitations under the License.
 """Integration code for AFL fuzzer."""
 
-import json
 import os
-from pathlib import Path
 import shutil
-import subprocess
 
 from fuzzers import utils
 

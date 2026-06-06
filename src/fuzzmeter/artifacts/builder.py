@@ -126,7 +126,7 @@ def prepare_artifacts(
     '''Build images, extract binaries, prepare seeds, and measure seed baselines.'''
     _build_images(campaign_config=campaign_config, run_dir=run_dir, repo_root=repo_root)
     fuzz_binaries = extract_fuzz_binaries(campaign_config=campaign_config, run_dir=run_dir)
-    prepare_seed_corpora(campaign_config=campaign_config, run_dir=run_dir, repo_root=repo_root)
+    prepare_seed_corpora(campaign_config=campaign_config, run_dir=run_dir)
     measure_seed_baselines(
         campaign_config=campaign_config,
         run_dir=run_dir,

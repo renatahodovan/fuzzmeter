@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from .file_service import FileService
-from ...reporting.api import build_payload, generate_report
+from ...reporting.api import build_payload
+from ...reporting.generate import generate_report
 
 
 class WebReportService:

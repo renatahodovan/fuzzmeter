@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 
 from pathlib import Path
 from typing import Any, Dict
@@ -28,7 +27,6 @@ from fuzzers import utils
 """Integration code for AFLplusplus fuzzer."""
 
 import os
-import shutil
 
 from fuzzers.afl.run import fuzz as afl_fuzzer
 from fuzzers import utils

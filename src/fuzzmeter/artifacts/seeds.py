@@ -23,7 +23,7 @@ from ..trial.workspace import TrialWorkspacePreparer
 LOG = logging.getLogger(__name__)
 
 
-def prepare_seed_corpora(*, campaign_config: CampaignConfig, run_dir: Path, repo_root: Path) -> None:
+def prepare_seed_corpora(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
     '''Prepare configured or image-provided seed corpora for a run.'''
     seeds_out = Path(run_dir) / 'seed_corpora'
     seeds_out.mkdir(parents=True, exist_ok=True)
