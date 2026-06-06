@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Build campaign-level ranking summaries from per-target report entries.'''
+
 from __future__ import annotations
 
 from typing import Any, Callable
@@ -52,7 +54,11 @@ class SummaryAnalysis:
             for entry in target['fuzzers']:
                 entry.setdefault('rank_regions_median', entry.get('rank_regions_median'))
             best_entry = max(
-                (entry for entry in target['fuzzers'] if isinstance(entry['final'].get('regions_pct_median'), (int, float))),
+                (
+                    entry
+                    for entry in target['fuzzers']
+                    if isinstance(entry['final'].get('regions_pct_median'), (int, float))
+                ),
                 key=lambda entry: float(entry['final'].get('regions_pct_median') or -1),
                 default=None,
             )
@@ -67,8 +73,14 @@ class SummaryAnalysis:
                         {
                             'vs': best_fuzzer,
                             'fuzzer': entry['fuzzer'],
-                            'p_value': self._mann_whitney_u_pvalue(best_dist, entry['distribution'].get('regions_pct', [])),
-                            'cliffs_delta': self._cliffs_delta(best_dist, entry['distribution'].get('regions_pct', [])),
+                            'p_value': self._mann_whitney_u_pvalue(
+                                best_dist,
+                                entry['distribution'].get('regions_pct', []),
+                            ),
+                            'cliffs_delta': self._cliffs_delta(
+                                best_dist,
+                                entry['distribution'].get('regions_pct', []),
+                            ),
                         }
                     )
             target['significance_vs_best'] = significance
@@ -129,5 +141,7 @@ class SummaryAnalysis:
                     'median_execs_done': _median(per_fuzzer_execs[fuzzer]),
                 }
             )
-        summary['rankings'].sort(key=lambda row: (row['coverage_score'] is None, -(row['coverage_score'] or -1)))
+        summary['rankings'].sort(
+            key=lambda row: (row['coverage_score'] is None, -(row['coverage_score'] or -1)),
+        )
         return summary

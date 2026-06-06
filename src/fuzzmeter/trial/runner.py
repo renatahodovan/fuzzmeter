@@ -163,9 +163,12 @@ class TrialRunner:
                 with runtime.running(ctx):
                     started = True
                     runtime.monitor_until_deadline(ctx, stop_event=stop_event)
-        except Exception as exc:
+        except Exception:
             self._set_trial_status(ctx.trial_row_id, 'failed_runtime' if started else 'failed_start')
             LOG.error('Failed to execute fuzzer in %s directory.', run_dir)
             raise
         else:
-            self._set_trial_status(ctx.trial_row_id, 'interrupted' if stop_event is not None and stop_event.is_set() else 'done')
+            self._set_trial_status(
+                ctx.trial_row_id,
+                'interrupted' if stop_event is not None and stop_event.is_set() else 'done',
+            )

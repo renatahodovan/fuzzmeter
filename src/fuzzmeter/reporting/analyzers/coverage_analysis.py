@@ -5,10 +5,11 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Build coverage and comparison report sections from trial and snapshot data.'''
+
 from __future__ import annotations
 
 import json
-
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -215,13 +216,17 @@ class CoverageAnalysis:
                     finals[key].append(float(value))
             elapsed_seconds = trial_elapsed_seconds(trial)
             if elapsed_seconds is not None:
-                finals.setdefault("elapsed_seconds", []).append(float(elapsed_seconds))
-                execs_done = self._safe_int(last_point.get("execs_done"))
+                finals.setdefault('elapsed_seconds', []).append(float(elapsed_seconds))
+                execs_done = self._safe_int(last_point.get('execs_done'))
                 if execs_done is not None and elapsed_seconds > 0:
-                    finals["execs_per_sec"].append(float(execs_done) / float(elapsed_seconds))
+                    finals['execs_per_sec'].append(float(execs_done) / float(elapsed_seconds))
         return finals
 
-    def build_curve(self, reps: list[dict[str, Any]], points_by_trial: dict[int, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    def build_curve(
+        self,
+        reps: list[dict[str, Any]],
+        points_by_trial: dict[int, list[dict[str, Any]]],
+    ) -> list[dict[str, Any]]:
         '''Build an aggregate fuzzer curve across repetitions.'''
 
         trial_series: list[tuple[int, dict[float, dict[str, Any]]]] = []
@@ -317,24 +322,45 @@ class CoverageAnalysis:
         '''Build per-trial metric rows for a fuzzer entry.'''
 
         rows: list[dict[str, Any]] = []
-        for trial in sorted(reps, key=lambda row: (str(row.get("fuzzer") or ""), int(row.get("rep") or 0), int(row.get("trial_id") or 0))):
-            trial_id = int(trial["trial_id"])
-            coverage = trial.get("coverage") or {}
-            points = sorted(points_by_trial.get(trial_id, []), key=lambda point: int(point.get("idx") or 0))
+        sort_key = lambda row: (
+            str(row.get('fuzzer') or ''),
+            int(row.get('rep') or 0),
+            int(row.get('trial_id') or 0),
+        )
+        for trial in sorted(reps, key=sort_key):
+            trial_id = int(trial['trial_id'])
+            coverage = trial.get('coverage') or {}
+            points = sorted(points_by_trial.get(trial_id, []), key=lambda point: int(point.get('idx') or 0))
             last_point = points[-1] if points else {}
             elapsed_seconds = trial_elapsed_seconds(trial)
-            execs_done = self._safe_int(last_point.get("execs_done"))
+            execs_done = self._safe_int(last_point.get('execs_done'))
             execs_per_sec = None
             if execs_done is not None and elapsed_seconds is not None and elapsed_seconds > 0:
                 execs_per_sec = float(execs_done) / float(elapsed_seconds)
 
-            regions_cov_auc, regions_cov_auc_norm = self._trial_auc(points, y_key="regions_cov", duration_s=elapsed_seconds)
-            branches_cov_auc, branches_cov_auc_norm = self._trial_auc(points, y_key="branches_cov", duration_s=elapsed_seconds)
-            regions_pct_auc, regions_pct_auc_norm = self._trial_auc(points, y_key="regions_pct", duration_s=elapsed_seconds)
-            branches_pct_auc, branches_pct_auc_norm = self._trial_auc(points, y_key="branches_pct", duration_s=elapsed_seconds)
+            regions_cov_auc, regions_cov_auc_norm = self._trial_auc(
+                points,
+                y_key='regions_cov',
+                duration_s=elapsed_seconds,
+            )
+            branches_cov_auc, branches_cov_auc_norm = self._trial_auc(
+                points,
+                y_key='branches_cov',
+                duration_s=elapsed_seconds,
+            )
+            regions_pct_auc, regions_pct_auc_norm = self._trial_auc(
+                points,
+                y_key='regions_pct',
+                duration_s=elapsed_seconds,
+            )
+            branches_pct_auc, branches_pct_auc_norm = self._trial_auc(
+                points,
+                y_key='branches_pct',
+                duration_s=elapsed_seconds,
+            )
             convergence_pct = self._convergence_pct(
                 branches_cov_auc,
-                self._safe_int(coverage.get("branches_covered")),
+                self._safe_int(coverage.get('branches_covered')),
                 elapsed_seconds,
             )
 
@@ -485,26 +511,35 @@ class CoverageAnalysis:
             dst[key] = merged
 
         for trial in trials:
-            benchmark = trial.get("benchmark")
-            fuzz_target = trial.get("fuzz_target")
-            fuzzer = trial.get("fuzzer")
+            benchmark = trial.get('benchmark')
+            fuzz_target = trial.get('fuzz_target')
+            fuzzer = trial.get('fuzzer')
             if not (benchmark and fuzz_target and fuzzer):
                 continue
-            target_group = grouped.setdefault((benchmark, fuzz_target), {"benchmark": benchmark, "fuzz_target": fuzz_target, "fuzzers": {}})
-            fuzzer_group = target_group["fuzzers"].setdefault(fuzzer, {"reps": [], "bugs": [], "versions": {}})
-            fuzzer_group["reps"].append(trial)
+            target_group = grouped.setdefault(
+                (benchmark, fuzz_target),
+                {'benchmark': benchmark, 'fuzz_target': fuzz_target, 'fuzzers': {}},
+            )
+            fuzzer_group = target_group['fuzzers'].setdefault(
+                fuzzer,
+                {'reps': [], 'bugs': [], 'versions': {}},
+            )
+            fuzzer_group['reps'].append(trial)
             for key in trial_version_fields:
                 if trial.get(key):
-                    fuzzer_group["versions"][key] = trial.get(key)
-            merge_version_config(fuzzer_group["versions"], "build_config", trial.get("build_config"))
-            merge_version_config(fuzzer_group["versions"], "runtime_config", trial.get("runtime_config"))
+                    fuzzer_group['versions'][key] = trial.get(key)
+            merge_version_config(fuzzer_group['versions'], 'build_config', trial.get('build_config'))
+            merge_version_config(fuzzer_group['versions'], 'runtime_config', trial.get('runtime_config'))
 
         for bug in bugs:
-            key = (bug.get("benchmark"), bug.get("fuzz_target"))
-            fuzzer = bug.get("fuzzer")
+            key = (bug.get('benchmark'), bug.get('fuzz_target'))
+            fuzzer = bug.get('fuzzer')
             if key not in grouped or not fuzzer:
                 continue
-            grouped[key]["fuzzers"].setdefault(fuzzer, {"reps": [], "bugs": [], "versions": {}})["bugs"].append(bug)
+            grouped[key]['fuzzers'].setdefault(
+                fuzzer,
+                {'reps': [], 'bugs': [], 'versions': {}},
+            )['bugs'].append(bug)
 
         targets: list[dict[str, Any]] = []
         for (benchmark, fuzz_target), target_group in sorted(grouped.items()):
@@ -557,9 +592,9 @@ class CoverageAnalysis:
             for metric in self._cov_metrics
         }
         return {
-            "by_metric": by_metric,
-            "has_data": any(entry.get("has_data") for entry in by_metric.values()),
-            "available_metrics": [metric for metric, entry in by_metric.items() if entry.get("has_data")],
+            'by_metric': by_metric,
+            'has_data': any(entry.get('has_data') for entry in by_metric.values()),
+            'available_metrics': [metric for metric, entry in by_metric.items() if entry.get('has_data')],
         }
 
     def _compute_unique_matrix_for_metric(
@@ -576,9 +611,13 @@ class CoverageAnalysis:
 
         fuzzers = sorted(
             {
-                str(trial.get("fuzzer"))
+                str(trial.get('fuzzer'))
                 for trial in trials
-                if trial.get("benchmark") == benchmark and trial.get("fuzz_target") == fuzz_target and trial.get("fuzzer")
+                if (
+                    trial.get('benchmark') == benchmark
+                    and trial.get('fuzz_target') == fuzz_target
+                    and trial.get('fuzzer')
+                )
             }
         )
         coverage_sets = self._coverage_sets_for_metric(
@@ -592,7 +631,10 @@ class CoverageAnalysis:
         result = unique_matrix(
             fuzzers,
             coverage_sets,
-            note='Compact coverage sets missing for one or more fuzzers; the matrix may be partial.' if len(coverage_sets) != len(fuzzers) else None,
+            note=(
+                'Compact coverage sets missing for one or more fuzzers; '
+                'the matrix may be partial.'
+            ) if len(coverage_sets) != len(fuzzers) else None,
         )
         return {
             **result,
@@ -613,7 +655,11 @@ class CoverageAnalysis:
             {
                 str(trial.get('fuzzer'))
                 for trial in trials
-                if trial.get('benchmark') == benchmark and trial.get('fuzz_target') == fuzz_target and trial.get('fuzzer')
+                if (
+                    trial.get('benchmark') == benchmark
+                    and trial.get('fuzz_target') == fuzz_target
+                    and trial.get('fuzzer')
+                )
             }
         )
         distributions, missing_any = self._branch_coverage_distributions(
@@ -622,7 +668,10 @@ class CoverageAnalysis:
             fuzz_target=fuzz_target,
             fuzzers=fuzzers,
         )
-        note = 'Final branch coverage missing for one or more trials; pairwise branch statistics may be partial.' if missing_any else None
+        note = (
+            'Final branch coverage missing for one or more trials; '
+            'pairwise branch statistics may be partial.'
+        ) if missing_any else None
         p_value_matrix = pairwise_matrix(
             fuzzers,
             distributions,
@@ -703,7 +752,11 @@ class CoverageAnalysis:
             {
                 str(trial.get('fuzzer'))
                 for trial in trials
-                if trial.get('benchmark') == benchmark and trial.get('fuzz_target') == fuzz_target and trial.get('fuzzer')
+                if (
+                    trial.get('benchmark') == benchmark
+                    and trial.get('fuzz_target') == fuzz_target
+                    and trial.get('fuzzer')
+                )
             }
         )
         by_metric = {
@@ -773,7 +826,10 @@ class CoverageAnalysis:
             'matrix': matrix,
             'covered_counts': [len(coverage_sets.get(fuzzer, set())) for fuzzer in fuzzers],
             'has_data': has_data,
-            'note': 'Compact coverage sets missing for one or more fuzzers; relative coverage may be partial.' if missing_any else None,
+            'note': (
+                'Compact coverage sets missing for one or more fuzzers; '
+                'relative coverage may be partial.'
+            ) if missing_any else None,
             'max_value': max_value,
             'format': 'pct',
             'aggregation': f'per-fuzzer aggregate compact {metric} coverage sets',
@@ -832,8 +888,15 @@ class CoverageAnalysis:
         fuzzer_count = len(fuzzers)
         covered_by_fuzzers_count: dict[str, int] = {}
         for edge in set().union(*(coverage_sets.get(fuzzer, set()) for fuzzer in fuzzers)):
-            covered_by_fuzzers_count[edge] = sum(1 for fuzzer in fuzzers if edge in coverage_sets.get(fuzzer, set()))
+            covered_by_fuzzers_count[edge] = sum(
+                1
+                for fuzzer in fuzzers
+                if edge in coverage_sets.get(fuzzer, set())
+            )
         return {
-            fuzzer: sum(float(fuzzer_count - covered_by_fuzzers_count.get(edge, 0)) for edge in coverage_sets.get(fuzzer, set()))
+            fuzzer: sum(
+                float(fuzzer_count - covered_by_fuzzers_count.get(edge, 0))
+                for edge in coverage_sets.get(fuzzer, set())
+            )
             for fuzzer in fuzzers
         }

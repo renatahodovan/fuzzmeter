@@ -13,12 +13,11 @@ import argparse
 import logging
 import os
 import subprocess
-
 from pathlib import Path
 
 logging.basicConfig(format='%(asctime)s - %(levelname)-7s - %(name)s - %(message)s',
-                    datefmt="%Y-%m-%d %H:%M:%S")
-logger = logging.getLogger("fuzzmeter")
+                    datefmt='%Y-%m-%d %H:%M:%S')
+logger = logging.getLogger('fuzzmeter')
 
 
 def _default_repo_root() -> Path:
@@ -46,7 +45,13 @@ def _resolve_runs_root(path: Path) -> Path:
 
 def _docker_available() -> bool:
     try:
-        result = subprocess.run(['docker', 'version'], check=False, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(
+            ['docker', 'version'],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
     return result.returncode == 0
@@ -54,7 +59,13 @@ def _docker_available() -> bool:
 
 def _docker_buildx_available() -> bool:
     try:
-        result = subprocess.run(['docker', 'buildx', 'version'], check=False, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(
+            ['docker', 'buildx', 'version'],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
     return result.returncode == 0

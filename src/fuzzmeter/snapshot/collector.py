@@ -101,11 +101,12 @@ class SnapshotCollector:
             if entry.crash_task is not None:
                 crash_tasks.append(entry.crash_task)
 
-        LOG.debug(f"\tSnapshot collection finished in %.1f seconds with %d coverage tasks and %d crash tasks" % (
+        LOG.debug(
+            '\tSnapshot collection finished in %.1f seconds with %d coverage tasks and %d crash tasks',
             time.time() - start_time,
             len(coverage_tasks),
             len(crash_tasks),
-        ))
+        )
         return SnapshotTickPlan(
             active_trials=active_trials,
             coverage_tasks=coverage_tasks,
@@ -131,7 +132,7 @@ class SnapshotCollector:
             snap_crashes.mkdir(parents=True, exist_ok=False)
 
             stats = self._read_stats(trial, tick_ts=ts)
-            execs_done = self._safe_int(stats.get("execs_done"))
+            execs_done = self._safe_int(stats.get('execs_done'))
             previous_snapshot = db_snapshot.latest_trial_snapshot(db, trial_row_id=trial.trial_row_id)
             interval_start_ts = self._snapshot_interval_start_ts(trial=trial, previous_snapshot=previous_snapshot)
             new_corpus_files = self._detect_new_files(
@@ -205,7 +206,7 @@ class SnapshotCollector:
 
             crash_task = None
             if new_crash_files:
-                repro_ingest.copy_into_snapshot(new_crash_files, snap_dir=snap_dir, subdir="crashes")
+                repro_ingest.copy_into_snapshot(new_crash_files, snap_dir=snap_dir, subdir='crashes')
                 if trial.snapshot_preprocess_script:
                     cur_time = time.time()
                     self._run_snapshot_preprocess(

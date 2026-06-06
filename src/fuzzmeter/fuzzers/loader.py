@@ -39,7 +39,11 @@ class FuzzerModule:
         return OutputPaths(
             corpus_root=self._to_relative_under_root(live_out, resolved.corpus_root),
             crashes_root=self._to_relative_under_root(live_out, resolved.crashes_root),
-            hangs_root=None if resolved.hangs_root is None else self._to_relative_under_root(live_out, resolved.hangs_root),
+            hangs_root=(
+                None
+                if resolved.hangs_root is None
+                else self._to_relative_under_root(live_out, resolved.hangs_root)
+            ),
         )
 
     def stats(self, trial_root: Path, *, cutoff_elapsed_s: int | None = None) -> dict[str, Any]:

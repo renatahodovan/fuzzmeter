@@ -27,7 +27,11 @@ from pathlib import Path
 from typing import Any, Iterable
 
 LOG_LEVEL = getattr(logging, os.environ.get('FM_LOG_LEVEL', 'WARNING'))
-logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)-7s - %(name)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format='%(asctime)s - %(levelname)-7s - %(name)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
 LOG = logging.getLogger(__name__)
 PROFDATA_MERGE_CHUNK_SIZE = 512
 COVERAGE_METRICS = ('lines', 'branches', 'functions', 'regions')
@@ -112,7 +116,13 @@ def _run_batch_mode(cfg: WorkerConfig) -> None:
             results=results,
         )
     if new_profraws and cfg.batch_profdata is not None:
-        _merge_profiles(inputs=new_profraws, output=cfg.batch_profdata, work_dir=cfg.work_dir, out_dir=cfg.out_dir, label='batch')
+        _merge_profiles(
+            inputs=new_profraws,
+            output=cfg.batch_profdata,
+            work_dir=cfg.work_dir,
+            out_dir=cfg.out_dir,
+            label='batch',
+        )
     shutil.rmtree(cfg.work_dir, ignore_errors=True)
 
 
@@ -120,7 +130,13 @@ def _run_finalize_mode(cfg: WorkerConfig) -> None:
     merge_inputs = [path for path in _read_list_file(cfg.prof_list) if Path(path).is_file()]
     if merge_inputs:
         tmp_profdata = cfg.profdata.with_suffix('.tmp')
-        _merge_profiles(inputs=merge_inputs, output=tmp_profdata, work_dir=cfg.work_dir, out_dir=cfg.out_dir, label='final')
+        _merge_profiles(
+            inputs=merge_inputs,
+            output=tmp_profdata,
+            work_dir=cfg.work_dir,
+            out_dir=cfg.out_dir,
+            label='final',
+        )
         tmp_profdata.replace(cfg.profdata)
     shutil.rmtree(cfg.work_dir, ignore_errors=True)
 
@@ -288,9 +304,17 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
     _write_text(cfg.out_dir / 'summary.json', json.dumps(summary, indent=2))
 
 
-def coverage_summary_from_export(export_obj: dict[str, Any], *, metrics: dict[str, list[int]] | None = None) -> dict[str, int | None]:
+def coverage_summary_from_export(
+    export_obj: dict[str, Any],
+    *,
+    metrics: dict[str, list[int]] | None = None,
+) -> dict[str, int | None]:
     '''Return fuzzmeter coverage counters from an llvm-cov export object.'''
-    totals = (((export_obj.get('data') or [{}])[0] or {}).get('totals') or {}) if isinstance(export_obj.get('data'), list) else {}
+    totals = (
+        (((export_obj.get('data') or [{}])[0] or {}).get('totals') or {})
+        if isinstance(export_obj.get('data'), list)
+        else {}
+    )
     summary = {
         key: _nested_int(totals, metric, field)
         for metric in COVERAGE_METRICS
@@ -339,7 +363,9 @@ def _write_compact_coverage_sets(path: Path, summary: dict[str, Any], metrics: d
             metric: {
                 'covered_count': len(metrics.get(metric, [])),
                 'total_count': summary.get(f'cov_{metric}_total'),
-                'payload': base64.b64encode(zlib.compress(_encode_delta_varints(metrics.get(metric, [])), level=9)).decode('ascii'),
+                'payload': base64.b64encode(
+                    zlib.compress(_encode_delta_varints(metrics.get(metric, [])), level=9),
+                ).decode('ascii'),
             }
             for metric in COVERAGE_METRICS
         },
@@ -358,15 +384,30 @@ def _merge_profiles(*, inputs: list[str], output: Path, work_dir: Path, out_dir:
         shutil.rmtree(chunk_dir, ignore_errors=True)
         chunk_dir.mkdir(parents=True, exist_ok=True)
         merge_inputs = [
-            str(_merge_chunk(chunk, chunk_dir / f'chunk_{index:06d}.profdata', out_dir, f'{label}_{round_idx:02d}_{index:06d}'))
+            str(
+                _merge_chunk(
+                    chunk,
+                    chunk_dir / f'chunk_{index:06d}.profdata',
+                    out_dir,
+                    f'{label}_{round_idx:02d}_{index:06d}',
+                )
+            )
             for index, chunk in enumerate(_chunks(merge_inputs, PROFDATA_MERGE_CHUNK_SIZE))
         ]
-    _run(['llvm-profdata', 'merge', '-sparse', *merge_inputs, '-o', str(output)], out_dir=out_dir, label=f'llvm_profdata_merge_{label}')
+    _run(
+        ['llvm-profdata', 'merge', '-sparse', *merge_inputs, '-o', str(output)],
+        out_dir=out_dir,
+        label=f'llvm_profdata_merge_{label}',
+    )
     return True
 
 
 def _merge_chunk(inputs: list[str], output: Path, out_dir: Path, label: str) -> Path:
-    _run(['llvm-profdata', 'merge', '-sparse', *inputs, '-o', str(output)], out_dir=out_dir, label=f'llvm_profdata_merge_{label}')
+    _run(
+        ['llvm-profdata', 'merge', '-sparse', *inputs, '-o', str(output)],
+        out_dir=out_dir,
+        label=f'llvm_profdata_merge_{label}',
+    )
     return output
 
 
@@ -478,9 +519,17 @@ def _collect_file_hashes(hashes: set[int], file_item: Any, metric: str) -> None:
     if metric in {'lines', 'regions'}:
         for segment in file_item.get('segments') or []:
             if _covered_tuple(segment, 2):
-                hashes.add(_stable_hash(_safe_text(filename, segment[0], None if metric == 'lines' else segment[1])))
+                hashes.add(
+                    _stable_hash(
+                        _safe_text(filename, segment[0], None if metric == 'lines' else segment[1]),
+                    )
+                )
         return
-    entries = file_item.get('branches') if metric == 'branches' else file_item.get('functions') if metric == 'functions' else []
+    entries = (
+        file_item.get('branches')
+        if metric == 'branches'
+        else file_item.get('functions') if metric == 'functions' else []
+    )
     for ordinal, entry in enumerate(entries or []):
         if metric == 'branches' and _covered_tuple(entry, 4, 6):
             hashes.add(_stable_hash(_safe_text(filename, *list(entry)[:4], ordinal)))
@@ -491,12 +540,19 @@ def _collect_file_hashes(hashes: set[int], file_item: Any, metric: str) -> None:
 def _function_covered(function: Any) -> bool:
     if not isinstance(function, dict):
         return False
-    return _positive(function.get('count')) or any(_covered_tuple(region, 4) for region in function.get('regions') or [])
+    return _positive(function.get('count')) or any(
+        _covered_tuple(region, 4)
+        for region in function.get('regions') or []
+    )
 
 
 def _function_key(default_filename: str, function: Any, ordinal: int) -> str:
     regions = function.get('regions') if isinstance(function, dict) else None
-    region_parts = list(regions[0][:4]) if isinstance(regions, list) and regions and _tuple_like(regions[0]) else []
+    region_parts = (
+        list(regions[0][:4])
+        if isinstance(regions, list) and regions and _tuple_like(regions[0])
+        else []
+    )
     name = function.get('name') or function.get('demangled') or ordinal
     return _safe_text(_function_filename(default_filename, function), name, *region_parts)
 
@@ -513,7 +569,11 @@ def _safe_text(*parts: Any) -> str:
 
 
 def _covered_tuple(values: Any, start: int, end: int | None = None) -> bool:
-    return _tuple_like(values) and len(values) > start and any(_positive(value) for value in list(values)[start:end])
+    return (
+        _tuple_like(values)
+        and len(values) > start
+        and any(_positive(value) for value in list(values)[start:end])
+    )
 
 
 def _tuple_like(value: Any) -> bool:

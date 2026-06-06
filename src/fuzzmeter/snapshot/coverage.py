@@ -135,7 +135,13 @@ class SnapshotCoverageRunner:
 
         if not corpus_dir.exists() or not any(path.is_file() for path in corpus_dir.rglob('*')):
             summary = load_coverage_summary(summary_path)
-            apply_snapshot_summary(db=db, run_dir=run_dir, snapshot_id=task.snapshot_id, out_root=latest_root, summary=summary)
+            apply_snapshot_summary(
+                db=db,
+                run_dir=run_dir,
+                snapshot_id=task.snapshot_id,
+                out_root=latest_root,
+                summary=summary,
+            )
             db.commit()
             return None
 

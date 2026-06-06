@@ -58,7 +58,12 @@ def pairwise_matrix(
         [
             float(cell) if cell is not None else float(missing_value)
             for col_label in labels
-            for cell in [compare(values_by_label.get(row_label, []), values_by_label.get(col_label, []))]
+            for cell in [
+                compare(
+                    values_by_label.get(row_label, []),
+                    values_by_label.get(col_label, []),
+                )
+            ]
         ]
         for row_label in labels
     ]
@@ -68,7 +73,11 @@ def pairwise_matrix(
         'sample_sizes': [len(values_by_label.get(label, [])) for label in labels],
         'has_data': any(values_by_label.get(label, []) for label in labels),
         'note': note,
-        'max_value': float(max_value) if max_value is not None else max((max(row, default=0.0) for row in matrix), default=0.0),
+        'max_value': (
+            float(max_value)
+            if max_value is not None
+            else max((max(row, default=0.0) for row in matrix), default=0.0)
+        ),
     }
 
 

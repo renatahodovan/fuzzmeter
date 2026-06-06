@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Run live and replay fuzzing experiments and coordinate trial execution.'''
+
 from __future__ import annotations
 
 import logging
@@ -55,15 +57,17 @@ def run_experiment(campaign_config: CampaignConfig, out_root: Path, repo_root: P
         memory=campaign_config.settings.memory,
         memory_swap=campaign_config.settings.memory_swap,
     )
-    run_id = time.strftime("%Y-%m-%d_%H%M%S", time.localtime())
+    run_id = time.strftime('%Y-%m-%d_%H%M%S', time.localtime())
     run_dir = Path(out_root) / 'runs' / run_id
     run_dir.mkdir(parents=True)
 
     db_path = (Path(run_dir) / 'fuzzmeter.db')
-    initialize_run_dir(run_dir=run_dir,
-                       run_id=run_id,
-                       suite_yaml_text=suite_yaml_text,
-                       campaign_config=campaign_config)
+    initialize_run_dir(
+        run_dir=run_dir,
+        run_id=run_id,
+        suite_yaml_text=suite_yaml_text,
+        campaign_config=campaign_config,
+    )
 
     fuzz_binaries = prepare_artifacts(
         campaign_config=campaign_config,
@@ -147,7 +151,7 @@ def _run_live_experiment(
     futures: list[Future[None]] = []
     interrupted = False
 
-    LOG.info('planned trials: %d', len(trial_plans))
+    LOG.info('Planned trials: %d', len(trial_plans))
 
     scheduler_thread.start()
     try:

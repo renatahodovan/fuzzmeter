@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import logging
-
 from typing import Any
 
 from .base import DB
@@ -21,13 +20,13 @@ LOG = logging.getLogger(__name__)
 
 def insert_tick(db: DB, *, run_id: str, idx: int, ts: int) -> None:
     db.exec(
-        "INSERT OR IGNORE INTO snapshot_ticks(run_id, idx, ts) VALUES(?,?,?)",
+        'INSERT OR IGNORE INTO snapshot_ticks(run_id, idx, ts) VALUES(?,?,?)',
         (str(run_id), int(idx), int(ts)),
     )
 
 
 def get_latest_tick_idx(db: DB, *, run_id: str) -> int:
-    return int(db.scalar("SELECT COALESCE(MAX(idx), 0) FROM snapshot_ticks WHERE run_id=?", (str(run_id),)) or 0)
+    return int(db.scalar('SELECT COALESCE(MAX(idx), 0) FROM snapshot_ticks WHERE run_id=?', (str(run_id),)) or 0)
 
 
 def get_next_tick_idx(db: DB, *, run_id: str) -> int:
@@ -74,7 +73,7 @@ def ensure_snapshot_row(
 ) -> int:
     stats_json = None
     if isinstance(stats, dict) and stats:
-        stats_json = json.dumps(stats, sort_keys=True, separators=(",", ":"), default=str)
+        stats_json = json.dumps(stats, sort_keys=True, separators=(',', ':'), default=str)
     db.exec(
         """
         INSERT OR IGNORE INTO snapshots(trial_id, idx, ts, corpus_files, execs_done, stats_json, crashes, hangs)
@@ -91,7 +90,7 @@ def ensure_snapshot_row(
             hangs,
         ),
     )
-    sid = db.scalar("SELECT snapshot_id FROM snapshots WHERE trial_id=? AND idx=?", (int(trial_row_id), int(idx)))
+    sid = db.scalar('SELECT snapshot_id FROM snapshots WHERE trial_id=? AND idx=?', (int(trial_row_id), int(idx)))
     return int(sid or 0)
 
 
@@ -202,7 +201,14 @@ def set_snapshot_coverage_fields(
     cov_functions_total: int | None,
 ) -> None:
     if any(v is None for v in [cov_lines_covered, cov_lines_total, cov_branches_covered, cov_branches_total]):
-        LOG.warning("Coverage summary missing fields for snapshot_id=%d: lines %s/%s branches %s/%s", snapshot_id, cov_lines_covered, cov_lines_total, cov_branches_covered, cov_branches_total)
+        LOG.warning(
+            'Coverage summary missing fields for snapshot_id=%d: lines %s/%s branches %s/%s',
+            snapshot_id,
+            cov_lines_covered,
+            cov_lines_total,
+            cov_branches_covered,
+            cov_branches_total,
+        )
 
     db.exec(
         """

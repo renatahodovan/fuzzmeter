@@ -46,7 +46,12 @@ class CoverageSetStore:
             stat = Path(path).stat()
             return {
                 str(value)
-                for value in _read_metric(str(Path(path)), int(stat.st_mtime_ns), int(stat.st_size), metric)
+                for value in _read_metric(
+                    str(Path(path)),
+                    int(stat.st_mtime_ns),
+                    int(stat.st_size),
+                    metric,
+                )
             }
         except Exception:
             return set()
@@ -59,7 +64,11 @@ def covered_element_keys_from_compact_sets(path: Path, metric: str) -> set[str]:
 
 def coverage_summary_from_export(export_obj: dict[str, Any]) -> dict[str, int | None]:
     '''Return fuzzmeter coverage counters from an llvm-cov export object.'''
-    totals = (((export_obj.get('data') or [{}])[0] or {}).get('totals') or {}) if isinstance(export_obj.get('data'), list) else {}
+    totals = (
+        (((export_obj.get('data') or [{}])[0] or {}).get('totals') or {})
+        if isinstance(export_obj.get('data'), list)
+        else {}
+    )
     return {
         key: _nested_int(totals, metric, field)
         for metric in METRICS
@@ -110,9 +119,17 @@ def _collect_file_hashes(hashes: set[int], file_item: Any, metric: str) -> None:
     if metric in {'lines', 'regions'}:
         for segment in file_item.get('segments') or []:
             if _covered_tuple(segment, 2):
-                hashes.add(_stable_hash(_safe_text(filename, segment[0], None if metric == 'lines' else segment[1])))
+                hashes.add(
+                    _stable_hash(
+                        _safe_text(filename, segment[0], None if metric == 'lines' else segment[1]),
+                    )
+                )
         return
-    entries = file_item.get('branches') if metric == 'branches' else file_item.get('functions') if metric == 'functions' else []
+    entries = (
+        file_item.get('branches')
+        if metric == 'branches'
+        else file_item.get('functions') if metric == 'functions' else []
+    )
     for ordinal, entry in enumerate(entries or []):
         if metric == 'branches' and _covered_tuple(entry, 4, 6):
             hashes.add(_stable_hash(_safe_text(filename, *list(entry)[:4], ordinal)))

@@ -5,13 +5,14 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Assemble and export the full fuzzmeter web report payload.'''
+
 from __future__ import annotations
 
 import argparse
 import datetime
 import json
 import logging
-
 from pathlib import Path
 from typing import Any
 
@@ -390,7 +391,12 @@ class ReportBuilder:
                 target['relbug_score_by_fuzzer'] = {}
         return targets
 
-    def compute_unique_matrix(self, trials: list[dict[str, Any]], benchmark: str, fuzz_target: str) -> dict[str, Any]:
+    def compute_unique_matrix(
+        self,
+        trials: list[dict[str, Any]],
+        benchmark: str,
+        fuzz_target: str,
+    ) -> dict[str, Any]:
         '''Compute per-fuzzer unique coverage matrices for a target.'''
 
         return self._coverage_analysis.compute_unique_matrix(
@@ -401,7 +407,12 @@ class ReportBuilder:
             covered_elements_for_path=self._covered_elements_for_path,
         )
 
-    def compute_relcov_matrix(self, trials: list[dict[str, Any]], benchmark: str, fuzz_target: str) -> tuple[dict[str, Any], dict[str, float]]:
+    def compute_relcov_matrix(
+        self,
+        trials: list[dict[str, Any]],
+        benchmark: str,
+        fuzz_target: str,
+    ) -> tuple[dict[str, Any], dict[str, float]]:
         '''Compute per-fuzzer relative coverage containment matrix and scores.'''
 
         return self._coverage_analysis.compute_relcov_matrix(
@@ -412,7 +423,12 @@ class ReportBuilder:
             covered_elements_for_path=self._covered_elements_for_path,
         )
 
-    def compute_branch_stat_matrices(self, trials: list[dict[str, Any]], benchmark: str, fuzz_target: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    def compute_branch_stat_matrices(
+        self,
+        trials: list[dict[str, Any]],
+        benchmark: str,
+        fuzz_target: str,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         '''Compute pairwise branch-coverage significance and effect-size matrices.'''
 
         return self._coverage_analysis.compute_branch_stat_matrices(

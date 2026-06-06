@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Build per-trial and per-snapshot report structures from database rows.'''
+
 from __future__ import annotations
 
 from typing import Any, Callable, Dict, Optional
@@ -18,10 +20,10 @@ class TrialAnalysis:
         *,
         snapshot_coverage_fields: dict[str, tuple[str, str]],
         trial_version_fields: tuple[str, ...],
-        safe_int: Callable[[Any], Optional[int]],
-        pct: Callable[[Optional[int], Optional[int]], Optional[float]],
-        dt: Callable[[Optional[int]], Optional[str]],
-        parse_json_text: Callable[[Any], Optional[dict]],
+        safe_int: Callable[[Any], int | None],
+        pct: Callable[[int | None, int | None], float | None],
+        dt: Callable[[int | None], str | None],
+        parse_json_text: Callable[[Any], dict[str, Any] | None],
     ) -> None:
         self._snapshot_coverage_fields = snapshot_coverage_fields
         self._trial_version_fields = trial_version_fields
@@ -30,7 +32,7 @@ class TrialAnalysis:
         self._dt = dt
         self._parse_json_text = parse_json_text
 
-    def snapshot_has_coverage(self, row: Dict[str, Any]) -> bool:
+    def snapshot_has_coverage(self, row: dict[str, Any]) -> bool:
         '''Return whether a snapshot row contains coverage counters.'''
 
         return any(
@@ -48,7 +50,7 @@ class TrialAnalysis:
         trial_id: int,
         snapshot_rows: list[dict[str, Any]],
         latest_snapshots: dict[int, dict[str, Any]],
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         '''Return the latest snapshot row that should represent a trial.'''
 
         rows = [row for row in snapshot_rows if int(row.get("trial_id") or 0) == int(trial_id)]
@@ -57,10 +59,10 @@ class TrialAnalysis:
         rows = sorted(rows, key=lambda row: int(row.get("idx") or 0))
         return rows[-1]
 
-    def coverage_summary_from_snapshot(self, latest: Dict[str, Any]) -> Dict[str, Any]:
+    def coverage_summary_from_snapshot(self, latest: dict[str, Any]) -> dict[str, Any]:
         '''Build a coverage summary from a snapshot row.'''
 
-        coverage: Dict[str, Any] = {}
+        coverage: dict[str, Any] = {}
         for metric, (covered_key, total_key) in self._snapshot_coverage_fields.items():
             covered = self._safe_int(latest.get(covered_key))
             total = self._safe_int(latest.get(total_key))
@@ -212,10 +214,10 @@ class TrialAnalysis:
             point["resource_cpu_percent"] = row.get("cpu_percent")
             point["resource_memory_percent"] = row.get("memory_percent")
             point["resource_memory_bytes"] = memory_bytes
-            point["resource_memory_mib"] = (float(memory_bytes) / (1024.0 * 1024.0)) if memory_bytes is not None else None
+            point["resource_memory_mib"] = (memory_bytes / (1024 * 1024)) if memory_bytes is not None else None
             point["resource_memory_limit_bytes"] = self._safe_int(row.get("memory_limit_bytes"))
             point["resource_corpus_disk_bytes"] = disk_bytes
-            point["resource_corpus_disk_mib"] = (float(disk_bytes) / (1024.0 * 1024.0)) if disk_bytes is not None else None
+            point["resource_corpus_disk_mib"] = (disk_bytes / (1024 * 1024)) if disk_bytes is not None else None
             point["resource_corpus_disk_human"] = row.get("corpus_disk_usage_human")
             stats = self._parse_json_text(row.get("stats_json"))
             if stats:

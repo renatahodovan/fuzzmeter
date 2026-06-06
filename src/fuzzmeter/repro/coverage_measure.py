@@ -99,7 +99,10 @@ def finalize_coverage(
     if profdata_path.is_file() and profdata_path.stat().st_size > 64:
         existing_profiles.append(profdata_path)
 
-    merge_profiles = existing_profiles + [path for path in profile_inputs if path.is_file() and path.stat().st_size > 64]
+    merge_profiles = [
+        *existing_profiles,
+        *[path for path in profile_inputs if path.is_file() and path.stat().st_size > 64],
+    ]
 
     src_root = Path(run_dir) / 'coverage_src' / f'{benchmark}/{fuzz_target}'
     tmp_root = Path(out_root).parent / f'.{Path(out_root).name}.tmp'
