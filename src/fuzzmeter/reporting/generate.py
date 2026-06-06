@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -23,33 +22,11 @@ from .analyzers.trial_analysis import TrialAnalysis
 from .data.coverage_data import CoverageData
 from .data.run_data import RunData
 from .keys import COV_METRICS, FINAL_DIST_KEYS, SNAPSHOT_COVERAGE_FIELDS, TRIAL_METADATA_FIELDS
-from .metrics import (
-    cliffs_delta,
-    mann_whitney_u_pvalue,
-    maximum,
-    mean,
-    median,
-    minimum,
-    pct,
-    rankdata_desc,
-    safe_int,
-    vargha_delaney_a12,
-)
+from .metrics import dt, safe_int
 from .plugin_sections import attach_extra_sections
 
 LOG = logging.getLogger(__name__)
 CURVE_MAX_POINTS = 240
-
-
-def dt(ts: int | None) -> str | None:
-    '''Format a unix timestamp for the report payload.'''
-
-    if ts is None:
-        return None
-    try:
-        return datetime.datetime.fromtimestamp(int(ts), datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
-    except Exception:
-        return None
 
 
 def format_duration(seconds: int | None) -> str | None:
@@ -71,16 +48,6 @@ def format_duration(seconds: int | None) -> str | None:
     if secs or not parts:
         parts.append(f'{secs}s')
     return ' '.join(parts)
-
-
-def _parse_json_text(value: Any) -> dict | None:
-    if not value:
-        return None
-    try:
-        parsed = json.loads(str(value))
-    except Exception:
-        return None
-    return parsed if isinstance(parsed, dict) else None
 
 
 class ReportBuilder:
@@ -111,32 +78,14 @@ class ReportBuilder:
         self._trial_analysis = TrialAnalysis(
             snapshot_coverage_fields=SNAPSHOT_COVERAGE_FIELDS,
             trial_version_fields=TRIAL_METADATA_FIELDS,
-            safe_int=safe_int,
-            pct=pct,
-            dt=dt,
-            parse_json_text=_parse_json_text,
         )
-        self._bug_analysis = BugAnalysis(safe_int=safe_int, dt=dt)
+        self._bug_analysis = BugAnalysis()
         self._coverage_analysis = CoverageAnalysis(
             cov_metrics=COV_METRICS,
             final_output_dist_keys=FINAL_DIST_KEYS,
             curve_max_points=CURVE_MAX_POINTS,
-            safe_int=safe_int,
-            mean=mean,
-            median=median,
-            minimum=minimum,
-            maximum=maximum,
-            mann_whitney_u_pvalue=mann_whitney_u_pvalue,
-            vargha_delaney_a12=vargha_delaney_a12,
-            dt=dt,
         )
-        self._summary_analysis = SummaryAnalysis(
-            cov_metrics=COV_METRICS,
-            mean=mean,
-            rankdata_desc=rankdata_desc,
-            mann_whitney_u_pvalue=mann_whitney_u_pvalue,
-            cliffs_delta=cliffs_delta,
-        )
+        self._summary_analysis = SummaryAnalysis(cov_metrics=COV_METRICS)
         self._repo_root = Path(__file__).resolve().parents[3]
 
     def build(self) -> dict[str, Any]:
@@ -230,23 +179,6 @@ class ReportBuilder:
         overview['wall_elapsed_seconds'] = wall_elapsed_seconds
         overview['wall_elapsed_human'] = format_duration(wall_elapsed_seconds)
         return overview
-
-    @staticmethod
-    def _trial_elapsed_seconds(trial: dict[str, Any]) -> int | None:
-        started_ts = safe_int(trial.get('started_ts'))
-        coverage = trial.get('coverage') or {}
-        ended_ts = (
-            safe_int(coverage.get('last_snapshot_ts'))
-            or safe_int(trial.get('ended_ts'))
-            or started_ts
-        )
-        if started_ts is None or ended_ts is None or ended_ts < started_ts:
-            return None
-        elapsed_seconds = int(ended_ts - started_ts)
-        time_seconds = safe_int(trial.get('time_seconds'))
-        if time_seconds is not None and time_seconds > 0:
-            elapsed_seconds = min(elapsed_seconds, int(time_seconds))
-        return elapsed_seconds
 
     def _rel_to_url(self, relpath: str | None) -> str | None:
         if not relpath:
@@ -367,7 +299,6 @@ class ReportBuilder:
             timeseries=timeseries,
             bugs=bugs,
             trial_version_fields=TRIAL_METADATA_FIELDS,
-            trial_elapsed_seconds=self._trial_elapsed_seconds,
             aggregated_coverage_by_fuzzer=aggregated_coverage_by_fuzzer,
             seed_baseline_by_fuzzer=seed_baseline_by_fuzzer,
         )

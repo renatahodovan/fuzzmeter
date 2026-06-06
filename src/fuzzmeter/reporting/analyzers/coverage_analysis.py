@@ -9,9 +9,19 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 
-from ..metrics import trapezoid_auc
+from ..metrics import (
+    dt,
+    mann_whitney_u_pvalue,
+    maximum,
+    mean,
+    median,
+    minimum,
+    safe_int,
+    trapezoid_auc,
+    vargha_delaney_a12,
+)
 from ..set_comparison import pairwise_matrix, unique_matrix
 
 
@@ -24,26 +34,10 @@ class CoverageAnalysis:
         cov_metrics: tuple[str, ...],
         final_output_dist_keys: tuple[str, ...],
         curve_max_points: int,
-        safe_int: Callable[[Any], int | None],
-        mean: Callable[[Any], float | None],
-        median: Callable[[Any], float | None],
-        minimum: Callable[[Any], float | None],
-        maximum: Callable[[Any], float | None],
-        mann_whitney_u_pvalue: Callable[[list[float], list[float]], float | None],
-        vargha_delaney_a12: Callable[[list[float], list[float]], float | None],
-        dt: Callable[[int | None], str | None],
     ) -> None:
         self._cov_metrics = cov_metrics
         self._final_output_dist_keys = final_output_dist_keys
         self._curve_max_points = curve_max_points
-        self._safe_int = safe_int
-        self._mean = mean
-        self._median = median
-        self._minimum = minimum
-        self._maximum = maximum
-        self._mann_whitney_u_pvalue = mann_whitney_u_pvalue
-        self._vargha_delaney_a12 = vargha_delaney_a12
-        self._dt = dt
 
     def _empty_covered_counts(self) -> dict[str, int | None]:
         return {f'{metric}_covered': None for metric in self._cov_metrics}
@@ -76,8 +70,8 @@ class CoverageAnalysis:
     def _add_mean_median(self, out: dict[str, float | None], key: str, values: list[float]) -> None:
         '''Add mean and median fields for a metric distribution.'''
 
-        out[f'{key}_mean'] = self._mean(values)
-        out[f'{key}_median'] = self._median(values)
+        out[f'{key}_mean'] = mean(values)
+        out[f'{key}_median'] = median(values)
 
     def _build_final_summary(
         self,
@@ -152,7 +146,7 @@ class CoverageAnalysis:
         deduped: list[dict[str, Any]] = []
         seen_idx: set[int] = set()
         for point in selected:
-            idx = self._safe_int(point.get("idx"))
+            idx = safe_int(point.get("idx"))
             if idx is not None and idx in seen_idx:
                 continue
             if idx is not None:
@@ -164,8 +158,6 @@ class CoverageAnalysis:
         self,
         reps: list[dict[str, Any]],
         points_by_trial: dict[int, list[dict[str, Any]]],
-        *,
-        trial_elapsed_seconds: Callable[[dict[str, Any]], int | None],
     ) -> dict[str, list[float]]:
         '''Collect final metric distributions for a fuzzer entry.'''
 
@@ -200,10 +192,10 @@ class CoverageAnalysis:
                 value = last_point.get(key)
                 if value is not None:
                     finals[key].append(float(value))
-            elapsed_seconds = trial_elapsed_seconds(trial)
+            elapsed_seconds = safe_int(trial.get('elapsed_seconds'))
             if elapsed_seconds is not None:
                 finals.setdefault('elapsed_seconds', []).append(float(elapsed_seconds))
-                execs_done = self._safe_int(last_point.get('execs_done'))
+                execs_done = safe_int(last_point.get('execs_done'))
                 if execs_done is not None and elapsed_seconds > 0:
                     finals['execs_per_sec'].append(execs_done / elapsed_seconds)
         return finals
@@ -247,7 +239,7 @@ class CoverageAnalysis:
                 state = last_seen_per_trial.setdefault(trial_id, {})
                 point = point_map.get(elapsed_key)
                 if point is not None:
-                    ts = self._safe_int(point.get("ts"))
+                    ts = safe_int(point.get("ts"))
                     if ts is not None:
                         ts_values.append(float(ts))
                     for key in self._final_output_dist_keys:
@@ -261,18 +253,18 @@ class CoverageAnalysis:
                         values[key].append(float(state[key]))
 
             if ts_values:
-                ts_median = self._median(ts_values)
+                ts_median = median(ts_values)
                 curve_item["ts_median"] = ts_median
                 if ts_median is not None:
-                    curve_item["t"] = self._dt(int(ts_median))
+                    curve_item["t"] = dt(int(ts_median))
 
             for key, clean in values.items():
                 if not clean:
                     continue
-                curve_item[f"{key}_mean"] = self._mean(clean)
-                curve_item[f"{key}_median"] = self._median(clean)
-                curve_item[f"{key}_min"] = self._minimum(clean)
-                curve_item[f"{key}_max"] = self._maximum(clean)
+                curve_item[f"{key}_mean"] = mean(clean)
+                curve_item[f"{key}_median"] = median(clean)
+                curve_item[f"{key}_min"] = minimum(clean)
+                curve_item[f"{key}_max"] = maximum(clean)
 
             curve.append(curve_item)
         return curve
@@ -303,7 +295,6 @@ class CoverageAnalysis:
         *,
         reps: list[dict[str, Any]],
         points_by_trial: dict[int, list[dict[str, Any]]],
-        trial_elapsed_seconds: Callable[[dict[str, Any]], int | None],
     ) -> list[dict[str, Any]]:
         '''Build per-trial metric rows for a fuzzer entry.'''
 
@@ -318,8 +309,8 @@ class CoverageAnalysis:
             coverage = trial.get('coverage') or {}
             points = sorted(points_by_trial.get(trial_id, []), key=lambda point: int(point.get('idx') or 0))
             last_point = points[-1] if points else {}
-            elapsed_seconds = trial_elapsed_seconds(trial)
-            execs_done = self._safe_int(last_point.get('execs_done'))
+            elapsed_seconds = safe_int(trial.get('elapsed_seconds'))
+            execs_done = safe_int(last_point.get('execs_done'))
             execs_per_sec = None
             if execs_done is not None and elapsed_seconds is not None and elapsed_seconds > 0:
                 execs_per_sec = execs_done / elapsed_seconds
@@ -346,7 +337,7 @@ class CoverageAnalysis:
             )
             convergence_pct = self._convergence_pct(
                 branches_cov_auc,
-                self._safe_int(coverage.get('branches_covered')),
+                safe_int(coverage.get('branches_covered')),
                 elapsed_seconds,
             )
 
@@ -356,10 +347,10 @@ class CoverageAnalysis:
                     "fuzzer": trial.get("fuzzer"),
                     "benchmark": trial.get("benchmark"),
                     "fuzz_target": trial.get("fuzz_target"),
-                    "rep": self._safe_int(trial.get("rep")),
-                    "started_ts": self._safe_int(trial.get("started_ts")),
-                    "ended_ts": self._safe_int(trial.get("ended_ts")),
-                    "time_seconds": self._safe_int(trial.get("time_seconds")),
+                    "rep": safe_int(trial.get("rep")),
+                    "started_ts": safe_int(trial.get("started_ts")),
+                    "ended_ts": safe_int(trial.get("ended_ts")),
+                    "time_seconds": safe_int(trial.get("time_seconds")),
                     "status": trial.get("status"),
                     "elapsed_seconds": elapsed_seconds,
                     "execs_done": execs_done,
@@ -377,10 +368,10 @@ class CoverageAnalysis:
                     "branches_pct_auc": branches_pct_auc,
                     "branches_pct_auc_norm": branches_pct_auc_norm,
                     "convergence_pct": convergence_pct,
-                    "corpus_files_total": self._safe_int(last_point.get("corpus_files_total")),
-                    "unique_bugs_total": self._safe_int(last_point.get("unique_bugs_total")),
-                    "bug_hits_total": self._safe_int(last_point.get("bug_hits_total")),
-                    "crashes_total": self._safe_int(last_point.get("crashes_total")),
+                    "corpus_files_total": safe_int(last_point.get("corpus_files_total")),
+                    "unique_bugs_total": safe_int(last_point.get("unique_bugs_total")),
+                    "bug_hits_total": safe_int(last_point.get("bug_hits_total")),
+                    "crashes_total": safe_int(last_point.get("crashes_total")),
                 }
             )
         return rows
@@ -393,19 +384,14 @@ class CoverageAnalysis:
         bugs: list[dict[str, Any]],
         versions: dict[str, Any],
         points_by_trial: dict[int, list[dict[str, Any]]],
-        trial_elapsed_seconds: Callable[[dict[str, Any]], int | None],
         aggregated_coverage: dict[str, int | None],
         seed_baseline: dict[str, Any] | None,
     ) -> dict[str, Any]:
         '''Build one fuzzer entry inside a target report.'''
 
-        finals = self.aggregate_finals(reps, points_by_trial, trial_elapsed_seconds=trial_elapsed_seconds)
+        finals = self.aggregate_finals(reps, points_by_trial)
         curve = self.downsample_curve(self.build_curve(reps, points_by_trial))
-        trial_rows = self.build_trial_rows(
-            reps=reps,
-            points_by_trial=points_by_trial,
-            trial_elapsed_seconds=trial_elapsed_seconds,
-        )
+        trial_rows = self.build_trial_rows(reps=reps, points_by_trial=points_by_trial)
         final_summary = self._build_final_summary(finals=finals, trial_rows=trial_rows, bugs=bugs)
         aggregate_summary = self._build_aggregate_summary(
             finals=finals,
@@ -433,7 +419,6 @@ class CoverageAnalysis:
         timeseries: dict[str, Any],
         bugs: list[dict[str, Any]],
         trial_version_fields: Sequence[str],
-        trial_elapsed_seconds: Callable[[dict[str, Any]], int | None],
         aggregated_coverage_by_fuzzer: dict[tuple[str, str, str], dict[str, int | None]],
         seed_baseline_by_fuzzer: dict[tuple[str, str, str], dict[str, Any] | None],
     ) -> list[dict[str, Any]]:
@@ -509,7 +494,6 @@ class CoverageAnalysis:
                         bugs=group["bugs"],
                         versions=group["versions"],
                         points_by_trial=points_by_trial,
-                        trial_elapsed_seconds=trial_elapsed_seconds,
                         aggregated_coverage=aggregated_coverage_by_fuzzer.get(
                             coverage_key,
                             self._empty_covered_counts(),
@@ -615,7 +599,7 @@ class CoverageAnalysis:
         p_value_matrix = pairwise_matrix(
             fuzzers,
             distributions,
-            compare=self._mann_whitney_u_pvalue,
+            compare=mann_whitney_u_pvalue,
             max_value=1.0,
             missing_value=1.0,
             note=note,
@@ -623,7 +607,7 @@ class CoverageAnalysis:
         a12_matrix = pairwise_matrix(
             fuzzers,
             distributions,
-            compare=self._vargha_delaney_a12,
+            compare=vargha_delaney_a12,
             max_value=1.0,
             missing_value=0.5,
             note=note,
@@ -777,7 +761,7 @@ class CoverageAnalysis:
             fuzzer = str(trial.get('fuzzer') or '')
             if fuzzer not in distributions:
                 continue
-            value = self._safe_int((trial.get('coverage') or {}).get('branches_covered'))
+            value = safe_int((trial.get('coverage') or {}).get('branches_covered'))
             if value is None:
                 missing_any = True
                 continue

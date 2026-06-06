@@ -7,8 +7,20 @@
 
 from __future__ import annotations
 
+import datetime
 import math
 from typing import Any, Iterable, Sequence
+
+
+def dt(ts: int | None) -> str | None:
+    '''Format a unix timestamp for the report payload.'''
+
+    if ts is None:
+        return None
+    try:
+        return datetime.datetime.fromtimestamp(int(ts), datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+    except Exception:
+        return None
 
 
 def safe_int(value: Any) -> int | None:

@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 
-from typing import Any, Callable
+from typing import Any
 
+from ..metrics import dt, safe_int
 
 def _median(values: list[int]) -> float | None:
     '''Return the median of integer values.'''
@@ -27,15 +28,6 @@ def _median(values: list[int]) -> float | None:
 class BugAnalysis:
     '''Build bug summary and uniqueness report data.'''
 
-    def __init__(
-        self,
-        *,
-        safe_int: Callable[[Any], int | None],
-        dt: Callable[[int | None], str | None],
-    ) -> None:
-        self._safe_int = safe_int
-        self._dt = dt
-
     def collect_bugs(
         self,
         *,
@@ -47,7 +39,7 @@ class BugAnalysis:
 
         out = [dict(row) for row in bugs]
         for bug in out:
-            bug['first_seen_at'] = self._dt(self._safe_int(bug.get('first_seen_ts')))
+            bug['first_seen_at'] = dt(safe_int(bug.get('first_seen_ts')))
             bug['hits_total'] = int(bug_hits_by_bug.get(int(bug['bug_id']), 0))
             bug['trial_ids'] = sorted({int(trial_id) for trial_id in bug_trials_by_bug.get(int(bug['bug_id']), [])})
             bug['frames'] = self._parse_frames(bug.get('frames_json'))

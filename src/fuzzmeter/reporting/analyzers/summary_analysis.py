@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from ..metrics import cliffs_delta, mann_whitney_u_pvalue, mean, rankdata_desc
+
+from typing import Any
 
 
 def _median(values: list[float]) -> float | None:
@@ -27,20 +29,8 @@ def _median(values: list[float]) -> float | None:
 class SummaryAnalysis:
     '''Build fuzzer ranking and campaign-level summary scores.'''
 
-    def __init__(
-        self,
-        *,
-        cov_metrics: tuple[str, ...],
-        mean: Callable[[Any], float | None],
-        rankdata_desc: Callable[[list[float | None]], list[float | None]],
-        mann_whitney_u_pvalue: Callable[[list[float], list[float]], float | None],
-        cliffs_delta: Callable[[list[float], list[float]], float | None],
-    ) -> None:
+    def __init__(self, *, cov_metrics: tuple[str, ...]) -> None:
         self._cov_metrics = cov_metrics
-        self._mean = mean
-        self._rankdata_desc = rankdata_desc
-        self._mann_whitney_u_pvalue = mann_whitney_u_pvalue
-        self._cliffs_delta = cliffs_delta
 
     def enrich_targets(self, targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
         '''Add ranking and significance metrics to target entries.'''
@@ -48,7 +38,7 @@ class SummaryAnalysis:
         for target in targets:
             for metric in self._cov_metrics:
                 cov_vals = [entry['final'].get(f'{metric}_pct_median') for entry in target['fuzzers']]
-                cov_ranks = self._rankdata_desc(cov_vals)
+                cov_ranks = rankdata_desc(cov_vals)
                 for idx, entry in enumerate(target['fuzzers']):
                     entry[f'rank_{metric}_median'] = cov_ranks[idx]
             for entry in target['fuzzers']:
@@ -73,11 +63,11 @@ class SummaryAnalysis:
                         {
                             'vs': best_fuzzer,
                             'fuzzer': entry['fuzzer'],
-                            'p_value': self._mann_whitney_u_pvalue(
+                            'p_value': mann_whitney_u_pvalue(
                                 best_dist,
                                 entry['distribution'].get('regions_pct', []),
                             ),
-                            'cliffs_delta': self._cliffs_delta(
+                            'cliffs_delta': cliffs_delta(
                                 best_dist,
                                 entry['distribution'].get('regions_pct', []),
                             ),
@@ -132,10 +122,10 @@ class SummaryAnalysis:
             summary['rankings'].append(
                 {
                     'fuzzer': fuzzer,
-                    'coverage_score': self._mean(per_fuzzer_scores[fuzzer]),
-                    'auc_score': self._mean(per_fuzzer_auc_scores[fuzzer]),
-                    'relcov_score': self._mean(per_fuzzer_relcov_scores[fuzzer]),
-                    'relbug_score': self._mean(per_fuzzer_relbug_scores[fuzzer]),
+                    'coverage_score': mean(per_fuzzer_scores[fuzzer]),
+                    'auc_score': mean(per_fuzzer_auc_scores[fuzzer]),
+                    'relcov_score': mean(per_fuzzer_relcov_scores[fuzzer]),
+                    'relbug_score': mean(per_fuzzer_relbug_scores[fuzzer]),
                     'unique_bug_count': per_fuzzer_unique_bugs[fuzzer],
                     'exclusive_bug_count': per_fuzzer_exclusive_bugs[fuzzer],
                     'median_execs_done': _median(per_fuzzer_execs[fuzzer]),

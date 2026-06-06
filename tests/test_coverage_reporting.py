@@ -56,14 +56,6 @@ class CoverageReportingTest(unittest.TestCase):
             cov_metrics=('branches',),
             final_output_dist_keys=('branches_cov',),
             curve_max_points=100,
-            safe_int=lambda value: None if value is None else int(value),
-            mean=lambda values: sum(values) / len(values) if values else None,
-            median=lambda values: sorted(values)[len(values) // 2] if values else None,
-            minimum=lambda values: min(values) if values else None,
-            maximum=lambda values: max(values) if values else None,
-            mann_whitney_u_pvalue=mann_whitney_u_pvalue,
-            vargha_delaney_a12=vargha_delaney_a12,
-            dt=lambda value: None if value is None else str(value),
         )
 
         target = {
@@ -99,14 +91,6 @@ class CoverageReportingTest(unittest.TestCase):
             cov_metrics=('branches',),
             final_output_dist_keys=('branches_cov', 'execs_done'),
             curve_max_points=100,
-            safe_int=lambda value: None if value is None else int(value),
-            mean=lambda values: sum(values) / len(values) if values else None,
-            median=lambda values: sorted(values)[len(values) // 2] if values else None,
-            minimum=lambda values: min(values) if values else None,
-            maximum=lambda values: max(values) if values else None,
-            mann_whitney_u_pvalue=mann_whitney_u_pvalue,
-            vargha_delaney_a12=vargha_delaney_a12,
-            dt=lambda value: None if value is None else str(value),
         )
 
         curve = analysis.build_curve(
@@ -129,14 +113,6 @@ class CoverageReportingTest(unittest.TestCase):
             cov_metrics=('branches',),
             final_output_dist_keys=('branches_cov',),
             curve_max_points=100,
-            safe_int=lambda value: None if value is None else int(value),
-            mean=lambda values: sum(values) / len(values) if values else None,
-            median=lambda values: sorted(values)[len(values) // 2] if values else None,
-            minimum=lambda values: min(values) if values else None,
-            maximum=lambda values: max(values) if values else None,
-            mann_whitney_u_pvalue=mann_whitney_u_pvalue,
-            vargha_delaney_a12=vargha_delaney_a12,
-            dt=lambda value: None if value is None else str(value),
         )
 
         curve = analysis.build_curve(
@@ -162,14 +138,6 @@ class CoverageReportingTest(unittest.TestCase):
             cov_metrics=('branches',),
             final_output_dist_keys=('branches_cov',),
             curve_max_points=100,
-            safe_int=lambda value: None if value is None else int(value),
-            mean=lambda values: sum(values) / len(values) if values else None,
-            median=lambda values: sorted(values)[len(values) // 2] if values else None,
-            minimum=lambda values: min(values) if values else None,
-            maximum=lambda values: max(values) if values else None,
-            mann_whitney_u_pvalue=mann_whitney_u_pvalue,
-            vargha_delaney_a12=vargha_delaney_a12,
-            dt=lambda value: None if value is None else str(value),
         )
 
         trials = [
