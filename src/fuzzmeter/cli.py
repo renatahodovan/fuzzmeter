@@ -79,9 +79,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest='cmd', required=True)
 
     ap_run = sub.add_parser('run',
-                            help='Run fuzzing suite and export a static report on success')
+                            help='Run fuzzing config and export a static report on success')
     ap_run.add_argument('--config', type=Path, required=True,
-                        help='Host path to the suite YAML')
+                        help='Host path to the config YAML')
     ap_run.add_argument('--out', type=Path, default=Path('out'),
                         help='Host output directory')
 
@@ -115,8 +115,8 @@ def main(argv: list[str] | None = None) -> int:
 
         repo = _default_repo_root()
         try:
-            suite_yaml = config_path.read_text(encoding='utf-8')
-            campaign_config = load_campaign_config(repo, suite_yaml)
+            config_src = config_path.read_text(encoding='utf-8')
+            campaign_config = load_campaign_config(repo, config_src)
         except (OSError, UnicodeDecodeError, TypeError, ValueError, RuntimeError) as exc:
             ap.error(str(exc))
 
@@ -130,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
                 campaign_config,
                 out_root=fm_out,
                 repo_root=repo,
-                suite_yaml_text=suite_yaml,
+                config_src=config_src,
             )
         except KeyboardInterrupt:
             logger.warning('Interrupted by user')

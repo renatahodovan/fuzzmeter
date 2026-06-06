@@ -18,18 +18,18 @@ from ..db import runs as db_runs
 
 
 
-def initialize_run_dir(*, run_dir: Path, run_id: str, suite_yaml_text: str, campaign_config: CampaignConfig) -> None:
+def initialize_run_dir(*, run_dir: Path, run_id: str, config_src: str, campaign_config: CampaignConfig) -> None:
     '''Initialize run metadata, config files, and database schema.'''
-    (Path(run_dir) / 'suite.yaml').write_text(suite_yaml_text, encoding='utf-8')
-    _initialize_db(run_dir=run_dir, run_id=run_id, suite_yaml_text=suite_yaml_text)
+    (Path(run_dir) / 'config.yaml').write_text(config_src, encoding='utf-8')
+    _initialize_db(run_dir=run_dir, run_id=run_id, config_src=config_src)
     _write_run_entries(run_dir=run_dir, campaign_config=campaign_config)
 
 
-def _initialize_db(*, run_dir: Path, run_id: str, suite_yaml_text: str) -> None:
+def _initialize_db(*, run_dir: Path, run_id: str, config_src: str) -> None:
     db = DB.open((Path(run_dir) / 'fuzzmeter.db'))
     try:
         ensure_schema(db)
-        db_runs.upsert_run(db, run_id=run_id, created_ts=int(time.time()), suite_yaml=suite_yaml_text)
+        db_runs.upsert_run(db, run_id=run_id, created_ts=int(time.time()), config_src=config_src)
         db.commit()
     finally:
         db.close()

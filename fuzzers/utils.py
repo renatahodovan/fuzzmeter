@@ -35,7 +35,7 @@ NO_SANITIZER_COMPAT_CFLAGS = [
 FUZZING_CFLAGS = ['-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION']
 
 OSS_FUZZ_LIB_FUZZING_ENGINE_PATH = '/usr/lib/libFuzzingEngine.a'
-BENCHMARK_CONFIG_YAML_PATH = '/benchmark.yaml'
+BENCHMARK_CONFIG_PATH = '/benchmark.yaml'
 FUZZERS_ROOT = Path('/opt/fuzzmeter/fuzzers')
 
 
@@ -155,7 +155,7 @@ def _base_fuzzer_name(base_fuzzer=None):
 
 
 def get_benchmark_config():
-    return _load_yaml_file(Path(BENCHMARK_CONFIG_YAML_PATH))
+    return _load_yaml_file(Path(BENCHMARK_CONFIG_PATH))
 
 
 def get_benchmark_fuzzer_config(base_fuzzer=None):

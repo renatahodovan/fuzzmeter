@@ -51,7 +51,7 @@ def _live_resource_plan(*, total_jobs: int, requested_snapshot_jobs: int | None 
     return trial_workers, snapshot_workers
 
 
-def run_experiment(campaign_config: CampaignConfig, out_root: Path, repo_root: Path, suite_yaml_text: str) -> Path:
+def run_experiment(campaign_config: CampaignConfig, out_root: Path, repo_root: Path, config_src: str) -> Path:
     '''Run a fuzzing or replay experiment and return the run directory.'''
     docker_runtime = DockerRuntime.from_paths(repo_root=repo_root, out_root=out_root).with_docker_limits(
         memory=campaign_config.settings.memory,
@@ -65,7 +65,7 @@ def run_experiment(campaign_config: CampaignConfig, out_root: Path, repo_root: P
     initialize_run_dir(
         run_dir=run_dir,
         run_id=run_id,
-        suite_yaml_text=suite_yaml_text,
+        config_src=config_src,
         campaign_config=campaign_config,
     )
 

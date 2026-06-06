@@ -17,7 +17,7 @@ _SCHEMA = [
     CREATE TABLE IF NOT EXISTS runs(
       run_id TEXT PRIMARY KEY,
       created_ts INTEGER,
-      suite_yaml TEXT
+      config_src TEXT
     )
     """,
     """

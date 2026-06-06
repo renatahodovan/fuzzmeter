@@ -25,11 +25,11 @@ class RunsService:
     '''Provide run listing and deletion helpers for the web UI.'''
 
     @staticmethod
-    def _parse_suite_config(suite_yaml_text: str | None) -> dict[str, Any]:
-        if not suite_yaml_text:
+    def _parse_config(config_src: str | None) -> dict[str, Any]:
+        if not config_src:
             return {}
         try:
-            data = yaml.safe_load(suite_yaml_text) or {}
+            data = yaml.safe_load(config_src) or {}
         except Exception:
             return {}
         if not isinstance(data, dict):
@@ -75,7 +75,7 @@ class RunsService:
     @staticmethod
     def _run_summary(db: ReportingDB, run_id: str) -> dict[str, Any]:
         overview = db.run_overview(run_id)
-        config = RunsService._parse_suite_config(overview.get("suite_yaml"))
+        config = RunsService._parse_config(overview.get("config_src"))
         where = "WHERE run_id=?" if db.col_exists("trials", "run_id") else ""
         params: tuple[Any, ...] = (run_id,) if where else ()
 
@@ -107,7 +107,7 @@ class RunsService:
         candidates = [
             run_dir,
             run_dir / "fuzzmeter.db",
-            run_dir / "suite.yaml",
+            run_dir / "config.yaml",
             run_dir / "report" / "report.html",
             run_dir / "report" / "data.json",
         ]
@@ -126,7 +126,7 @@ class RunsService:
         run_id = run_dir.name
         has_static_report = (run_dir / "report" / "report.html").is_file()
         db_path = run_dir / "fuzzmeter.db"
-        suite_yaml_path = run_dir / "suite.yaml"
+        config_path = run_dir / "config.yaml"
         summary: dict[str, Any] = {
             "created_ts": None,
             "trials": 0,
@@ -140,9 +140,9 @@ class RunsService:
         }
         error: str | None = None
 
-        if suite_yaml_path.is_file():
+        if config_path.is_file():
             try:
-                summary["config"] = cls._parse_suite_config(suite_yaml_path.read_text(encoding="utf-8"))
+                summary["config"] = cls._parse_config(config_path.read_text(encoding="utf-8"))
             except Exception:
                 pass
 

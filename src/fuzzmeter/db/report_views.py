@@ -62,7 +62,7 @@ class ReportingDB:
     def run_overview(self, run_id: str) -> dict[str, Any]:
         overview: dict[str, Any] = {'run_id': run_id}
         overview['created_ts'] = self.scalar('SELECT created_ts FROM runs WHERE run_id=? LIMIT 1', (run_id,))
-        overview['suite_yaml'] = self.scalar('SELECT suite_yaml FROM runs WHERE run_id=? LIMIT 1', (run_id,))
+        overview['config_src'] = self.scalar('SELECT config_src FROM runs WHERE run_id=? LIMIT 1', (run_id,))
         overview['trials'] = int(self.scalar('SELECT COUNT(*) FROM trials WHERE run_id=?', (run_id,)) or 0)
         overview['snapshots'] = int(self.scalar(
             'SELECT COUNT(*) FROM snapshots s JOIN trials t ON t.trial_id=s.trial_id WHERE t.run_id=?',

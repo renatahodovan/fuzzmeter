@@ -5,7 +5,7 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-'''Build campaign configuration objects from YAML suite files.'''
+'''Build campaign configuration objects from YAML config files.'''
 
 from __future__ import annotations
 

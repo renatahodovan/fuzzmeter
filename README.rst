@@ -135,7 +135,7 @@ FuzzMeter also exports a static HTML report under the same directory.
 
 The command-line interface contains two main subcommands::
 
-    fuzzmeter run --config <suite.yaml> --out <output-root>
+    fuzzmeter run --config <config.yaml> --out <output-root>
     fuzzmeter serve --root <output-root-or-runs-dir> --host 127.0.0.1 --port 8000
 
 ``run`` executes the campaign and exports a static report. ``serve`` starts the
@@ -316,7 +316,7 @@ Important paths are:
    * - ``fuzzmeter.db``
      - SQLite database containing run, trial, snapshot, coverage, resource,
        and bug data.
-   * - ``suite.yaml``
+   * - ``config.yaml``
      - The campaign YAML captured at run start.
    * - ``trials/``
      - Per-trial workspaces with logs, live outputs, snapshots, and target

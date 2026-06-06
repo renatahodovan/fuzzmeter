@@ -163,7 +163,7 @@ class RunnerLoopTest(unittest.TestCase):
                         campaign_config=config,
                         out_root=root / 'out',
                         repo_root=root,
-                        suite_yaml_text='suite',
+                        config_src='config',
                     )
 
     def test_replay_run_registers_trials_runs_scheduler_and_marks_done(self) -> None:
@@ -173,7 +173,7 @@ class RunnerLoopTest(unittest.TestCase):
             db = DB.open(db_path)
             try:
                 ensure_schema(db)
-                db.exec('INSERT INTO runs(run_id, created_ts, suite_yaml) VALUES(?,?,?)', ('run', 1, 'suite'))
+                db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
                 trial_ids = [
                     db_trials.ensure_trial_row(
                         db,

@@ -213,7 +213,7 @@ class CoverageReportingTest(unittest.TestCase):
             db = DB.open(run_dir / 'fuzzmeter.db')
             try:
                 ensure_schema(db)
-                db.exec('INSERT INTO runs(run_id, created_ts, suite_yaml) VALUES(?,?,?)', ('run', 1, 'suite'))
+                db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
                 for rep in (0, 1, 2):
                     db.exec(
                         '''
@@ -253,7 +253,7 @@ class CoverageReportingTest(unittest.TestCase):
             db = DB.open(run_dir / 'fuzzmeter.db')
             try:
                 ensure_schema(db)
-                db.exec('INSERT INTO runs(run_id, created_ts, suite_yaml) VALUES(?,?,?)', ('run', 1, 'suite'))
+                db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
                 db.exec(
                     '''
                     INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep, started_ts, ended_ts, status)

@@ -95,7 +95,7 @@ targets:
         self.assertEqual({'target': {'timeout_s': 10}}, config.cases[0].runtime_config)
 
     def test_runtime_target_timeout_overrides_target_default(self) -> None:
-        '''Verify that suite/fuzzer runtime config can override target defaults.'''
+        '''Verify that config/fuzzer runtime config can override target defaults.'''
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
@@ -140,7 +140,7 @@ targets:
         self.assertEqual(5, config.settings.snapshot_export_every_ticks)
 
     def test_snapshot_export_interval_can_be_configured(self) -> None:
-        '''Verify that suites can override the LLVM export cadence.'''
+        '''Verify that configs can override the LLVM export cadence.'''
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
