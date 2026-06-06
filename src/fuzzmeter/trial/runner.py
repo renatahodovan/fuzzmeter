@@ -154,7 +154,7 @@ class TrialRunner:
         jobs: int,
         stop_event: threading.Event | None = None,
     ) -> None:
-        LOG.info('Start fuzzing in %s', str(run_dir))
+        LOG.info('Start fuzzing in %s', run_dir)
         started = False
         ctx = self._build_context(run_dir=run_dir, cfg=cfg, jobs=jobs)
         runtime = self._runtime()

@@ -45,7 +45,7 @@ def run_coverage_batch(
 
     input_list_path = diagnostics_dir / 'inputs.txt'
     input_list_path.write_text(
-        '\n'.join(str(Path(docker.container_path(path))) for path in inputs) + '\n',
+        '\n'.join(docker.container_path(path) for path in inputs) + '\n',
         encoding='utf-8',
     )
 
@@ -57,13 +57,13 @@ def run_coverage_batch(
     work_dir.mkdir(parents=True, exist_ok=True)
 
     env = {
-        'FM_OUT_DIR': str(Path(docker.container_path(out_dir))),
+        'FM_OUT_DIR': docker.container_path(out_dir),
         'FM_TARGET_NAME': fuzz_target,
         'FM_INPUT_MODE': input_mode,
-        'FM_INPUT_LIST': str(Path(docker.container_path(input_list_path))),
-        'FM_BATCH_PROFDATA_PATH': str(Path(docker.container_path(batch_profdata_path))),
-        'FM_TIMEOUT_S': str(float(timeout_s)),
-        'FM_WORK_DIR': str(Path(docker.container_path(work_dir))),
+        'FM_INPUT_LIST': docker.container_path(input_list_path),
+        'FM_BATCH_PROFDATA_PATH': docker.container_path(batch_profdata_path),
+        'FM_TIMEOUT_S': str(timeout_s),
+        'FM_WORK_DIR': docker.container_path(work_dir),
         'FM_INPUT_JOBS': str(max(1, int(input_jobs or 1))),
         'FM_LOG_LEVEL': str(os.environ.get('FM_LOG_LEVEL', 'INFO')).upper(),
     }
@@ -111,26 +111,26 @@ def finalize_coverage(
 
     prof_list_path = tmp_root / 'profdata_inputs.txt'
     prof_list_path.write_text(
-        '\n'.join(str(Path(docker.container_path(path))) for path in merge_profiles) + ('\n' if merge_profiles else ''),
+        '\n'.join(docker.container_path(path) for path in merge_profiles) + ('\n' if merge_profiles else ''),
         encoding='utf-8',
     )
     coverage_sets_path = tmp_root / 'coverage-sets.json'
 
     env = {
-        'FM_OUT_DIR': str(Path(docker.container_path(tmp_root))),
+        'FM_OUT_DIR': docker.container_path(tmp_root),
         'FM_TARGET_NAME': fuzz_target,
-        'FM_PROF_LIST': str(Path(docker.container_path(prof_list_path))),
-        'FM_PROFDATA_PATH': str(Path(docker.container_path(profdata_path))),
-        'FM_WORK_DIR': str(Path(docker.container_path(work_dir))),
+        'FM_PROF_LIST': docker.container_path(prof_list_path),
+        'FM_PROFDATA_PATH': docker.container_path(profdata_path),
+        'FM_WORK_DIR': docker.container_path(work_dir),
         'FM_LOG_LEVEL': str(os.environ.get('FM_LOG_LEVEL', 'INFO')).upper(),
     }
     if src_root.is_dir():
         env['FM_PATH_EQ_FROM'] = '/src'
-        env['FM_PATH_EQ_TO'] = str(Path(docker.container_path(src_root)))
+        env['FM_PATH_EQ_TO'] = docker.container_path(src_root)
     if not render_html:
         env['FM_SKIP_HTML'] = '1'
     if write_coverage_sets:
-        env['FM_COVERAGE_SETS_JSON'] = str(Path(docker.container_path(coverage_sets_path)))
+        env['FM_COVERAGE_SETS_JSON'] = docker.container_path(coverage_sets_path)
 
     docker.run(
         image=image,

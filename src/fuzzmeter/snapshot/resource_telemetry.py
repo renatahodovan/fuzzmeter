@@ -101,7 +101,7 @@ class ResourceTelemetryCollector:
     def _docker_stats(container_name: str) -> dict[str, Any] | None:
         try:
             result = _run_text(
-                ['docker', 'stats', '--no-stream', '--format', '{{json .}}', str(container_name)],
+                ['docker', 'stats', '--no-stream', '--format', '{{json .}}', container_name],
                 timeout_s=15,
             )
         except Exception as exc:

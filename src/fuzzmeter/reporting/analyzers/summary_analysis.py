@@ -108,10 +108,10 @@ class SummaryAnalysis:
                 fuzzer = entry['fuzzer']
                 median_value = entry['final'].get('regions_pct_median')
                 if best is not None and best > 0 and isinstance(median_value, (int, float)):
-                    per_fuzzer_scores[fuzzer].append(100.0 * float(median_value) / best)
+                    per_fuzzer_scores[fuzzer].append(100.0 * median_value / best)
                 branches_cov_auc_median = entry['final'].get('branches_cov_auc_median')
                 if best_auc is not None and best_auc > 0 and isinstance(branches_cov_auc_median, (int, float)):
-                    per_fuzzer_auc_scores[fuzzer].append(100.0 * float(branches_cov_auc_median) / best_auc)
+                    per_fuzzer_auc_scores[fuzzer].append(100.0 * branches_cov_auc_median / best_auc)
                 relcov_score = (target.get('relcov_score_by_fuzzer') or {}).get(fuzzer)
                 if isinstance(relcov_score, (int, float)):
                     per_fuzzer_relcov_scores[fuzzer].append(float(relcov_score))

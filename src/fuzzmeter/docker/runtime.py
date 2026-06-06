@@ -31,7 +31,7 @@ class DockerRuntime:
         '''Create Docker runtime settings from explicit host paths.'''
         return cls(
             repo_root=Path(repo_root).expanduser().resolve(),
-            out_src=str(Path(out_root).expanduser().resolve()),
+            out_src=str(out_root.expanduser().resolve()),
             run_user=_host_user(),
         )
 

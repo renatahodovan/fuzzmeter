@@ -36,18 +36,18 @@ class CoverageSetStore:
             'summary': fixed_summary,
             'metrics': metrics,
         }
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        Path(path).write_text(json.dumps(doc, separators=(',', ':')), encoding='utf-8')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(doc, separators=(',', ':')), encoding='utf-8')
 
     @staticmethod
     def read(path: Path, metric: str) -> set[str]:
         '''Return covered element hash keys for one metric.'''
         try:
-            stat = Path(path).stat()
+            stat = path.stat()
             return {
                 str(value)
                 for value in _read_metric(
-                    str(Path(path)),
+                    str(path),
                     int(stat.st_mtime_ns),
                     int(stat.st_size),
                     metric,

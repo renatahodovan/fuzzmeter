@@ -155,7 +155,7 @@ def _reproduce_crash_batch(
     output_jsonl = batch_root / 'results.jsonl'
     input_list.write_text(
         '\n'.join(
-            str(Path(docker.container_path(_crash_input_path(snapshot_crashes_dir, new_file))))
+            docker.container_path(_crash_input_path(snapshot_crashes_dir, new_file))
             for new_file in new_files
         ) + '\n',
         encoding='utf-8',
@@ -165,8 +165,8 @@ def _reproduce_crash_batch(
         docker=docker,
         trial=trial,
         env={
-            'FM_CRASH_INPUT_LIST': str(Path(docker.container_path(input_list))),
-            'FM_CRASH_OUTPUT_JSONL': str(Path(docker.container_path(output_jsonl))),
+            'FM_CRASH_INPUT_LIST': docker.container_path(input_list),
+            'FM_CRASH_OUTPUT_JSONL': docker.container_path(output_jsonl),
         },
     )
 
@@ -213,7 +213,7 @@ def _reproduce_crash(
         docker=docker,
         trial=trial,
         env={
-            'FM_CRASH_INPUT': str(Path(docker.container_path(crash_input))),
+            'FM_CRASH_INPUT': docker.container_path(crash_input),
         },
     )
     output = (result.stdout or '') + (('\n' + result.stderr) if result.stderr else '')

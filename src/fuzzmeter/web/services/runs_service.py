@@ -29,7 +29,7 @@ class RunsService:
         if not suite_yaml_text:
             return {}
         try:
-            data = yaml.safe_load(str(suite_yaml_text)) or {}
+            data = yaml.safe_load(suite_yaml_text) or {}
         except Exception:
             return {}
         if not isinstance(data, dict):

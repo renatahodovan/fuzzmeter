@@ -76,7 +76,7 @@ class SnapshotAggregateUpdater:
         run_dir = Path(run_dir)
 
         profdata_inputs = [
-            str(Path(self.docker.container_path(path)))
+            self.docker.container_path(path)
             for path in self._campaign_profdata_paths(
                 db=db,
                 run_dir=run_dir,
@@ -122,18 +122,18 @@ class SnapshotAggregateUpdater:
         src_root = run_dir / 'coverage_src' / f'{benchmark}/{fuzz_target}'
 
         env = {
-            'FM_OUT_DIR': str(Path(self.docker.container_path(cov_tmp))),
+            'FM_OUT_DIR': self.docker.container_path(cov_tmp),
             'FM_TARGET_NAME': fuzz_target,
-            'FM_PROF_LIST': str(Path(self.docker.container_path(prof_list_path))),
-            'FM_PROFDATA_PATH': str(Path(self.docker.container_path(profdata_path))),
-            'FM_WORK_DIR': str(Path(self.docker.container_path(work_root))),
+            'FM_PROF_LIST': self.docker.container_path(prof_list_path),
+            'FM_PROFDATA_PATH': self.docker.container_path(profdata_path),
+            'FM_WORK_DIR': self.docker.container_path(work_root),
             'FM_LOG_LEVEL': str(os.environ.get('FM_LOG_LEVEL', 'INFO')).upper(),
         }
         if write_export:
-            env['FM_COVERAGE_SETS_JSON'] = str(Path(self.docker.container_path(coverage_sets_tmp)))
+            env['FM_COVERAGE_SETS_JSON'] = self.docker.container_path(coverage_sets_tmp)
         if src_root.is_dir():
             env['FM_PATH_EQ_FROM'] = '/src'
-            env['FM_PATH_EQ_TO'] = str(Path(self.docker.container_path(src_root)))
+            env['FM_PATH_EQ_TO'] = self.docker.container_path(src_root)
 
         result = self.docker.run(
             image=self._cov_image_for(benchmark, fuzz_target),

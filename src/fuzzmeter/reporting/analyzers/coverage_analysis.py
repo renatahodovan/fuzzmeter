@@ -75,7 +75,7 @@ class CoverageAnalysis:
         elapsed_seconds = sum(finals.get('elapsed_seconds') or []) or None
         execs_per_sec = None
         if execs_done is not None and elapsed_seconds not in (None, 0):
-            execs_per_sec = float(execs_done) / float(elapsed_seconds)
+            execs_per_sec = execs_done / elapsed_seconds
         aggregate = {
             'execs_done': execs_done,
             'elapsed_seconds': elapsed_seconds,
@@ -143,7 +143,7 @@ class CoverageAnalysis:
             return None
         if max_coverage <= 0 or duration_s <= 0:
             return None
-        return 100.0 * float(auc) / (float(max_coverage) * float(duration_s))
+        return 100.0 * auc / (max_coverage * duration_s)
 
     def downsample_curve(self, curve: list[dict[str, Any]]) -> list[dict[str, Any]]:
         '''Return a curve with at most the configured number of points.'''
@@ -219,7 +219,7 @@ class CoverageAnalysis:
                 finals.setdefault('elapsed_seconds', []).append(float(elapsed_seconds))
                 execs_done = self._safe_int(last_point.get('execs_done'))
                 if execs_done is not None and elapsed_seconds > 0:
-                    finals['execs_per_sec'].append(float(execs_done) / float(elapsed_seconds))
+                    finals['execs_per_sec'].append(execs_done / elapsed_seconds)
         return finals
 
     def build_curve(
@@ -310,7 +310,7 @@ class CoverageAnalysis:
             return None, None
         if duration_s is None or duration_s <= 0:
             return auc, None
-        return auc, float(auc) / float(duration_s)
+        return auc, auc / duration_s
 
     def build_trial_rows(
         self,
@@ -336,7 +336,7 @@ class CoverageAnalysis:
             execs_done = self._safe_int(last_point.get('execs_done'))
             execs_per_sec = None
             if execs_done is not None and elapsed_seconds is not None and elapsed_seconds > 0:
-                execs_per_sec = float(execs_done) / float(elapsed_seconds)
+                execs_per_sec = execs_done / elapsed_seconds
 
             regions_cov_auc, regions_cov_auc_norm = self._trial_auc(
                 points,
