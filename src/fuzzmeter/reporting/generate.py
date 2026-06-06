@@ -20,7 +20,6 @@ from .analyzers.bug_analysis import BugAnalysis
 from .analyzers.coverage_analysis import CoverageAnalysis
 from .analyzers.summary_analysis import SummaryAnalysis
 from .analyzers.trial_analysis import TrialAnalysis
-from .coverage_sets import covered_element_keys_from_compact_sets
 from .data.coverage_data import CoverageData
 from .data.run_data import RunData
 from .keys import COV_METRICS, FINAL_DIST_KEYS, SNAPSHOT_COVERAGE_FIELDS, TRIAL_METADATA_FIELDS
@@ -139,7 +138,6 @@ class ReportBuilder:
             cliffs_delta=cliffs_delta,
         )
         self._repo_root = Path(__file__).resolve().parents[3]
-        self._coverage_set_cache: dict[tuple[str, str], set[str]] = {}
 
     def build(self) -> dict[str, Any]:
         '''Build the complete report payload.'''
@@ -258,37 +256,71 @@ class ReportBuilder:
             return self.url_prefix.rstrip('/') + '/' + rel.lstrip('/')
         return '../' + rel
 
-    def _coverage_sets_from_coverage_html_rel(self, coverage_html_rel: str | None) -> Path | None:
-        return self._coverage_data.coverage_sets_from_coverage_html_rel(coverage_html_rel)
-
     def _agg_snapshot_for_fuzzer(self, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, Any]:
         return self._latest_agg_snapshots.get((str(fuzzer), str(benchmark), str(fuzz_target)), {})
 
-    def _aggregated_snapshot_coverage_for_fuzzer(self, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, Any]:
+    def _aggregated_coverage_for_fuzzer(self, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, int | None]:
         agg_snapshot = self._agg_snapshot_for_fuzzer(fuzzer, benchmark, fuzz_target)
-        if not agg_snapshot:
-            return {}
-        return self._trial_analysis.coverage_summary_from_snapshot(agg_snapshot)
+        coverage_path = self._coverage_data.coverage_sets_for_snapshot(agg_snapshot)
+        aggregated_coverage = self._coverage_data.covered_counts(coverage_path, COV_METRICS)
+        agg_snapshot_coverage = (
+            self._trial_analysis.coverage_summary_from_snapshot(agg_snapshot)
+            if agg_snapshot
+            else {}
+        )
+        for metric in COV_METRICS:
+            summary_covered = safe_int(agg_snapshot_coverage.get(f'{metric}_covered'))
+            if summary_covered is None:
+                continue
+            summary_count = int(summary_covered)
+            current_count = aggregated_coverage.get(f'{metric}_covered')
+            if current_count is None or metric == 'branches' or summary_count > int(current_count):
+                aggregated_coverage[f'{metric}_covered'] = summary_count
+        return aggregated_coverage
 
-    def _covered_elements_for_path(self, coverage_path: Path, metric: str) -> set[str]:
-        key = (str(coverage_path), metric)
-        if key not in self._coverage_set_cache:
-            self._coverage_set_cache[key] = covered_element_keys_from_compact_sets(coverage_path, metric)
-        return self._coverage_set_cache[key]
+    @staticmethod
+    def _coverage_keys_from_trials(trials: list[dict[str, Any]]) -> list[tuple[str, str, str]]:
+        return sorted({
+            (str(trial.get('fuzzer')), str(trial.get('benchmark')), str(trial.get('fuzz_target')))
+            for trial in trials
+            if trial.get('fuzzer') and trial.get('benchmark') and trial.get('fuzz_target')
+        })
 
-    def _coverage_sets_for_fuzzer(
+    def _target_coverage_inputs(
         self,
+        trials: list[dict[str, Any]],
+    ) -> tuple[
+        dict[tuple[str, str, str], dict[str, int | None]],
+        dict[tuple[str, str, str], dict[str, Any] | None],
+    ]:
+        aggregated_coverage_by_fuzzer: dict[tuple[str, str, str], dict[str, int | None]] = {}
+        seed_baseline_by_fuzzer: dict[tuple[str, str, str], dict[str, Any] | None] = {}
+        for fuzzer, benchmark, fuzz_target in self._coverage_keys_from_trials(trials):
+            key = (fuzzer, benchmark, fuzz_target)
+            aggregated_coverage_by_fuzzer[key] = self._aggregated_coverage_for_fuzzer(fuzzer, benchmark, fuzz_target)
+            seed_baseline_by_fuzzer[key] = self._coverage_data.seed_baseline_for(
+                fuzzer=fuzzer,
+                benchmark=benchmark,
+                fuzz_target=fuzz_target,
+            )
+        return aggregated_coverage_by_fuzzer, seed_baseline_by_fuzzer
+
+    def _coverage_sets_by_metric(
+        self,
+        fuzzers: list[str],
         benchmark: str,
         fuzz_target: str,
-        fuzzer: str,
-    ) -> Path | None:
-        agg_snapshot = self._agg_snapshot_for_fuzzer(fuzzer, benchmark, fuzz_target)
-        rel_path = agg_snapshot.get('coverage_sets_json_rel')
-        if rel_path:
-            path = self.run_dir / str(rel_path)
-            if path.exists():
-                return path
-        return self._coverage_sets_from_coverage_html_rel(agg_snapshot.get('coverage_html_dir'))
+    ) -> dict[str, dict[str, set[str]]]:
+        return {
+            metric: self._coverage_data.coverage_sets_by_fuzzer(
+                agg_snapshots=self._latest_agg_snapshots,
+                fuzzers=fuzzers,
+                benchmark=benchmark,
+                fuzz_target=fuzz_target,
+                metric=metric,
+            )
+            for metric in COV_METRICS
+        }
 
     def collect_trials(self) -> list[dict[str, Any]]:
         '''Collect per-trial report rows.'''
@@ -329,16 +361,15 @@ class ReportBuilder:
     ) -> list[dict[str, Any]]:
         '''Collect target-level fuzzer comparison data.'''
 
+        aggregated_coverage_by_fuzzer, seed_baseline_by_fuzzer = self._target_coverage_inputs(trials)
         targets = self._coverage_analysis.collect_target_view(
-            run_dir=self.run_dir,
             trials=trials,
             timeseries=timeseries,
             bugs=bugs,
             trial_version_fields=TRIAL_METADATA_FIELDS,
             trial_elapsed_seconds=self._trial_elapsed_seconds,
-            coverage_sets_for_fuzzer=self._coverage_sets_for_fuzzer,
-            aggregated_snapshot_coverage_for_fuzzer=self._aggregated_snapshot_coverage_for_fuzzer,
-            covered_elements_for_path=self._covered_elements_for_path,
+            aggregated_coverage_by_fuzzer=aggregated_coverage_by_fuzzer,
+            seed_baseline_by_fuzzer=seed_baseline_by_fuzzer,
         )
         for target in targets:
             benchmark = str(target.get('benchmark') or '')
@@ -355,17 +386,18 @@ class ReportBuilder:
         for target in targets:
             benchmark = target.get('benchmark')
             fuzz_target = target.get('fuzz_target')
-            fuzzer_count = len({
+            fuzzers = sorted({
                 str(fuzzer.get('fuzzer') or '')
                 for fuzzer in target.get('fuzzers') or []
                 if fuzzer.get('fuzzer')
             })
-            if benchmark and fuzz_target and fuzzer_count > 1:
-                target['unique_matrix'] = self.compute_unique_matrix(trials, benchmark, fuzz_target)
+            if benchmark and fuzz_target and len(fuzzers) > 1:
+                coverage_sets_by_metric = self._coverage_sets_by_metric(fuzzers, benchmark, fuzz_target)
+                target['unique_matrix'] = self.compute_unique_matrix(
+                    trials, benchmark, fuzz_target, coverage_sets_by_metric
+                )
                 target['relcov_matrix'], target['relcov_score_by_fuzzer'] = self.compute_relcov_matrix(
-                    trials,
-                    benchmark,
-                    fuzz_target,
+                    trials, benchmark, fuzz_target, coverage_sets_by_metric
                 )
                 target['branch_mwu_matrix'], target['branch_a12_matrix'] = self.compute_branch_stat_matrices(
                     trials,
@@ -396,6 +428,7 @@ class ReportBuilder:
         trials: list[dict[str, Any]],
         benchmark: str,
         fuzz_target: str,
+        coverage_sets_by_metric: dict[str, dict[str, set[str]]],
     ) -> dict[str, Any]:
         '''Compute per-fuzzer unique coverage matrices for a target.'''
 
@@ -403,8 +436,7 @@ class ReportBuilder:
             trials=trials,
             benchmark=benchmark,
             fuzz_target=fuzz_target,
-            coverage_sets_for_fuzzer=self._coverage_sets_for_fuzzer,
-            covered_elements_for_path=self._covered_elements_for_path,
+            coverage_sets_by_metric=coverage_sets_by_metric,
         )
 
     def compute_relcov_matrix(
@@ -412,6 +444,7 @@ class ReportBuilder:
         trials: list[dict[str, Any]],
         benchmark: str,
         fuzz_target: str,
+        coverage_sets_by_metric: dict[str, dict[str, set[str]]],
     ) -> tuple[dict[str, Any], dict[str, float]]:
         '''Compute per-fuzzer relative coverage containment matrix and scores.'''
 
@@ -419,8 +452,7 @@ class ReportBuilder:
             trials=trials,
             benchmark=benchmark,
             fuzz_target=fuzz_target,
-            coverage_sets_for_fuzzer=self._coverage_sets_for_fuzzer,
-            covered_elements_for_path=self._covered_elements_for_path,
+            coverage_sets_by_metric=coverage_sets_by_metric,
         )
 
     def compute_branch_stat_matrices(

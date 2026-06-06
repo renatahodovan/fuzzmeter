@@ -9,8 +9,6 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from ..metrics import trapezoid_auc
@@ -47,20 +45,8 @@ class CoverageAnalysis:
         self._vargha_delaney_a12 = vargha_delaney_a12
         self._dt = dt
 
-    def _covered_counts_from_sets(
-        self,
-        *,
-        coverage_path: Path | None,
-        covered_elements_for_path: Callable[[Path, str], set[str]],
-    ) -> dict[str, int | None]:
-        '''Collect aggregated covered element counts from compact coverage sets.'''
-
-        if coverage_path is None or not coverage_path.exists():
-            return {f'{metric}_covered': None for metric in self._cov_metrics}
-        return {
-            f'{metric}_covered': len(covered_elements_for_path(coverage_path, metric))
-            for metric in self._cov_metrics
-        }
+    def _empty_covered_counts(self) -> dict[str, int | None]:
+        return {f'{metric}_covered': None for metric in self._cov_metrics}
 
     def _build_aggregate_summary(
         self,
@@ -399,31 +385,17 @@ class CoverageAnalysis:
             )
         return rows
 
-    @staticmethod
-    def seed_baseline_for(run_dir: Path, *, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, Any] | None:
-        '''Load seed baseline coverage for one fuzzer-target pair.'''
-
-        summary_path = run_dir / "coverage_seed" / fuzzer / benchmark / fuzz_target / "summary.json"
-        if not summary_path.is_file():
-            return None
-        try:
-            return json.loads(summary_path.read_text(encoding="utf-8", errors="replace") or "{}")
-        except Exception:
-            return None
-
     def build_fuzzer_entry(
         self,
         *,
-        run_dir: Path,
         fuzzer: str,
         reps: list[dict[str, Any]],
         bugs: list[dict[str, Any]],
         versions: dict[str, Any],
         points_by_trial: dict[int, list[dict[str, Any]]],
         trial_elapsed_seconds: Callable[[dict[str, Any]], int | None],
-        coverage_sets_for_fuzzer: Callable[[str, str, str], Path | None],
-        aggregated_snapshot_coverage_for_fuzzer: Callable[[str, str, str], dict[str, Any]],
-        covered_elements_for_path: Callable[[Path, str], set[str]],
+        aggregated_coverage: dict[str, int | None],
+        seed_baseline: dict[str, Any] | None,
     ) -> dict[str, Any]:
         '''Build one fuzzer entry inside a target report.'''
 
@@ -434,27 +406,11 @@ class CoverageAnalysis:
             points_by_trial=points_by_trial,
             trial_elapsed_seconds=trial_elapsed_seconds,
         )
-        benchmark = reps[0]['benchmark'] if reps else ''
-        fuzz_target = reps[0]['fuzz_target'] if reps else ''
-        agg_snapshot_coverage = aggregated_snapshot_coverage_for_fuzzer(fuzzer, benchmark, fuzz_target)
-        aggregated_coverage_path = coverage_sets_for_fuzzer(benchmark, fuzz_target, fuzzer)
-        aggregated_coverage = self._covered_counts_from_sets(
-            coverage_path=aggregated_coverage_path,
-            covered_elements_for_path=covered_elements_for_path,
-        )
-        for metric in self._cov_metrics:
-            summary_covered = self._safe_int(agg_snapshot_coverage.get(f'{metric}_covered'))
-            if summary_covered is None:
-                continue
-            summary_count = int(summary_covered)
-            current_count = aggregated_coverage.get(f'{metric}_covered')
-            if current_count is None or metric == 'branches' or summary_count > int(current_count):
-                aggregated_coverage[f'{metric}_covered'] = summary_count
         final_summary = self._build_final_summary(finals=finals, trial_rows=trial_rows, bugs=bugs)
         aggregate_summary = self._build_aggregate_summary(
             finals=finals,
             bugs=bugs,
-            aggregated_coverage=aggregated_coverage,
+            aggregated_coverage=dict(aggregated_coverage),
         )
         return {
             'fuzzer': fuzzer,
@@ -463,12 +419,7 @@ class CoverageAnalysis:
             'distribution': finals,
             'curve': curve,
             'trials': trial_rows,
-            'seed_baseline': self.seed_baseline_for(
-                run_dir,
-                fuzzer=fuzzer,
-                benchmark=benchmark,
-                fuzz_target=fuzz_target,
-            ),
+            'seed_baseline': seed_baseline,
             'bugs': sorted(bugs, key=lambda bug: (-(int(bug.get('hits_total') or 0)), str(bug.get('bug_key') or ''))),
             'versions': versions,
             'extra_sections': [],
@@ -478,15 +429,13 @@ class CoverageAnalysis:
     def collect_target_view(
         self,
         *,
-        run_dir: Path,
         trials: list[dict[str, Any]],
         timeseries: dict[str, Any],
         bugs: list[dict[str, Any]],
         trial_version_fields: Sequence[str],
         trial_elapsed_seconds: Callable[[dict[str, Any]], int | None],
-        coverage_sets_for_fuzzer: Callable[[str, str, str], Path | None],
-        aggregated_snapshot_coverage_for_fuzzer: Callable[[str, str, str], dict[str, Any]],
-        covered_elements_for_path: Callable[[Path, str], set[str]],
+        aggregated_coverage_by_fuzzer: dict[tuple[str, str, str], dict[str, int | None]],
+        seed_baseline_by_fuzzer: dict[tuple[str, str, str], dict[str, Any] | None],
     ) -> list[dict[str, Any]]:
         '''Collect all target report entries from trials, time series, and bugs.'''
 
@@ -552,18 +501,20 @@ class CoverageAnalysis:
                 "extra_section_debug": [],
             }
             for fuzzer, group in sorted(target_group["fuzzers"].items()):
+                coverage_key = (str(fuzzer), str(benchmark), str(fuzz_target))
                 target["fuzzers"].append(
                     self.build_fuzzer_entry(
-                        run_dir=run_dir,
                         fuzzer=fuzzer,
                         reps=group["reps"],
                         bugs=group["bugs"],
                         versions=group["versions"],
                         points_by_trial=points_by_trial,
                         trial_elapsed_seconds=trial_elapsed_seconds,
-                        coverage_sets_for_fuzzer=coverage_sets_for_fuzzer,
-                        aggregated_snapshot_coverage_for_fuzzer=aggregated_snapshot_coverage_for_fuzzer,
-                        covered_elements_for_path=covered_elements_for_path,
+                        aggregated_coverage=aggregated_coverage_by_fuzzer.get(
+                            coverage_key,
+                            self._empty_covered_counts(),
+                        ),
+                        seed_baseline=seed_baseline_by_fuzzer.get(coverage_key),
                     )
                 )
             targets.append(target)
@@ -575,8 +526,7 @@ class CoverageAnalysis:
         trials: list[dict[str, Any]],
         benchmark: str,
         fuzz_target: str,
-        coverage_sets_for_fuzzer: Callable[[str, str, str], Path | None],
-        covered_elements_for_path: Callable[[Path, str], set[str]],
+        coverage_sets_by_metric: dict[str, dict[str, set[str]]],
     ) -> dict[str, Any]:
         '''Compute all unique coverage matrices for one target.'''
 
@@ -586,8 +536,7 @@ class CoverageAnalysis:
                 benchmark=benchmark,
                 fuzz_target=fuzz_target,
                 metric=metric,
-                coverage_sets_for_fuzzer=coverage_sets_for_fuzzer,
-                covered_elements_for_path=covered_elements_for_path,
+                coverage_sets=coverage_sets_by_metric.get(metric, {}),
             )
             for metric in self._cov_metrics
         }
@@ -604,8 +553,7 @@ class CoverageAnalysis:
         benchmark: str,
         fuzz_target: str,
         metric: str,
-        coverage_sets_for_fuzzer: Callable[[str, str, str], Path | None],
-        covered_elements_for_path: Callable[[Path, str], set[str]],
+        coverage_sets: dict[str, set[str]],
     ) -> dict[str, Any]:
         '''Compute pairwise unique union coverage matrix for one coverage metric.'''
 
@@ -619,14 +567,6 @@ class CoverageAnalysis:
                     and trial.get('fuzzer')
                 )
             }
-        )
-        coverage_sets = self._coverage_sets_for_metric(
-            fuzzers=fuzzers,
-            benchmark=benchmark,
-            fuzz_target=fuzz_target,
-            metric=metric,
-            coverage_sets_for_fuzzer=coverage_sets_for_fuzzer,
-            covered_elements_for_path=covered_elements_for_path,
         )
         result = unique_matrix(
             fuzzers,
@@ -743,8 +683,7 @@ class CoverageAnalysis:
         trials: list[dict[str, Any]],
         benchmark: str,
         fuzz_target: str,
-        coverage_sets_for_fuzzer: Callable[[str, str, str], Path | None],
-        covered_elements_for_path: Callable[[Path, str], set[str]],
+        coverage_sets_by_metric: dict[str, dict[str, set[str]]],
     ) -> tuple[dict[str, Any], dict[str, float]]:
         '''Compute pairwise relative coverage containment and novelty-weighted branch scores.'''
 
@@ -762,22 +701,12 @@ class CoverageAnalysis:
         by_metric = {
             metric: self._compute_relcov_matrix_for_metric(
                 fuzzers=fuzzers,
-                benchmark=benchmark,
-                fuzz_target=fuzz_target,
                 metric=metric,
-                coverage_sets_for_fuzzer=coverage_sets_for_fuzzer,
-                covered_elements_for_path=covered_elements_for_path,
+                coverage_sets=coverage_sets_by_metric.get(metric, {}),
             )
             for metric in self._cov_metrics
         }
-        branch_sets = self._coverage_sets_for_metric(
-            fuzzers=fuzzers,
-            benchmark=benchmark,
-            fuzz_target=fuzz_target,
-            metric='branches',
-            coverage_sets_for_fuzzer=coverage_sets_for_fuzzer,
-            covered_elements_for_path=covered_elements_for_path,
-        )
+        branch_sets = coverage_sets_by_metric.get('branches', {})
         score_by_fuzzer = self._relcov_scores(fuzzers=fuzzers, coverage_sets=branch_sets)
         return (
             {
@@ -792,20 +721,9 @@ class CoverageAnalysis:
         self,
         *,
         fuzzers: list[str],
-        benchmark: str,
-        fuzz_target: str,
         metric: str,
-        coverage_sets_for_fuzzer: Callable[[str, str, str], Path | None],
-        covered_elements_for_path: Callable[[Path, str], set[str]],
+        coverage_sets: dict[str, set[str]],
     ) -> dict[str, Any]:
-        coverage_sets = self._coverage_sets_for_metric(
-            fuzzers=fuzzers,
-            benchmark=benchmark,
-            fuzz_target=fuzz_target,
-            metric=metric,
-            coverage_sets_for_fuzzer=coverage_sets_for_fuzzer,
-            covered_elements_for_path=covered_elements_for_path,
-        )
         missing_any = len(coverage_sets) != len(fuzzers)
         matrix: list[list[float]] = []
         max_value = 0.0
@@ -834,23 +752,6 @@ class CoverageAnalysis:
             'format': 'pct',
             'aggregation': f'per-fuzzer aggregate compact {metric} coverage sets',
         }
-
-    def _coverage_sets_for_metric(
-        self,
-        *,
-        fuzzers: list[str],
-        benchmark: str,
-        fuzz_target: str,
-        metric: str,
-        coverage_sets_for_fuzzer: Callable[[str, str, str], Path | None],
-        covered_elements_for_path: Callable[[Path, str], set[str]],
-    ) -> dict[str, set[str]]:
-        out: dict[str, set[str]] = {}
-        for fuzzer in fuzzers:
-            coverage_path = coverage_sets_for_fuzzer(benchmark, fuzz_target, fuzzer)
-            if coverage_path is not None:
-                out[fuzzer] = covered_elements_for_path(coverage_path, metric)
-        return out
 
     @staticmethod
     def _single_metric_matrix_group(matrix: dict[str, Any]) -> dict[str, Any]:
