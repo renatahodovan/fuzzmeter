@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..coverage_sets import covered_element_keys_from_compact_sets
+from ...repro.coverage_sets import read_covered_keys
 
 
 class CoverageData:
@@ -53,7 +53,7 @@ class CoverageData:
 
         key = (str(coverage_path), metric)
         if key not in self._coverage_set_cache:
-            self._coverage_set_cache[key] = covered_element_keys_from_compact_sets(coverage_path, metric)
+            self._coverage_set_cache[key] = read_covered_keys(coverage_path, metric)
         return self._coverage_set_cache[key]
 
     def covered_counts(self, coverage_path: Path | None, metrics: tuple[str, ...]) -> dict[str, int | None]:

@@ -2,6 +2,7 @@
 FROM build_base
 
 COPY fuzzers/_common/run_fuzzer.py /opt/fuzzmeter/run_fuzzer.py
+COPY src/fuzzmeter/repro/coverage_sets.py /opt/fuzzmeter/coverage_sets.py
 COPY src/fuzzmeter/repro/coverage_repro_worker.py /opt/fuzzmeter/coverage_repro_worker.py
 COPY src/fuzzmeter/repro/crash_repro_worker.py /opt/fuzzmeter/crash_repro_worker.py
 

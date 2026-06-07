@@ -10,21 +10,24 @@
 
 from __future__ import annotations
 
-import base64
 import concurrent.futures
 import glob
-import hashlib
 import json
 import logging
 import os
 import shutil
 import subprocess
 import time
-import zlib
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
+
+from coverage_sets import (
+    coverage_metrics_from_export,
+    coverage_summary_from_export,
+    write_coverage_sets,
+)
 
 LOG_LEVEL = getattr(logging, os.environ.get('FM_LOG_LEVEL', 'WARNING'))
 logging.basicConfig(
@@ -34,7 +37,6 @@ logging.basicConfig(
 )
 LOG = logging.getLogger(__name__)
 PROFDATA_MERGE_CHUNK_SIZE = 512
-COVERAGE_METRICS = ('lines', 'branches', 'functions', 'regions')
 
 
 @dataclass(frozen=True)
@@ -289,7 +291,7 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
         )
         try:
             export_obj = json.loads(export.stdout or '{}')
-            metrics = _coverage_metrics_from_export(export_obj)
+            metrics = coverage_metrics_from_export(export_obj)
             if not summary:
                 summary = coverage_summary_from_export(export_obj, metrics=metrics)
         except Exception as exc:
@@ -297,32 +299,11 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
 
     if cfg.coverage_sets is not None:
         try:
-            _write_compact_coverage_sets(cfg.coverage_sets, summary, metrics)
+            write_coverage_sets(cfg.coverage_sets, summary, metrics)
         except Exception as exc:
             _write_text(cfg.out_dir / 'coverage_sets_error.txt', repr(exc))
 
     _write_text(cfg.out_dir / 'summary.json', json.dumps(summary, indent=2))
-
-
-def coverage_summary_from_export(
-    export_obj: dict[str, Any],
-    *,
-    metrics: dict[str, list[int]] | None = None,
-) -> dict[str, int | None]:
-    '''Return fuzzmeter coverage counters from an llvm-cov export object.'''
-    totals = (
-        (((export_obj.get('data') or [{}])[0] or {}).get('totals') or {})
-        if isinstance(export_obj.get('data'), list)
-        else {}
-    )
-    summary = {
-        key: _nested_int(totals, metric, field)
-        for metric in COVERAGE_METRICS
-        for key, field in ((f'cov_{metric}_total', 'count'), (f'cov_{metric}_covered', 'covered'))
-    }
-    for metric, values in (metrics or {}).items():
-        summary[f'cov_{metric}_covered'] = len(values)
-    return summary
 
 
 def _coverage_summary_from_report(report: str) -> dict[str, int | None]:
@@ -352,25 +333,6 @@ def _coverage_report_counts(metric: str, group: list[str]) -> dict[str, int | No
     missed = _token_int(group[1])
     covered = None if total is None or missed is None else max(0, total - missed)
     return {f'cov_{metric}_total': total, f'cov_{metric}_covered': covered}
-
-
-def _write_compact_coverage_sets(path: Path, summary: dict[str, Any], metrics: dict[str, list[int]]) -> None:
-    doc = {
-        'version': 1,
-        'type': 'fuzzmeter.coverage.sets',
-        'encoding': 'blake2b64-delta-uvarint-zlib-base64',
-        'metrics': {
-            metric: {
-                'covered_count': len(metrics.get(metric, [])),
-                'total_count': summary.get(f'cov_{metric}_total'),
-                'payload': base64.b64encode(
-                    zlib.compress(_encode_delta_varints(metrics.get(metric, [])), level=9),
-                ).decode('ascii'),
-            }
-            for metric in COVERAGE_METRICS
-        },
-    }
-    _write_text(path, json.dumps(doc, separators=(',', ':')))
 
 
 def _merge_profiles(*, inputs: list[str], output: Path, work_dir: Path, out_dir: Path, label: str) -> bool:
@@ -492,113 +454,6 @@ def _worker_error_result(*, index: int, input_path: str, exc: Exception) -> dict
     }
 
 
-def _coverage_metrics_from_export(export_obj: dict[str, Any]) -> dict[str, list[int]]:
-    return {metric: _covered_hashes(export_obj, metric) for metric in COVERAGE_METRICS}
-
-
-def _covered_hashes(export_obj: dict[str, Any], metric: str) -> list[int]:
-    hashes: set[int] = set()
-    for data_item in export_obj.get('data') or []:
-        if not isinstance(data_item, dict):
-            continue
-        for file_item in data_item.get('files') or []:
-            _collect_file_hashes(hashes, file_item, metric)
-        if metric == 'functions':
-            for ordinal, function in enumerate(data_item.get('functions') or []):
-                if _function_covered(function):
-                    hashes.add(_stable_hash(_function_key('', function, ordinal)))
-    return sorted(hashes)
-
-
-def _collect_file_hashes(hashes: set[int], file_item: Any, metric: str) -> None:
-    if not isinstance(file_item, dict):
-        return
-    filename = str(file_item.get('filename') or '')
-    if not filename:
-        return
-    if metric in {'lines', 'regions'}:
-        for segment in file_item.get('segments') or []:
-            if _covered_tuple(segment, 2):
-                hashes.add(
-                    _stable_hash(
-                        _safe_text(filename, segment[0], None if metric == 'lines' else segment[1]),
-                    )
-                )
-        return
-    entries = (
-        file_item.get('branches')
-        if metric == 'branches'
-        else file_item.get('functions') if metric == 'functions' else []
-    )
-    for ordinal, entry in enumerate(entries or []):
-        if metric == 'branches' and _covered_tuple(entry, 4, 6):
-            hashes.add(_stable_hash(_safe_text(filename, *list(entry)[:4], ordinal)))
-        elif metric == 'functions' and _function_covered(entry):
-            hashes.add(_stable_hash(_function_key(filename, entry, ordinal)))
-
-
-def _function_covered(function: Any) -> bool:
-    if not isinstance(function, dict):
-        return False
-    return _positive(function.get('count')) or any(
-        _covered_tuple(region, 4)
-        for region in function.get('regions') or []
-    )
-
-
-def _function_key(default_filename: str, function: Any, ordinal: int) -> str:
-    regions = function.get('regions') if isinstance(function, dict) else None
-    region_parts = (
-        list(regions[0][:4])
-        if isinstance(regions, list) and regions and _tuple_like(regions[0])
-        else []
-    )
-    name = function.get('name') or function.get('demangled') or ordinal
-    return _safe_text(_function_filename(default_filename, function), name, *region_parts)
-
-
-def _function_filename(default_filename: str, function: dict[str, Any]) -> str:
-    filenames = function.get('filenames')
-    if isinstance(filenames, list) and filenames:
-        return str(filenames[0])
-    return str(function.get('filename') or default_filename)
-
-
-def _safe_text(*parts: Any) -> str:
-    return ':'.join(str(part).strip() for part in parts if part is not None and str(part).strip())
-
-
-def _covered_tuple(values: Any, start: int, end: int | None = None) -> bool:
-    return (
-        _tuple_like(values)
-        and len(values) > start
-        and any(_positive(value) for value in list(values)[start:end])
-    )
-
-
-def _tuple_like(value: Any) -> bool:
-    return isinstance(value, (list, tuple))
-
-
-def _positive(value: Any) -> bool:
-    try:
-        return float(value) > 0
-    except Exception:
-        return False
-
-
-def _stable_hash(value: str) -> int:
-    digest = hashlib.blake2b(value.encode('utf-8', errors='replace'), digest_size=8).digest()
-    return int.from_bytes(digest, byteorder='big', signed=False)
-
-
-def _nested_int(data: dict[str, Any], metric: str, key: str) -> int | None:
-    try:
-        return int((data.get(metric) or {}).get(key))
-    except Exception:
-        return None
-
-
 def _token_int(value: str) -> int | None:
     try:
         return int(str(value).replace(',', ''))
@@ -658,29 +513,6 @@ def _truncate_text(text: str | bytes, *, limit: int = 2000) -> str:
     if len(text) <= limit:
         return text
     return f'{text[:limit]}\n...[truncated {len(text) - limit} chars]...'
-
-
-def _encode_uvarint(value: int) -> bytes:
-    out = bytearray()
-    current = int(value)
-    while current >= 0x80:
-        out.append((current & 0x7F) | 0x80)
-        current >>= 7
-    out.append(current)
-    return bytes(out)
-
-
-def _encode_delta_varints(values: Iterable[int]) -> bytes:
-    payload = bytearray()
-    prev = 0
-    first = True
-    for value in values:
-        current = int(value)
-        delta = current if first else (current - prev)
-        payload.extend(_encode_uvarint(delta))
-        prev = current
-        first = False
-    return bytes(payload)
 
 
 if __name__ == '__main__':

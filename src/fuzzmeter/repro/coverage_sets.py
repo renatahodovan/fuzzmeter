@@ -5,7 +5,7 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-'''Read and write coverage set artifacts derived from llvm-cov exports.'''
+'''Read, write, and derive compact coverage set artifacts.'''
 
 from __future__ import annotations
 
@@ -15,56 +15,75 @@ import json
 import zlib
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
-METRICS = ('lines', 'branches', 'functions', 'regions')
-
-
-class CoverageSetStore:
-    '''Convert llvm-cov exports to per-metric coverage set artifacts.'''
-
-    @staticmethod
-    def write(path: Path, export_obj: dict[str, Any], summary: dict[str, Any]) -> None:
-        '''Write a coverage set artifact.'''
-        metrics = {metric: _covered_hashes(export_obj, metric) for metric in METRICS}
-        fixed_summary = dict(summary)
-        for metric, values in metrics.items():
-            fixed_summary[f'cov_{metric}_covered'] = len(values)
-        doc = {
-            'type': 'fuzzmeter.coverage.sets',
-            'summary': fixed_summary,
-            'metrics': metrics,
-        }
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(doc, separators=(',', ':')), encoding='utf-8')
-
-    @staticmethod
-    def read(path: Path, metric: str) -> set[str]:
-        '''Return covered element hash keys for one metric.'''
-        try:
-            doc = json.loads(path.read_text(encoding='utf-8', errors='replace') or '{}')
-            return {str(value) for value in _metric_values(doc, metric)}
-        except Exception:
-            return set()
+COVERAGE_METRICS = ('lines', 'branches', 'functions', 'regions')
 
 
-def covered_element_keys_from_compact_sets(path: Path, metric: str) -> set[str]:
-    '''Return covered element hash keys for a metric from a coverage set artifact.'''
-    return CoverageSetStore.read(path, metric)
+def coverage_metrics_from_export(export_obj: dict[str, Any]) -> dict[str, list[int]]:
+    '''Return per-metric covered element hashes from an llvm-cov export object.'''
+
+    return {metric: _covered_hashes(export_obj, metric) for metric in COVERAGE_METRICS}
 
 
-def coverage_summary_from_export(export_obj: dict[str, Any]) -> dict[str, int | None]:
+def coverage_summary_from_export(
+    export_obj: dict[str, Any],
+    *,
+    metrics: dict[str, list[int]] | None = None,
+) -> dict[str, int | None]:
     '''Return fuzzmeter coverage counters from an llvm-cov export object.'''
-    totals = (
-        (((export_obj.get('data') or [{}])[0] or {}).get('totals') or {})
-        if isinstance(export_obj.get('data'), list)
-        else {}
-    )
-    return {
-        key: _nested_int(totals, metric, field)
-        for metric in METRICS
+
+    def nested_int(data: dict[str, Any], metric: str, key: str) -> int | None:
+        try:
+            return int((data.get(metric) or {}).get(key))
+        except Exception:
+            return None
+
+    if isinstance(export_obj.get('data'), list):
+        totals = (((export_obj.get('data') or [{}])[0] or {}).get('totals') or {})
+    else:
+        totals = {}
+
+    summary = {
+        key: nested_int(totals, metric, field)
+        for metric in COVERAGE_METRICS
         for key, field in ((f'cov_{metric}_total', 'count'), (f'cov_{metric}_covered', 'covered'))
     }
+    for metric, values in (metrics or {}).items():
+        summary[f'cov_{metric}_covered'] = len(values)
+    return summary
+
+
+def read_covered_keys(path: Path, metric: str) -> set[str]:
+    '''Read covered element hash keys for one metric from a coverage set artifact.'''
+
+    try:
+        doc = json.loads(path.read_text(encoding='utf-8', errors='replace') or '{}')
+        return {str(value) for value in _metric_values(doc, metric)}
+    except Exception:
+        return set()
+
+
+def write_coverage_sets(path: Path, summary: dict[str, Any], metrics: dict[str, list[int]]) -> None:
+    '''Write a compact coverage set artifact.'''
+
+    doc = {
+        'version': 1,
+        'type': 'fuzzmeter.coverage.sets',
+        'encoding': 'blake2b64-delta-uvarint-zlib-base64',
+        'metrics': {
+            metric: {
+                'covered_count': len(metrics.get(metric, [])),
+                'total_count': summary.get(f'cov_{metric}_total'),
+                'payload': base64.b64encode(
+                    zlib.compress(_encode_delta_varints(metrics.get(metric, [])), level=9),
+                ).decode('ascii'),
+            }
+            for metric in COVERAGE_METRICS
+        },
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc, separators=(',', ':')), encoding='utf-8')
 
 
 def _metric_values(doc: dict[str, Any], metric: str) -> list[int]:
@@ -132,16 +151,19 @@ def _function_covered(function: Any) -> bool:
 
 def _function_key(default_filename: str, function: Any, ordinal: int) -> str:
     regions = function.get('regions') if isinstance(function, dict) else None
-    region_parts = list(regions[0][:4]) if isinstance(regions, list) and regions and _tuple_like(regions[0]) else []
+    region_parts = (
+        list(regions[0][:4])
+        if isinstance(regions, list) and regions and isinstance(regions[0], (list, tuple))
+        else []
+    )
     name = function.get('name') or function.get('demangled') or ordinal
-    return _safe_text(_function_filename(default_filename, function), name, *region_parts)
-
-
-def _function_filename(default_filename: str, function: dict[str, Any]) -> str:
     filenames = function.get('filenames')
-    if isinstance(filenames, list) and filenames:
-        return str(filenames[0])
-    return str(function.get('filename') or default_filename)
+    filename = (
+        str(filenames[0])
+        if isinstance(filenames, list) and filenames
+        else str(function.get('filename') or default_filename)
+    )
+    return _safe_text(filename, name, *region_parts)
 
 
 def _safe_text(*parts: Any) -> str:
@@ -149,11 +171,11 @@ def _safe_text(*parts: Any) -> str:
 
 
 def _covered_tuple(values: Any, start: int, end: int | None = None) -> bool:
-    return _tuple_like(values) and len(values) > start and any(_positive(value) for value in list(values)[start:end])
-
-
-def _tuple_like(value: Any) -> bool:
-    return isinstance(value, (list, tuple))
+    return (
+        isinstance(values, (list, tuple))
+        and len(values) > start
+        and any(_positive(value) for value in list(values)[start:end])
+    )
 
 
 def _positive(value: Any) -> bool:
@@ -166,13 +188,6 @@ def _positive(value: Any) -> bool:
 def _stable_hash(value: str) -> int:
     digest = hashlib.blake2b(value.encode('utf-8', errors='replace'), digest_size=8).digest()
     return int.from_bytes(digest, byteorder='big', signed=False)
-
-
-def _nested_int(data: dict[str, Any], metric: str, key: str) -> int | None:
-    try:
-        return int((data.get(metric) or {}).get(key))
-    except Exception:
-        return None
 
 
 def _decode_compact_metric(metric_data: dict[str, Any]) -> list[int] | None:
@@ -197,8 +212,7 @@ def _decode_compact_metric(metric_data: dict[str, Any]) -> list[int] | None:
 
 
 def _decode_uvarint(data: bytes, offset: int) -> tuple[int, int]:
-    value = 0
-    shift = 0
+    value, shift = 0, 0
     index = int(offset)
 
     while index < len(data):
@@ -210,3 +224,26 @@ def _decode_uvarint(data: bytes, offset: int) -> tuple[int, int]:
         shift += 7
 
     raise ValueError('Truncated uvarint payload')
+
+
+def _encode_uvarint(value: int) -> bytes:
+    out = bytearray()
+    current = int(value)
+    while current >= 0x80:
+        out.append((current & 0x7F) | 0x80)
+        current >>= 7
+    out.append(current)
+    return bytes(out)
+
+
+def _encode_delta_varints(values: Iterable[int]) -> bytes:
+    payload = bytearray()
+    prev = 0
+    first = True
+    for value in values:
+        current = int(value)
+        delta = current if first else (current - prev)
+        payload.extend(_encode_uvarint(delta))
+        prev = current
+        first = False
+    return bytes(payload)

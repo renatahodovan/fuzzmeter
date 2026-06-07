@@ -129,6 +129,7 @@ COPY --from=campaign_builder /src /src
 COPY --from=campaign_builder /work /work
 COPY --from=campaign_builder /out /out
 COPY --from=campaign_builder /benchmark.yaml /benchmark.yaml
+COPY --from=runtime_base /opt/fuzzmeter/coverage_sets.py /opt/fuzzmeter/coverage_sets.py
 COPY --from=runtime_base /opt/fuzzmeter/coverage_repro_worker.py /opt/fuzzmeter/coverage_repro_worker.py
 ENV PYTHONPATH=/opt/fuzzmeter
 ENV FM_TARGET_NAME=${TARGET_NAME}
