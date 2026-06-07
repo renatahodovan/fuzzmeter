@@ -14,7 +14,6 @@ import hashlib
 import json
 import zlib
 
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +42,8 @@ class CoverageSetStore:
     def read(path: Path, metric: str) -> set[str]:
         '''Return covered element hash keys for one metric.'''
         try:
-            return {str(value) for value in _read_metric(str(path), metric)}
+            doc = json.loads(path.read_text(encoding='utf-8', errors='replace') or '{}')
+            return {str(value) for value in _metric_values(doc, metric)}
         except Exception:
             return set()
 
@@ -67,14 +67,7 @@ def coverage_summary_from_export(export_obj: dict[str, Any]) -> dict[str, int | 
     }
 
 
-@lru_cache(maxsize=512)
-def _read_doc(path: str) -> dict[str, Any]:
-    return json.loads(Path(path).read_text(encoding='utf-8', errors='replace') or '{}')
-
-
-@lru_cache(maxsize=1024)
-def _read_metric(path: str, metric: str) -> list[int]:
-    doc = _read_doc(path)
+def _metric_values(doc: dict[str, Any], metric: str) -> list[int]:
     metrics = doc.get('metrics')
     values = metrics.get(metric) if isinstance(metrics, dict) else None
     if isinstance(values, list):
