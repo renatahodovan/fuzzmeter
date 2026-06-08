@@ -12,7 +12,6 @@ import hashlib
 import json
 import logging
 import re
-import subprocess
 
 from pathlib import Path
 
@@ -171,17 +170,13 @@ def _reproduce_crash_batch(
     )
 
     payloads = _read_batch_payloads(output_jsonl)
-    if not payloads:
-        return [
-            _reproduce_crash(
-                docker_runtime=docker_runtime,
-                trial=trial,
-                snapshot_crashes_dir=snapshot_crashes_dir,
-                new_file=new_file,
-                repro_logs_dir=repro_logs_dir,
-            )
-            for new_file in new_files
-        ]
+    if len(payloads) != len(new_files):
+        LOG.warning(
+            'Crash repro worker returned %d payloads for %d inputs in %s',
+            len(payloads),
+            len(new_files),
+            output_jsonl,
+        )
 
     results: list[tuple[str, dict, str, int]] = []
     for payload in payloads:
@@ -199,33 +194,6 @@ def _reproduce_crash_batch(
     return results
 
 
-def _reproduce_crash(
-    *,
-    docker_runtime: DockerRuntime,
-    trial: ActiveTrial,
-    snapshot_crashes_dir: Path,
-    new_file: DetectedFile,
-    repro_logs_dir: Path | None,
-) -> tuple[str, dict, str, int]:
-    docker = DockerClient(docker_runtime)
-    crash_input = _crash_input_path(snapshot_crashes_dir, new_file)
-    result = _run_repro_worker(
-        docker=docker,
-        trial=trial,
-        env={
-            'FM_CRASH_INPUT': docker.container_path(crash_input),
-        },
-    )
-    output = (result.stdout or '') + (('\n' + result.stderr) if result.stderr else '')
-
-    return _classify_crash_output(
-        trial=trial,
-        new_file=new_file,
-        output=output,
-        repro_logs_dir=repro_logs_dir,
-    )
-
-
 def _crash_input_path(snapshot_crashes_dir: Path, new_file: DetectedFile) -> Path:
     crash_input = snapshot_crashes_dir / new_file.rel_path
     if crash_input.is_file():
@@ -233,14 +201,14 @@ def _crash_input_path(snapshot_crashes_dir: Path, new_file: DetectedFile) -> Pat
     return new_file.abs_src
 
 
-def _run_repro_worker(*, docker: DockerClient, trial: ActiveTrial, env: dict[str, str]) -> subprocess.CompletedProcess:
+def _run_repro_worker(*, docker: DockerClient, trial: ActiveTrial, env: dict[str, str]) -> None:
     worker_env = {
         'FM_TARGET_NAME': trial.fuzz_target,
         'FM_INPUT_MODE': trial.input_mode,
         'FM_TIMEOUT_S': _format_timeout(_crash_timeout_s(trial)),
         **env,
     }
-    return docker.run(
+    docker.run(
         image=trial.asan_image,
         volumes=[docker.out_volume()],
         env=worker_env,

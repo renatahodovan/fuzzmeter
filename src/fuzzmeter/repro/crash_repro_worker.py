@@ -8,11 +8,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
-import sys
-import json
 
 from pathlib import Path
 
@@ -28,9 +27,8 @@ LOG = logging.getLogger(__name__)
 
 
 def main() -> None:
-    '''Run one crash input against the sanitizer binary.'''
+    '''Run crash inputs against the sanitizer binary and write JSONL results.'''
     target_name = os.environ['FM_TARGET_NAME']
-    crash_input_env = os.environ.get('FM_CRASH_INPUT', '')
     crash_input_list_env = os.environ.get('FM_CRASH_INPUT_LIST', '')
     output_jsonl_env = os.environ.get('FM_CRASH_OUTPUT_JSONL', '')
     timeout_s = float(os.environ.get('FM_TIMEOUT_S', '10.0'))
@@ -45,41 +43,26 @@ def main() -> None:
     env.setdefault('ASAN_OPTIONS', 'symbolize=1:abort_on_error=1:disable_coredump=1:detect_leaks=0:handle_abort=1')
     env.setdefault('UBSAN_OPTIONS', 'print_stacktrace=1:halt_on_error=1')
 
-    if crash_input_list_env:
-        if not output_jsonl_env:
-            LOG.error('FM_CRASH_OUTPUT_JSONL is required with FM_CRASH_INPUT_LIST')
-            raise SystemExit(2)
-        output_jsonl = Path(output_jsonl_env)
-        output_jsonl.parent.mkdir(parents=True, exist_ok=True)
-        crash_inputs = _read_input_list(Path(crash_input_list_env))
-        with output_jsonl.open('w', encoding='utf-8') as handle:
-            for index, crash_input in enumerate(crash_inputs):
-                payload = _run_one(
-                    asan_bin=asan_bin,
-                    crash_input=crash_input,
-                    input_mode=input_mode,
-                    timeout_s=timeout_s,
-                    env=env,
-                )
-                payload['index'] = index
-                payload['input'] = str(crash_input)
-                handle.write(json.dumps(payload))
-                handle.write('\n')
-        raise SystemExit(0)
-
-    crash_input = Path(crash_input_env)
-    if not crash_input.exists():
-        LOG.error('Crash input not found: %s', crash_input)
+    if not crash_input_list_env or not output_jsonl_env:
+        LOG.error('FM_CRASH_INPUT_LIST and FM_CRASH_OUTPUT_JSONL are required')
         raise SystemExit(2)
 
-    payload = _run_one(
-        asan_bin=asan_bin,
-        crash_input=crash_input,
-        input_mode=input_mode,
-        timeout_s=timeout_s,
-        env=env,
-    )
-    _write_child_output(stdout=payload.get('stdout') or '', stderr=payload.get('stderr') or '')
+    output_jsonl = Path(output_jsonl_env)
+    output_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    crash_inputs = _read_input_list(Path(crash_input_list_env))
+    with output_jsonl.open('w', encoding='utf-8') as handle:
+        for index, crash_input in enumerate(crash_inputs):
+            payload = _run_one(
+                asan_bin=asan_bin,
+                crash_input=crash_input,
+                input_mode=input_mode,
+                timeout_s=timeout_s,
+                env=env,
+            )
+            payload['index'] = index
+            payload['input'] = str(crash_input)
+            handle.write(json.dumps(payload))
+            handle.write('\n')
     raise SystemExit(0)
 
 
@@ -133,15 +116,6 @@ def _target_command(*, asan_bin: Path, input_mode: str, input_path: str) -> tupl
     if input_mode in ('in_process', 'file'):
         return [str(asan_bin), str(input_path)], None
     return [str(asan_bin)], Path(input_path).read_text(encoding='utf-8', errors='replace')
-
-
-def _write_child_output(*, stdout: str | bytes, stderr: str | bytes) -> None:
-    stdout = _decode_output(stdout)
-    stderr = _decode_output(stderr)
-    if stdout:
-        sys.stdout.write(stdout)
-    if stderr:
-        sys.stderr.write(stderr)
 
 
 def _decode_output(value: str | bytes) -> str:
