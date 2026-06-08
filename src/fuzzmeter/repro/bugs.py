@@ -7,12 +7,12 @@
 
 from __future__ import annotations
 
-import concurrent.futures
 import hashlib
 import json
 import logging
 import re
 
+from collections import Counter
 from pathlib import Path
 
 from ..db import DB
@@ -40,32 +40,31 @@ def reproduce_new_crashes(
     ts: int,
     snapshot_crashes_dir: Path,
     new_crash_files: list[DetectedFile],
-    repro_logs_dir: Path | None,
-    jobs: int = 1,
+    repro_logs_dir: Path,
+    batch_index: int,
 ) -> None:
     '''Reproduce new crashes in the sanitizer image and persist bug hits.'''
     if not new_crash_files:
         return
 
-    if repro_logs_dir is not None:
-        repro_logs_dir.mkdir(parents=True, exist_ok=True)
+    repro_logs_dir.mkdir(parents=True, exist_ok=True)
 
-    hits: dict[str, int] = {}
+    hits: Counter = Counter()
     metadata: dict[str, dict] = {}
     first_seen_by_bug: dict[str, int] = {}
-    for bug_key, bug_metadata, first_seen_ts in _reproduce_crashes(
+    for bug_key, bug_metadata, first_seen_ts in _reproduce_crash_batch(
         docker_runtime=docker_runtime,
         trial=trial,
         snapshot_crashes_dir=snapshot_crashes_dir,
-        new_crash_files=new_crash_files,
+        new_files=new_crash_files,
         repro_logs_dir=repro_logs_dir,
-        jobs=jobs,
+        batch_index=batch_index,
     ):
-        hits[bug_key] = hits.get(bug_key, 0) + 1
+        hits[bug_key] += 1
         previous_first_seen_ts = first_seen_by_bug.get(bug_key)
         if previous_first_seen_ts is None or int(first_seen_ts) < previous_first_seen_ts:
             metadata[bug_key] = bug_metadata
-        first_seen_by_bug[bug_key] = min(previous_first_seen_ts or int(first_seen_ts), int(first_seen_ts))
+            first_seen_by_bug[bug_key] = int(first_seen_ts)
 
     for bug_key, count in hits.items():
         bug_id = get_bug_id(
@@ -96,54 +95,15 @@ def reproduce_new_crashes(
     db.commit()
 
 
-def _reproduce_crashes(
-    *,
-    docker_runtime: DockerRuntime,
-    trial: ActiveTrial,
-    snapshot_crashes_dir: Path,
-    new_crash_files: list[DetectedFile],
-    repro_logs_dir: Path | None,
-    jobs: int,
-) -> list[tuple[str, dict, str, int]]:
-    if jobs <= 1 or len(new_crash_files) <= 1:
-        return _reproduce_crash_batch(
-            docker_runtime=docker_runtime,
-            trial=trial,
-            snapshot_crashes_dir=snapshot_crashes_dir,
-            new_files=new_crash_files,
-            repro_logs_dir=repro_logs_dir,
-            batch_index=0,
-        )
-
-    batches = list(_chunks(new_crash_files, 64))
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(int(jobs), len(batches))) as executor:
-        futures = [
-            executor.submit(
-                _reproduce_crash_batch,
-                docker_runtime=docker_runtime,
-                trial=trial,
-                snapshot_crashes_dir=snapshot_crashes_dir,
-                new_files=batch,
-                repro_logs_dir=repro_logs_dir,
-                batch_index=batch_index,
-            )
-            for batch_index, batch in enumerate(batches)
-        ]
-        results: list[tuple[str, dict, str, int]] = []
-        for future in concurrent.futures.as_completed(futures):
-            results.extend(future.result())
-        return results
-
-
 def _reproduce_crash_batch(
     *,
     docker_runtime: DockerRuntime,
     trial: ActiveTrial,
     snapshot_crashes_dir: Path,
     new_files: list[DetectedFile],
-    repro_logs_dir: Path | None,
+    repro_logs_dir: Path,
     batch_index: int,
-) -> list[tuple[str, dict, str, int]]:
+) -> list[tuple[str, dict, int]]:
     if not new_files:
         return []
 
@@ -151,7 +111,7 @@ def _reproduce_crash_batch(
     batch_root = snapshot_crashes_dir.parent / '.crash_repro_batches' / f'{batch_index:06d}'
     batch_root.mkdir(parents=True, exist_ok=True)
     input_list = batch_root / 'inputs.txt'
-    output_jsonl = batch_root / 'results.jsonl'
+    output_json = batch_root / 'results.json'
     input_list.write_text(
         '\n'.join(
             docker.container_path(_crash_input_path(snapshot_crashes_dir, new_file))
@@ -165,32 +125,29 @@ def _reproduce_crash_batch(
         trial=trial,
         env={
             'FM_CRASH_INPUT_LIST': docker.container_path(input_list),
-            'FM_CRASH_OUTPUT_JSONL': docker.container_path(output_jsonl),
+            'FM_CRASH_OUTPUT_JSON': docker.container_path(output_json),
         },
     )
 
-    payloads = _read_batch_payloads(output_jsonl)
-    if len(payloads) != len(new_files):
+    outputs = json.loads(output_json.read_text(encoding='utf-8', errors='replace'))
+    if len(outputs) != len(new_files):
         LOG.warning(
-            'Crash repro worker returned %d payloads for %d inputs in %s',
-            len(payloads),
+            'Crash repro worker returned %d outputs for %d inputs in %s',
+            len(outputs),
             len(new_files),
-            output_jsonl,
+            output_json,
         )
 
-    results: list[tuple[str, dict, str, int]] = []
-    for payload in payloads:
-        try:
-            new_file = new_files[int(payload.get('index'))]
-        except (TypeError, ValueError, IndexError):
-            continue
-        output = (payload.get('stdout') or '') + (('\n' + payload.get('stderr')) if payload.get('stderr') else '')
+    results: list[tuple[str, dict, int]] = []
+    for new_file, output in zip(new_files, outputs):
+        output = output.get('stdout') + output.get('stderr')
         results.append(_classify_crash_output(
             trial=trial,
             new_file=new_file,
             output=output,
             repro_logs_dir=repro_logs_dir,
         ))
+
     return results
 
 
@@ -218,7 +175,7 @@ def _run_repro_worker(*, docker: DockerClient, trial: ActiveTrial, env: dict[str
 
 
 def _crash_timeout_s(trial: ActiveTrial) -> float:
-    timeout_s = getattr(trial, 'target_timeout_s', None)
+    timeout_s = trial.target_timeout_s
     if timeout_s is None:
         return 10.0
     try:
@@ -238,22 +195,21 @@ def _classify_crash_output(
     trial: ActiveTrial,
     new_file: DetectedFile,
     output: str,
-    repro_logs_dir: Path | None,
-) -> tuple[str, dict, str, int]:
+    repro_logs_dir: Path,
+) -> tuple[str, dict, int]:
     issue = _extract_issue_type(output)
     frames = _extract_frames(output, max_frames=5)
     top_func = frames[0] if frames else 'unknown'
     bug_key = f'{issue}|{",".join(frames)}'
 
-    if repro_logs_dir is not None:
-        _store_repro_output(
-            repro_logs_dir,
-            benchmark=trial.benchmark,
-            fuzz_target=trial.fuzz_target,
-            fuzzer=trial.fuzzer,
-            bug_key=bug_key,
-            text=output,
-        )
+    _store_repro_output(
+        repro_logs_dir,
+        benchmark=trial.benchmark,
+        fuzz_target=trial.fuzz_target,
+        fuzzer=trial.fuzzer,
+        bug_key=bug_key,
+        text=output,
+    )
 
     first_seen_ts = int(new_file.mtime_ns // 1_000_000_000)
     return (
@@ -266,26 +222,6 @@ def _classify_crash_output(
         },
         first_seen_ts,
     )
-
-
-def _read_batch_payloads(path: Path) -> list[dict]:
-    if not path.is_file():
-        return []
-    payloads: list[dict] = []
-    for line in path.read_text(encoding='utf-8', errors='replace').splitlines():
-        if not line.strip():
-            continue
-        try:
-            value = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(value, dict):
-            payloads.append(value)
-    return payloads
-
-
-def _chunks(items: list[DetectedFile], size: int) -> list[list[DetectedFile]]:
-    return [items[index:index + size] for index in range(0, len(items), size)]
 
 
 def _extract_issue_type(log_text: str) -> str:
@@ -316,19 +252,9 @@ def _store_repro_output(
     bug_key: str,
     text: str,
 ) -> None:
-    safe_bug = _shorten_component(_sanitize_component(bug_key))
-    output_dir = root / fuzzer / benchmark / fuzz_target / safe_bug
+    safe_bug_key = re.sub(r'\s+', '_', bug_key.replace('/', '_').replace('\\', '_'))
+    if len(safe_bug_key) > _MAX_COMPONENT:
+        safe_bug_key = safe_bug_key[:_MAX_COMPONENT] + '_' + hashlib.sha1(safe_bug_key.encode()).hexdigest()[:12]
+    output_dir = root / fuzzer / benchmark / fuzz_target / safe_bug_key
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / f'{bug_key[:40]}.log').write_text(text, encoding='utf-8', errors='replace')
-
-
-def _sanitize_component(value: str) -> str:
-    value = value.replace('/', '_').replace('\\', '_')
-    return re.sub(r'\s+', '_', value)
-
-
-def _shorten_component(value: str) -> str:
-    if len(value) <= _MAX_COMPONENT:
-        return value
-    digest = hashlib.sha1(value.encode()).hexdigest()[:12]
-    return f'{value[:_MAX_COMPONENT]}_{digest}'
+    (output_dir / f'{safe_bug_key[:40]}.log').write_text(text, encoding='utf-8', errors='replace')

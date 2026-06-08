@@ -52,8 +52,6 @@ class SnapshotCrashRunner:
                 for task in batch_tasks
             ],
         )
-        if plan.crash_tasks:
-            db.commit()
 
     def _bugs_one_repro(
         self,
@@ -61,7 +59,7 @@ class SnapshotCrashRunner:
         db_path: Path,
         run_id: str,
         task: CrashBatchTask,
-        repro_logs_dir: Path | None,
+        repro_logs_dir: Path,
     ) -> None:
         db = DB.open(db_path)
         try:
@@ -75,7 +73,7 @@ class SnapshotCrashRunner:
                 snapshot_crashes_dir=task.snapshot_crashes_dir,
                 new_crash_files=task.new_crash_files,
                 repro_logs_dir=repro_logs_dir,
-                jobs=1,
+                batch_index=task.batch_index,
             )
         finally:
             db.close()
