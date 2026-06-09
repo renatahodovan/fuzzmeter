@@ -65,7 +65,7 @@ def plan_trials(
                 benchmark=entry.benchmark,
                 fuzz_target=entry.fuzz_target,
                 input_mode=entry.input_mode,
-                target_timeout_s=_target_timeout_s(entry.runtime_config),
+                target_timeout_s=entry.target_timeout_s,
                 rep=rep,
                 trial_key=f'{entry.fuzzer_name}__{entry.target_id}__rep{rep}',
                 paths=TrialPathConfig(
@@ -91,19 +91,6 @@ def plan_trials(
             trial_plans.append(TrialPlan(config=config, target_bin=prepared.target_bin))
 
     return trial_plans
-
-
-def _target_timeout_s(runtime_config: dict) -> float | None:
-    target_config = runtime_config.get('target') if isinstance(runtime_config, dict) else None
-    if not isinstance(target_config, dict):
-        return None
-    value = target_config.get('timeout_s')
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _prepare_trial_entry(

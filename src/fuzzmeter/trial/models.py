@@ -53,6 +53,7 @@ class TrialConfig:
     benchmark: str
     fuzz_target: str
     input_mode: str
+    target_timeout_s: float
     rep: int
     trial_key: str
     paths: TrialPathConfig
@@ -65,7 +66,6 @@ class TrialConfig:
     replay_trial_path: Optional[Path] = None
     build_config: Dict[str, Any] = field(default_factory=dict)
     runtime_config: Dict[str, Any] = field(default_factory=dict)
-    target_timeout_s: float | None = None
 
 
 @dataclass
@@ -112,6 +112,7 @@ class ActiveTrial:
     benchmark: str
     fuzz_target: str
     input_mode: str
+    target_timeout_s: float
     rep: int
     runner_image: str
     coverage_image: str
@@ -128,4 +129,3 @@ class ActiveTrial:
     started_ts: Optional[int] = None
     replay_start_ts: Optional[int] = None
     replay_end_ts: Optional[int] = None
-    target_timeout_s: float | None = None

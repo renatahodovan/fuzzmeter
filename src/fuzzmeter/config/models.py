@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import os
+
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -23,6 +25,7 @@ class CampaignCase:
     fuzz_target: str
     target_id: str
     input_mode: str
+    target_timeout_s: float = 1.0
     build_config: dict[str, Any] = field(default_factory=dict)
     runtime_config: dict[str, Any] = field(default_factory=dict)
     replay_trials: tuple[Path, ...] = ()
@@ -34,9 +37,9 @@ class CampaignSettings:
 
     time_seconds: int = 3600
     repetitions: int = 1
-    parallel_jobs: int = 1
-    snapshot_jobs: int | None = None
-    snapshot_every_seconds: int = 1800
+    parallel_jobs: int = os.cpu_count() or 2
+    snapshot_jobs: int = 1
+    snapshot_every_seconds: int = 900
     snapshot_export_every_ticks: int = 1
     memory: str | None = None
     memory_swap: str | None = None
