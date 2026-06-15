@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Schedule snapshot collection for live and replay trial instances.'''
+
 from __future__ import annotations
 
 import logging
@@ -21,7 +23,7 @@ from tqdm import tqdm
 from ..db import DB
 from ..db import snapshot as db_snapshot
 from ..docker import DockerRuntime
-from ..trial.models import ActiveTrial
+from ..trial.models import TrialInstance
 from .aggregate import SnapshotAggregateUpdater
 from .collector import SnapshotCollector
 from .coverage import SnapshotCoverageRunner
@@ -36,7 +38,7 @@ class _ScheduledSnapshot:
     tick_idx: int
     ts: int
     render_heavy: bool
-    trials: tuple[ActiveTrial, ...] | None = None
+    trials: tuple[TrialInstance, ...] | None = None
 
 
 def _open_progress_bar(total_seconds: int):
@@ -93,9 +95,9 @@ class SnapshotScheduler:
         self.coverage_export_every_ticks = int(coverage_export_every_ticks)
         self.jobs = int(jobs)
         self.docker_runtime = docker_runtime
-        self.started_ts = int(time.time())
+        self.start_ts = int(time.time())
 
-        self._active: dict[str, ActiveTrial] = {}
+        self._active: dict[str, TrialInstance] = {}
         self._periodic_ordinals: dict[str, int] = {}
         self._stop = False
 
@@ -122,11 +124,11 @@ class SnapshotScheduler:
         self._resource_telemetry = ResourceTelemetryCollector()
         self._run_progress = _open_progress_bar(self.campaign_seconds) if _logger_level() >= 20 else None
 
-    def register(self, trial: ActiveTrial) -> None:
+    def register(self, trial: TrialInstance) -> None:
         '''Register an active trial for future snapshots.'''
         with self._lock:
-            self._active[trial.trial_id] = trial
-            self._periodic_ordinals.setdefault(trial.trial_id, 0)
+            self._active[trial.config.trial_key] = trial
+            self._periodic_ordinals.setdefault(trial.config.trial_key, 0)
 
     def unregister(self, trial_id: str) -> None:
         '''Remove a trial from future snapshots.'''
@@ -138,7 +140,7 @@ class SnapshotScheduler:
         '''Request the scheduler loop to stop after pending work.'''
         self._stop = True
 
-    def request_trial_snapshot(self, trial: ActiveTrial, *, render_heavy: bool = True) -> None:
+    def schedule_final_tick(self, trial: TrialInstance, *, render_heavy: bool = True) -> None:
         '''Queue a final snapshot for one trial without blocking its worker slot.'''
         db = DB.open(self.db_path)
         try:
@@ -188,34 +190,30 @@ class SnapshotScheduler:
             db.close()
             _close_progress(self._run_progress)
 
-    def _snapshot_active(self) -> list[ActiveTrial]:
+    def _snapshot_active(self) -> list[TrialInstance]:
         with self._lock:
             return list(self._active.values())
 
-    def _active_for_ts(self, ts: int) -> list[ActiveTrial]:
+    def _active_for_ts(self, ts: int) -> list[TrialInstance]:
         active_trials = self._snapshot_active()
         return self._filter_trials_for_ts(active_trials, ts)
 
-    def _due_periodic_snapshots(self, *, now_ts: int) -> list[tuple[int, tuple[ActiveTrial, ...]]]:
-        due_by_ts: dict[int, list[ActiveTrial]] = {}
+    def _due_periodic_snapshots(self, *, now_ts: int) -> list[tuple[int, tuple[TrialInstance, ...]]]:
+        due_by_ts: dict[int, list[TrialInstance]] = {}
         with self._lock:
             for trial in self._active.values():
-                start_ts = trial.replay_start_ts if trial.replay_start_ts is not None else trial.started_ts
-                if start_ts is None:
-                    continue
-
-                next_ordinal = int(self._periodic_ordinals.get(trial.trial_id, 0)) + 1
-                last_due_ordinal = int(self._periodic_ordinals.get(trial.trial_id, 0))
+                next_ordinal = int(self._periodic_ordinals.get(trial.config.trial_key, 0)) + 1
+                last_due_ordinal = int(self._periodic_ordinals.get(trial.config.trial_key, 0))
                 while True:
-                    due_ts = int(start_ts) + next_ordinal * self.every_seconds
-                    if due_ts >= int(start_ts) + self.campaign_seconds:
+                    due_ts = int(trial.start_ts) + next_ordinal * self.every_seconds
+                    if due_ts >= int(trial.start_ts) + self.campaign_seconds:
                         break
                     if due_ts > int(now_ts):
                         break
                     due_by_ts.setdefault(due_ts, []).append(trial)
                     last_due_ordinal = next_ordinal
                     next_ordinal += 1
-                self._periodic_ordinals[trial.trial_id] = last_due_ordinal
+                self._periodic_ordinals[trial.config.trial_key] = last_due_ordinal
 
         return [
             (ts, tuple(trials))
@@ -227,7 +225,7 @@ class SnapshotScheduler:
         *,
         tick_idx: int,
         ts: int,
-        trials: tuple[ActiveTrial, ...],
+        trials: tuple[TrialInstance, ...],
     ) -> None:
         self._tick_queue.put(
             _ScheduledSnapshot(
@@ -245,14 +243,12 @@ class SnapshotScheduler:
         )
 
     @staticmethod
-    def _filter_trials_for_ts(trials: list[ActiveTrial] | tuple[ActiveTrial, ...], ts: int) -> list[ActiveTrial]:
-        filtered: list[ActiveTrial] = []
+    def _filter_trials_for_ts(trials: list[TrialInstance] | tuple[TrialInstance, ...], ts: int) -> list[TrialInstance]:
+        filtered: list[TrialInstance] = []
         for trial in trials:
-            start_ts = trial.replay_start_ts if trial.replay_start_ts is not None else trial.started_ts
-            end_ts = trial.replay_end_ts
-            if start_ts is not None and ts < int(start_ts):
+            if ts < int(trial.start_ts):
                 continue
-            if end_ts is not None and ts > int(end_ts):
+            if trial.end_ts is not None and ts > int(trial.end_ts):
                 continue
             filtered.append(trial)
         return filtered
@@ -264,7 +260,7 @@ class SnapshotScheduler:
         tick_idx: int,
         ts: int,
         render_heavy: bool = False,
-        selected_trials: tuple[ActiveTrial, ...] | None = None,
+        selected_trials: tuple[TrialInstance, ...] | None = None,
     ) -> None:
         active_trials = (
             self._filter_trials_for_ts(selected_trials, ts)
@@ -275,7 +271,7 @@ class SnapshotScheduler:
             _update_progress(
                 self._run_progress,
                 total_seconds=self.campaign_seconds,
-                elapsed_seconds=ts - self.started_ts,
+                elapsed_seconds=ts - self.start_ts,
                 tick_idx=tick_idx,
                 active_trials=len(active_trials),
             )
@@ -344,16 +340,15 @@ class SnapshotScheduler:
                     break
                 try:
                     with self._tick_lock:
-                        ts = int(item.ts)
                         LOG.info(
                             'Starting %s. snapshot processing after %s seconds',
                             item.tick_idx,
-                            max(0, ts - self.started_ts),
+                            max(0, item.ts - self.start_ts),
                         )
                         self._process_tick(
                             db=db,
                             tick_idx=item.tick_idx,
-                            ts=ts,
+                            ts=item.ts,
                             render_heavy=item.render_heavy,
                             selected_trials=item.trials,
                         )
@@ -381,11 +376,7 @@ class ReplaySnapshotScheduler(SnapshotScheduler):
                 LOG.warning('Replay run has no snapshot ticks to process')
                 return
 
-            self.started_ts = min(
-                int(trial.replay_start_ts)
-                for trial in active_trials
-                if trial.replay_start_ts is not None
-            )
+            self.start_ts = min(int(trial.start_ts) for trial in active_trials)
             LOG.debug('Start replay snapshot loop with %s ticks', len(tick_schedule))
             for ts in tick_schedule:
                 if self._stop:
@@ -397,13 +388,11 @@ class ReplaySnapshotScheduler(SnapshotScheduler):
             db.close()
             _close_progress(self._run_progress)
 
-    def _build_tick_schedule(self, active_trials: list[ActiveTrial]) -> list[int]:
+    def _build_tick_schedule(self, active_trials: list[TrialInstance]) -> list[int]:
         tick_ts: set[int] = set()
         for trial in active_trials:
-            start_ts = trial.replay_start_ts
-            end_ts = trial.replay_end_ts
-            if start_ts is None or end_ts is None:
-                continue
+            start_ts = trial.start_ts
+            end_ts = trial.end_ts
             if end_ts < start_ts:
                 end_ts = start_ts
 

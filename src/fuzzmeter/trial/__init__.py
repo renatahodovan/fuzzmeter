@@ -5,4 +5,4 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-__all__: list[str] = []
+'''Trial planning, workspace preparation, and execution helpers.'''

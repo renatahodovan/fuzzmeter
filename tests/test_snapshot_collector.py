@@ -275,7 +275,7 @@ class SnapshotCollectorTest(unittest.TestCase):
             )
 
             with patch('fuzzmeter.snapshot.scheduler.time.time', return_value=1234):
-                scheduler.request_trial_snapshot(_active_trial(root, started_ts=934))
+                scheduler.schedule_final_tick(_active_trial(root, started_ts=934))
 
             item = scheduler._tick_queue.get_nowait()
             self.assertEqual(1234, item.ts)
@@ -309,7 +309,7 @@ class SnapshotCollectorTest(unittest.TestCase):
                 worker = threading.Thread(target=scheduler.run_loop)
                 worker.start()
                 try:
-                    scheduler.request_trial_snapshot(trial)
+                    scheduler.schedule_final_tick(trial)
                     self.assertTrue(processed_event.wait(2.0))
                     time.sleep(1.2)
                 finally:

@@ -44,7 +44,7 @@ class SnapshotAggregateUpdater:
     ) -> None:
         '''Update aggregate coverage for campaigns changed at the given tick.'''
         campaigns = sorted({
-            (task.trial.fuzzer, task.trial.benchmark, task.trial.fuzz_target)
+            (task.trial.config.fuzzer, task.trial.config.benchmark, task.trial.config.fuzz_target)
             for task in coverage_tasks
         })
         for fuzzer, benchmark, fuzz_target in campaigns:

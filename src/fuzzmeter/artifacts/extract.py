@@ -27,7 +27,7 @@ def extract_fuzz_binaries(*, campaign_config: CampaignConfig, run_dir: Path) -> 
     docker = DockerClient()
     fuzz_binaries: dict[tuple[str, str], Path] = {}
     for entry in campaign_config.cases:
-        runner_image = TrialImages.for_trial(
+        runner_image = TrialImages(
             fuzzer_name=entry.fuzzer_name,
             target_id=entry.target_id,
         ).runner
@@ -41,9 +41,9 @@ def extract_fuzz_binaries(*, campaign_config: CampaignConfig, run_dir: Path) -> 
     cases_by_target: dict[str, CampaignCase] = {}
     for case in campaign_config.cases:
         cases_by_target[case.target_id] = case
-    
+
     for target_id, owner_entry in cases_by_target.items():
-        images = TrialImages.for_trial(fuzzer_name=owner_entry.fuzzer_name, target_id=target_id)
+        images = TrialImages(fuzzer_name=owner_entry.fuzzer_name, target_id=target_id)
         _extract_named_binary_from_image(
             docker=docker,
             image=images.coverage,

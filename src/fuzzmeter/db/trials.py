@@ -21,21 +21,20 @@ def ensure_trial_row(
     fuzz_target: str,
     rep: int,
     time_seconds: int,
-    jobs: int,
     status: str,
     fuzzer_image: str,
     build_config_json: str | None,
     runtime_config_json: str | None,
-    started_ts: int,
+    start_ts: int,
 ) -> int:
     '''Create or find one trial row and return its database id.'''
     db.exec(
         '''
         INSERT OR IGNORE INTO trials(
             run_id,fuzzer,benchmark,fuzz_target,rep,
-            time_seconds,jobs,status,fuzzer_image,build_config_json,runtime_config_json
+            time_seconds,status,fuzzer_image,build_config_json,runtime_config_json
         )
-        VALUES(?,?,?,?,?,?,?,?,?,?,?)
+        VALUES(?,?,?,?,?,?,?,?,?,?)
         ''',
         (
             str(run_id),
@@ -44,7 +43,6 @@ def ensure_trial_row(
             str(fuzz_target),
             int(rep),
             int(time_seconds),
-            int(jobs),
             str(status),
             str(fuzzer_image),
             build_config_json,
@@ -57,7 +55,7 @@ def ensure_trial_row(
     )
     if tid is None:
         raise RuntimeError('Failed to create trial row')
-    db.exec('UPDATE trials SET started_ts=? WHERE trial_id=?', (int(started_ts), int(tid)))
+    db.exec('UPDATE trials SET started_ts=? WHERE trial_id=?', (int(start_ts), int(tid)))
     return int(tid)
 
 

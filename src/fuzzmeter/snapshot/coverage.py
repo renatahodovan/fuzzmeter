@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Run coverage measurement for snapshot corpus batches.'''
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -118,10 +120,13 @@ class SnapshotCoverageRunner:
     def _prepare_one_task(self, *, db: DB, run_dir: Path, task: CoverageTask) -> _PreparedCoverageTask | None:
         trial = task.trial
         corpus_dir = Path(task.snap_dir) / 'corpus'
-        latest_root = trial_coverage_root(run_dir, trial.fuzzer, trial.benchmark, trial.fuzz_target) / trial.trial_id
+        latest_root = (
+            trial_coverage_root(run_dir, trial.config.fuzzer, trial.config.benchmark, trial.config.fuzz_target)
+            / trial.config.trial_key
+        )
         latest_root.mkdir(parents=True, exist_ok=True)
         summary_path = latest_root / 'summary.json'
-        state_dir = trial.trial_root / 'coverage_state'
+        state_dir = trial.layout.trial_dir / 'coverage_state'
         state_dir.mkdir(parents=True, exist_ok=True)
 
         if not (state_dir / 'merged.profdata').exists():
@@ -166,7 +171,7 @@ class SnapshotCoverageRunner:
     def _build_batches(prepared: _PreparedCoverageTask) -> list[CoverageInprocessTask | CoverageBatchTask]:
         task = prepared.task
         batches: list[CoverageInprocessTask | CoverageBatchTask] = []
-        use_inprocess = task.trial.input_mode == 'in_process'
+        use_inprocess = task.trial.config.fuzz_target_input_mode == 'in_process'
         for index, input_batch in enumerate(_chunks(prepared.inputs, DEFAULT_COVERAGE_BATCH_SIZE)):
             task_cls = CoverageInprocessTask if use_inprocess else CoverageBatchTask
             batches.append(
@@ -184,9 +189,9 @@ class SnapshotCoverageRunner:
     def _run_batch_task(self, *, task: CoverageInprocessTask | CoverageBatchTask) -> None:
         run_coverage_batch(
             docker_runtime=self.docker_runtime,
-            image=task.trial.coverage_image,
-            fuzz_target=task.trial.fuzz_target,
-            input_mode=task.trial.input_mode,
+            image=task.trial.config.images.coverage,
+            fuzz_target=task.trial.config.fuzz_target,
+            input_mode=task.trial.config.fuzz_target_input_mode,
             inputs=task.inputs,
             batch_profdata_path=task.batch_profdata_path,
             diagnostics_dir=task.diagnostics_dir,
@@ -205,9 +210,9 @@ class SnapshotCoverageRunner:
             summary = finalize_coverage(
                 docker_runtime=self.docker_runtime,
                 run_dir=run_dir,
-                image=task.trial.coverage_image,
-                benchmark=task.trial.benchmark,
-                fuzz_target=task.trial.fuzz_target,
+                image=task.trial.config.images.coverage,
+                benchmark=task.trial.config.benchmark,
+                fuzz_target=task.trial.config.fuzz_target,
                 state_dir=prepared.state_dir,
                 work_dir=prepared.state_dir / f'_tmp_{task.snapshot_id}_final',
                 out_root=prepared.latest_root,

@@ -188,7 +188,7 @@ class RunnerLoopTest(unittest.TestCase):
                         fuzzer_image='runner',
                         build_config_json=None,
                         runtime_config_json=None,
-                        started_ts=100 + idx,
+                        start_ts=100 + idx,
                     )
                     for idx in (1, 2)
                 ]
@@ -469,7 +469,7 @@ def _create_active_trial(
             fuzzer_image='runner',
             build_config_json=None,
             runtime_config_json=None,
-            started_ts=started_ts,
+            start_ts=started_ts,
         )
         db.commit()
     finally:

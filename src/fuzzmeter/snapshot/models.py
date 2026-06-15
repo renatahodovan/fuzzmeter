@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..repro import ingest as repro_ingest
-from ..trial.models import ActiveTrial
+from ..trial.models import TrialInstance
 
 
 DEFAULT_COVERAGE_BATCH_SIZE = 256
@@ -22,7 +22,7 @@ DEFAULT_CRASH_BATCH_SIZE = 64
 class CoverageTask:
     '''Describe one trial coverage task for a snapshot tick.'''
 
-    trial: ActiveTrial
+    trial: TrialInstance
     snap_dir: Path
     snapshot_id: int
     tick_idx: int
@@ -33,7 +33,7 @@ class CoverageTask:
 class CrashTask:
     '''Describe one crash reproduction task for a snapshot tick.'''
 
-    trial: ActiveTrial
+    trial: TrialInstance
     snapshot_id: int
     ts: int
     snapshot_crashes_dir: Path
@@ -44,7 +44,7 @@ class CrashTask:
 class CoverageInprocessTask:
     '''Describe one libFuzzer in-process coverage replay batch.'''
 
-    trial: ActiveTrial
+    trial: TrialInstance
     snapshot_id: int
     inputs: list[Path]
     batch_index: int
@@ -56,7 +56,7 @@ class CoverageInprocessTask:
 class CoverageBatchTask:
     '''Describe one regular coverage replay batch run in one container.'''
 
-    trial: ActiveTrial
+    trial: TrialInstance
     snapshot_id: int
     inputs: list[Path]
     batch_index: int
@@ -68,7 +68,7 @@ class CoverageBatchTask:
 class CrashBatchTask:
     '''Describe one crash replay batch run sequentially in one container.'''
 
-    trial: ActiveTrial
+    trial: TrialInstance
     snapshot_id: int
     ts: int
     snapshot_crashes_dir: Path
@@ -80,6 +80,6 @@ class CrashBatchTask:
 class SnapshotTickPlan:
     '''Group all snapshot work selected for one tick.'''
 
-    active_trials: list[ActiveTrial] = field(default_factory=list)
+    active_trials: list[TrialInstance] = field(default_factory=list)
     coverage_tasks: list[CoverageTask] = field(default_factory=list)
     crash_tasks: list[CrashTask] = field(default_factory=list)

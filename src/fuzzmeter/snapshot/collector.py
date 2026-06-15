@@ -23,7 +23,7 @@ from ..docker import DockerRuntime
 from ..fuzzers import FuzzerLoader, HookRunner, HookSpec
 from ..repro import ingest as repro_ingest
 from ..repro.coverage_state import seed_coverage_root
-from ..trial.models import ActiveTrial
+from ..trial.models import TrialInstance
 from .models import CrashTask, CoverageTask, SnapshotTickPlan
 
 LOG = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ class SnapshotCollector:
         *,
         tick_idx: int,
         ts: int,
-        active_trials: list[ActiveTrial],
+        active_trials: list[TrialInstance],
         jobs: int | None = None,
         render_heavy: bool = False,
     ) -> SnapshotTickPlan:
@@ -117,14 +117,14 @@ class SnapshotCollector:
         *,
         tick_idx: int,
         ts: int,
-        trial: ActiveTrial,
+        trial: TrialInstance,
         preprocess_jobs: int,
         render_heavy: bool,
     ) -> _CollectedTrialSnapshot:
         db = DB.open(self.db_path)
         try:
             snapshot_dir_idx = self._next_snapshot_dir_idx(db=db, trial=trial)
-            snap_dir = trial.snapshots_root / f'snap_{snapshot_dir_idx:06d}'
+            snap_dir = trial.layout.snapshots_dir / f'snap_{snapshot_dir_idx:06d}'
             snap_corpus = snap_dir / 'corpus'
             snap_crashes = snap_dir / 'crashes'
             snap_corpus.mkdir(parents=True, exist_ok=False)
@@ -132,12 +132,12 @@ class SnapshotCollector:
 
             stats = self._read_stats(trial, tick_ts=ts)
             execs_done = self._safe_int(stats.get('execs_done'))
-            previous_snapshot = db_snapshot.latest_trial_snapshot(db, trial_row_id=trial.trial_row_id)
+            previous_snapshot = db_snapshot.latest_trial_snapshot(db, trial_row_id=trial.db_id)
             interval_start_ts = self._snapshot_interval_start_ts(trial=trial, previous_snapshot=previous_snapshot)
             new_corpus_files = self._detect_new_files(
                 kind='corpus',
                 trial=trial,
-                src_root=trial.corpus_root,
+                src_root=trial.layout.corpus_dir,
                 start_ts=interval_start_ts,
                 end_ts=ts,
             )
@@ -150,7 +150,7 @@ class SnapshotCollector:
 
             ts_text = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(ts))
             LOG.debug(
-                f'\t\tDetected {len(new_corpus_files)} new corpus files for trial {trial.trial_id} '
+                f'\t\tDetected {len(new_corpus_files)} new corpus files for trial {trial.config.trial_key} '
                 f'from {ts_text}'
             )
             copied_corpus = self._copy_new_corpus(
@@ -163,14 +163,14 @@ class SnapshotCollector:
             new_crash_files = self._detect_new_files(
                 kind='crashes',
                 trial=trial,
-                src_root=trial.crashes_root,
+                src_root=trial.layout.crashes_dir,
                 start_ts=interval_start_ts,
                 end_ts=ts,
             )
 
             snapshot_id = db_snapshot.ensure_snapshot_row(
                 db,
-                trial_row_id=trial.trial_row_id,
+                trial_row_id=trial.db_id,
                 idx=tick_idx,
                 ts=ts,
                 corpus_files=live_corpus_files,
@@ -195,14 +195,14 @@ class SnapshotCollector:
             else:
                 db_snapshot.copy_previous_coverage_fields(
                     db,
-                    trial_row_id=trial.trial_row_id,
+                    trial_row_id=trial.db_id,
                     snapshot_id=snapshot_id,
                 )
 
             crash_task = None
             if new_crash_files:
                 repro_ingest.copy_into_snapshot(new_crash_files, snap_dir=snap_dir, subdir='crashes')
-                if trial.snapshot_preprocess_script:
+                if trial.config.snapshot_preprocess:
                     cur_time = time.time()
                     self._run_snapshot_preprocess(
                         trial=trial,
@@ -211,7 +211,7 @@ class SnapshotCollector:
                         jobs=preprocess_jobs,
                     )
                     LOG.debug(
-                        f'\t\tCrashes preprocess hook {trial.fuzzer} finished in '
+                        f'\t\tCrashes preprocess hook {trial.config.fuzzer} finished in '
                         f'{time.time() - cur_time:.1f} seconds'
                     )
                 snapshot_crash_files = self._snapshot_crash_files(snap_crashes)
@@ -232,10 +232,10 @@ class SnapshotCollector:
             db.close()
 
     @staticmethod
-    def _next_snapshot_dir_idx(*, db: DB, trial: ActiveTrial) -> int:
+    def _next_snapshot_dir_idx(*, db: DB, trial: TrialInstance) -> int:
         existing = db.scalar(
             'SELECT COUNT(*) FROM snapshots WHERE trial_id=?',
-            (int(trial.trial_row_id),),
+            (int(trial.db_id),),
         )
         return int(existing or 0) + 1
 
@@ -250,12 +250,12 @@ class SnapshotCollector:
         self,
         *,
         kind: repro_ingest.OutputFileKind,
-        trial: ActiveTrial,
+        trial: TrialInstance,
         src_root: Path,
         start_ts: int,
         end_ts: int,
     ) -> list[repro_ingest.DetectedFile]:
-        if trial.replay_start_ts is not None:
+        if trial.end_ts is not None:
             return self._detect_replay_files(
                 kind=kind,
                 trial=trial,
@@ -275,7 +275,7 @@ class SnapshotCollector:
         self,
         *,
         kind: repro_ingest.OutputFileKind,
-        trial: ActiveTrial,
+        trial: TrialInstance,
         src_root: Path,
         start_ts: int,
         end_ts: int,
@@ -314,8 +314,8 @@ class SnapshotCollector:
         )
         return detected
 
-    def _replay_timeline_index(self, trial: ActiveTrial) -> _ReplayTimelineIndex:
-        timeline_path = trial.trial_root / 'replay_timeline.json'
+    def _replay_timeline_index(self, trial: TrialInstance) -> _ReplayTimelineIndex:
+        timeline_path = trial.layout.trial_dir / 'replay_timeline.json'
         cached = self._replay_timeline_cache.get(timeline_path)
         if cached is not None:
             return cached
@@ -324,8 +324,8 @@ class SnapshotCollector:
         raw_times = raw.get('file_times_ns') or {}
         entries_by_kind: dict[str, list[tuple[int, str]]] = {'corpus': [], 'crashes': []}
         prefixes = {
-            'corpus': self._timeline_prefix(root=trial.corpus_root, live_out=trial.live_out),
-            'crashes': self._timeline_prefix(root=trial.crashes_root, live_out=trial.live_out),
+            'corpus': self._timeline_prefix(root=trial.layout.corpus_dir, live_out=trial.layout.fuzz_dir),
+            'crashes': self._timeline_prefix(root=trial.layout.crashes_dir, live_out=trial.layout.fuzz_dir),
         }
         for rel_path, logical_ns in raw_times.items():
             rel_text = str(rel_path).replace('\\', '/')
@@ -352,41 +352,37 @@ class SnapshotCollector:
         return b'/'.join(os.fsencode(part) for part in rel_path.parts).hex()
 
     @staticmethod
-    def _read_stats(trial: ActiveTrial, *, tick_ts: int | None = None) -> dict[str, Any]:
+    def _read_stats(trial: TrialInstance, *, tick_ts: int | None = None) -> dict[str, Any]:
         try:
             cutoff_elapsed_s = None
-            if tick_ts is not None and trial.started_ts is not None:
-                cutoff_elapsed_s = max(0, int(tick_ts) - int(trial.started_ts))
+            if tick_ts is not None:
+                cutoff_elapsed_s = max(0, int(tick_ts) - int(trial.start_ts))
             stats = (
                 FuzzerLoader(trial.repo_root)
-                .load(trial.fuzzer_base)
-                .stats(trial.trial_root, cutoff_elapsed_s=cutoff_elapsed_s)
+                .load(trial.config.fuzzer_base)
+                .stats(trial.layout.trial_dir, cutoff_elapsed_s=cutoff_elapsed_s)
                 or {}
             )
             return stats if isinstance(stats, dict) else {}
         except Exception as exc:
             LOG.warning(
-                "Failed to get stats from %s adapter for trial_row_id=%s: %s",
-                trial.fuzzer_base,
-                trial.trial_row_id,
+                'Failed to get stats from %s adapter for trial_row_id=%s: %s',
+                trial.config.fuzzer_base,
+                trial.db_id,
                 exc,
             )
             return {}
 
     @staticmethod
-    def _snapshot_interval_start_ts(*, trial: ActiveTrial, previous_snapshot: dict[str, Any] | None) -> int | None:
+    def _snapshot_interval_start_ts(*, trial: TrialInstance, previous_snapshot: dict[str, Any] | None) -> int | None:
         if previous_snapshot is not None:
-            return SnapshotCollector._safe_int(previous_snapshot.get("ts"))
-        if trial.replay_start_ts is not None:
-            return int(trial.replay_start_ts)
-        if trial.started_ts is not None:
-            return int(trial.started_ts)
-        return None
+            return SnapshotCollector._safe_int(previous_snapshot.get('ts'))
+        return int(trial.start_ts)
 
     def _copy_new_corpus(
         self,
         *,
-        trial: ActiveTrial,
+        trial: TrialInstance,
         snap_dir: Path,
         snap_corpus: Path,
         new_corpus_files: list[repro_ingest.DetectedFile],
@@ -395,50 +391,47 @@ class SnapshotCollector:
         if not new_corpus_files:
             return 0
 
-        copied_corpus = repro_ingest.copy_into_snapshot(new_corpus_files, snap_dir=snap_dir, subdir="corpus")
-        if trial.snapshot_preprocess_script:
+        copied_corpus = repro_ingest.copy_into_snapshot(new_corpus_files, snap_dir=snap_dir, subdir='corpus')
+        if trial.config.snapshot_preprocess:
             cur_time = time.time()
             self._run_snapshot_preprocess(trial=trial, snap_dir=snap_dir, target_dir=snap_corpus, jobs=jobs)
             LOG.debug(
-                f'\t\tCorpus preprocess hook {trial.fuzzer} finished in {time.time() - cur_time:.1f} seconds '
+                f'\t\tCorpus preprocess hook {trial.config.fuzzer} finished in {time.time() - cur_time:.1f} seconds '
                 f'with {jobs} jobs'
             )
-            copied_corpus = sum(1 for path in snap_corpus.rglob("*") if path.is_file())
+            copied_corpus = sum(1 for path in snap_corpus.rglob('*') if path.is_file())
 
         return copied_corpus
 
     @staticmethod
-    def _should_run_coverage(*, db: DB, trial: ActiveTrial, copied_corpus: int) -> bool:
+    def _should_run_coverage(*, db: DB, trial: TrialInstance, copied_corpus: int) -> bool:
         if (
             SnapshotCollector._seed_baseline_exists(trial)
-            and not db_snapshot.trial_has_coverage_snapshots(db, trial_row_id=trial.trial_row_id)
+            and not db_snapshot.trial_has_coverage_snapshots(db, trial_row_id=trial.db_id)
         ):
             return True
         return copied_corpus > 0
 
     @staticmethod
-    def _seed_baseline_exists(trial: ActiveTrial) -> bool:
-        try:
-            run_dir = Path(trial.trial_root).parent.parent
-        except Exception:
-            return False
-        base_root = seed_coverage_root(run_dir, trial.fuzzer, trial.benchmark, trial.fuzz_target)
-        return (base_root / "summary.json").is_file() and (base_root / "_state" / "merged.profdata").is_file()
+    def _seed_baseline_exists(trial: TrialInstance) -> bool:
+        run_dir = trial.layout.trial_dir.parent.parent
+        base_root = seed_coverage_root(run_dir, trial.config.fuzzer, trial.config.benchmark, trial.config.fuzz_target)
+        return (base_root / 'summary.json').is_file() and (base_root / '_state' / 'merged.profdata').is_file()
 
-    def _run_snapshot_preprocess(self, *, trial: ActiveTrial, snap_dir: Path, target_dir: Path, jobs: int) -> None:
+    def _run_snapshot_preprocess(self, *, trial: TrialInstance, snap_dir: Path, target_dir: Path, jobs: int) -> None:
         HookRunner(docker_runtime=self.docker_runtime).run(
             HookSpec(
-                name="snapshot_preprocess",
-                script=trial.snapshot_preprocess_script,
+                name='snapshot_preprocess',
+                script=trial.config.snapshot_preprocess,
                 env={
-                    "FM_SNAPSHOT_DIR": str(snap_dir),
-                    "FM_SNAPSHOT_CORPUS_DIR": str(target_dir),
-                    "FM_BENCHMARK": trial.benchmark,
-                    "FM_FUZZ_TARGET": trial.fuzz_target,
-                    "FM_FUZZER": trial.fuzzer,
-                    "FM_RUNNER_IMAGE": trial.runner_image,
-                    "FM_REPO_ROOT": str(trial.repo_root),
-                    "FM_JOBS": str(jobs),
+                    'FM_SNAPSHOT_DIR': str(snap_dir),
+                    'FM_SNAPSHOT_CORPUS_DIR': str(target_dir),
+                    'FM_BENCHMARK': trial.config.benchmark,
+                    'FM_FUZZ_TARGET': trial.config.fuzz_target,
+                    'FM_FUZZER': trial.config.fuzzer,
+                    'FM_RUNNER_IMAGE': trial.config.images.runner,
+                    'FM_REPO_ROOT': str(trial.repo_root),
+                    'FM_JOBS': str(jobs),
                 },
                 cwd=snap_dir,
             )
@@ -447,7 +440,7 @@ class SnapshotCollector:
     @staticmethod
     def _snapshot_crash_files(snapshot_crashes_dir: Path) -> list[repro_ingest.DetectedFile]:
         crash_files: list[repro_ingest.DetectedFile] = []
-        for path in sorted(snapshot_crashes_dir.rglob("*")):
+        for path in sorted(snapshot_crashes_dir.rglob('*')):
             if not path.is_file():
                 continue
             rel_path = path.relative_to(snapshot_crashes_dir)
@@ -455,7 +448,7 @@ class SnapshotCollector:
             stat = path.stat()
             crash_files.append(
                 repro_ingest.DetectedFile(
-                    kind="crashes",
+                    kind='crashes',
                     rel_path=rel_text,
                     db_rel_path=rel_text,
                     abs_src=path,
@@ -485,5 +478,5 @@ class SnapshotCollector:
         elif item.crash_task is not None:
             trial = item.crash_task.trial
         else:
-            return ("", -1)
-        return (trial.trial_id, trial.trial_row_id)
+            return ('', -1)
+        return (trial.config.trial_key, trial.db_id)

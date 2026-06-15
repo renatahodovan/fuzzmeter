@@ -13,19 +13,19 @@ import shutil
 
 from pathlib import Path
 
-from ..trial.models import ActiveTrial
+from ..trial.models import TrialInstance
 from .coverage_state import seed_coverage_root
 
 
 def bootstrap_from_seed_baseline(
     *,
     run_dir: Path,
-    trial: ActiveTrial,
+    trial: TrialInstance,
     latest_root: Path,
     state_dir: Path,
 ) -> None:
     '''Copy seed baseline coverage state into an empty trial coverage state.'''
-    base_root = seed_coverage_root(run_dir, trial.fuzzer, trial.benchmark, trial.fuzz_target)
+    base_root = seed_coverage_root(run_dir, trial.config.fuzzer, trial.config.benchmark, trial.config.fuzz_target)
     baseline_summary = base_root / 'summary.json'
     baseline_profdata = base_root / '_state' / 'merged.profdata'
 

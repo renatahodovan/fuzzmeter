@@ -18,7 +18,7 @@ from ..docker import DockerRuntime
 from ..fuzzers import FuzzerLoader
 from ..repro.coverage_baseline import SeedBaselineJob, measure_seed_baseline
 from ..trial.models import TrialImages
-from ..trial.workspace import TrialWorkspacePreparer
+from ..trial.workspace import extract_seed_corpus_from_image
 
 LOG = logging.getLogger(__name__)
 
@@ -30,11 +30,11 @@ def prepare_seed_corpora(*, campaign_config: CampaignConfig, run_dir: Path) -> N
 
     LOG.info('Preparing shared seed corpora...')
     for entry in campaign_config.cases:
-        runner_image = TrialImages.for_trial(
+        runner_image = TrialImages(
             fuzzer_name=entry.fuzzer_name,
             target_id=entry.target_id,
         ).runner
-        extracted = TrialWorkspacePreparer.extract_seed_corpus_from_image(
+        extracted = extract_seed_corpus_from_image(
             image=runner_image,
             fuzzer=entry.fuzzer_name,
             benchmark=entry.benchmark,
@@ -91,7 +91,7 @@ def _collect_seed_baseline_jobs(
         seed_root = Path(run_dir) / 'seed_corpora' / seed_key / 'corpus'
         if not seed_root.exists() or not any(seed_root.iterdir()):
             continue
-        images = TrialImages.for_trial(fuzzer_name=entry.fuzzer_name, target_id=entry.target_id)
+        images = TrialImages(fuzzer_name=entry.fuzzer_name, target_id=entry.target_id)
         jobs.append(
             SeedBaselineJob(
                 fuzzer=entry.fuzzer_name,
@@ -108,4 +108,4 @@ def _collect_seed_baseline_jobs(
 
 
 def _seed_key(fuzzer: str, benchmark: str, fuzz_target: str) -> str:
-    return f'{fuzzer}__{benchmark}__{fuzz_target}'.replace('/', '_').replace(':', '_')
+    return f'{fuzzer}__{benchmark}__{fuzz_target}'

@@ -23,10 +23,11 @@ from ..db import DB
 from ..db import trials as db_trials
 from ..docker import DockerRuntime
 from ..snapshot import ReplaySnapshotScheduler, SnapshotScheduler
-from ..trial.builder import TrialPlan, plan_trials
-from ..trial.replay import PreparedReplayTrial, ReplayTrialRunner
+from ..trial.builder import plan_trials
+from ..trial.models import TrialConfig, TrialInstance
+from ..trial.replay import ReplayTrialRunner
 from ..trial.runner import TrialRunner
-from ..trial.runtime import TrialContainerRuntime
+from ..trial.runtime import TrialContainer
 from .workspace import initialize_run_dir
 
 LOG = logging.getLogger(__name__)
@@ -75,55 +76,48 @@ def run_experiment(campaign_config: CampaignConfig, out_root: Path, repo_root: P
         repo_root=repo_root,
         docker_runtime=docker_runtime,
     )
-    trial_plans = plan_trials(
+    trial_configs = plan_trials(
         campaign_config=campaign_config,
         repo_root=repo_root,
         fuzz_binaries=fuzz_binaries,
     )
-    replay_trial_plans = [trial for trial in trial_plans if trial.config.replay_trial_path is not None]
+    replay_trial_configs = [cfg for cfg in trial_configs if cfg.replay_dir is not None]
 
-    if replay_trial_plans:
-        if len(replay_trial_plans) != len(trial_plans):
+    if replay_trial_configs:
+        if len(replay_trial_configs) != len(trial_configs):
             raise RuntimeError('Replay trials cannot be mixed with live fuzzing trials in the same run')
 
         return _run_replay_experiment(
             db_path=db_path,
-            repo_root=repo_root,
             campaign_config=campaign_config,
             run_dir=run_dir,
             run_id=run_id,
             docker_runtime=docker_runtime,
-            trial_plans=replay_trial_plans,
+            trial_configs=replay_trial_configs,
         )
 
-    if not trial_plans:
+    if not trial_configs:
         raise RuntimeError('Does not found any valid experiment to run.')
 
     return _run_live_experiment(
         db_path=db_path,
-        repo_root=repo_root,
         campaign_config=campaign_config,
         run_dir=run_dir,
         run_id=run_id,
         docker_runtime=docker_runtime,
-        trial_plans=trial_plans,
+        trial_configs=trial_configs,
     )
 
 
 def _run_live_experiment(
     *,
     db_path: Path,
-    repo_root: Path,
     campaign_config: CampaignConfig,
     run_dir: Path,
     run_id: str,
     docker_runtime: DockerRuntime,
-    trial_plans: list[TrialPlan],
+    trial_configs: list[TrialConfig],
 ) -> Path:
-    if not trial_plans:
-        LOG.warning('No trials were planned for this live run')
-        return run_dir
-
     trial_workers, snap_jobs = _live_resource_plan(
         total_jobs=campaign_config.settings.parallel_jobs,
         requested_snapshot_jobs=campaign_config.settings.snapshot_jobs,
@@ -151,7 +145,7 @@ def _run_live_experiment(
     futures: list[Future[None]] = []
     interrupted = False
 
-    LOG.info('Planned trials: %d', len(trial_plans))
+    LOG.info('Planned trials: %d', len(trial_configs))
 
     scheduler_thread.start()
     try:
@@ -160,16 +154,14 @@ def _run_live_experiment(
             executor.submit(
                 _run_one_trial,
                 db_path=db_path,
-                jobs=1,  # Every fuzzer must run in single process for now.
-                repo_root=repo_root,
                 run_dir=run_dir,
                 run_id=run_id,
                 docker_runtime=docker_runtime,
                 scheduler=scheduler,
                 stop_event=stop_event,
-                trial_plan=trial_plan,
+                cfg=cfg,
             )
-            for trial_plan in trial_plans
+            for cfg in trial_configs
         ]
         _wait_for_futures(futures)
     except KeyboardInterrupt:
@@ -186,7 +178,7 @@ def _run_live_experiment(
         if interrupted:
             try:
                 stop_event.set()
-                TrialContainerRuntime.force_stop_all_active()
+                TrialContainer.force_stop_all_active()
                 scheduler.stop()
             except Exception as exc:
                 LOG.error('Failed to stop snapshot scheduler: %s', exc)
@@ -205,14 +197,13 @@ def _run_live_experiment(
 def _run_replay_experiment(
     *,
     db_path: Path,
-    repo_root: Path,
     campaign_config: CampaignConfig,
     run_dir: Path,
     run_id: str,
     docker_runtime: DockerRuntime,
-    trial_plans: list[TrialPlan],
+    trial_configs: list[TrialConfig],
 ) -> Path:
-    prep_workers = max(min(max(1, int(campaign_config.settings.parallel_jobs)), len(trial_plans)), 1)
+    prep_workers = max(min(max(1, int(campaign_config.settings.parallel_jobs)), len(trial_configs)), 1)
     snap_jobs = max(
         1,
         int(campaign_config.settings.snapshot_jobs)
@@ -226,22 +217,17 @@ def _run_replay_experiment(
             executor.submit(
                 _prepare_one_replay_trial,
                 db_path=db_path,
-                jobs=snap_jobs,
-                repo_root=repo_root,
                 run_dir=run_dir,
                 run_id=run_id,
                 docker_runtime=docker_runtime,
-                trial_plan=trial_plan,
+                cfg=cfg,
             )
-            for trial_plan in trial_plans
+            for cfg in trial_configs
         ]
         prepared_trials = _wait_for_futures(futures)
 
-    if not prepared_trials:
-        return run_dir
-
     campaign_seconds = max(
-        max(0, prepared.replay_end_ts - prepared.replay_start_ts)
+        max(0, int(prepared.end_ts) - int(prepared.start_ts))
         for prepared in prepared_trials
     )
     scheduler = ReplaySnapshotScheduler(
@@ -256,7 +242,7 @@ def _run_replay_experiment(
     )
 
     for prepared in prepared_trials:
-        scheduler.register(prepared.active_trial)
+        scheduler.register(prepared)
 
     status: str | None = 'done'
     try:
@@ -278,7 +264,7 @@ def _run_replay_experiment(
                 )
         finally:
             for prepared in prepared_trials:
-                scheduler.unregister(prepared.trial_id)
+                scheduler.unregister(prepared.config.trial_key)
 
     return run_dir
 
@@ -300,27 +286,21 @@ def _wait_for_futures(futures: list[Future[_T]]) -> list[_T]:
 def _run_one_trial(
     *,
     db_path: Path,
-    jobs: int,
-    repo_root: Path,
     run_dir: Path,
     run_id: str,
     docker_runtime: DockerRuntime,
     scheduler: SnapshotScheduler,
     stop_event: threading.Event | None,
-    trial_plan: TrialPlan,
+    cfg: TrialConfig,
 ) -> None:
     TrialRunner(
-        repo_root=repo_root,
         docker_runtime=docker_runtime,
         db_path=db_path,
         run_id=run_id,
-        fuzzer_image=trial_plan.config.runner_image,
-        target_bin_host_path=trial_plan.target_bin,
     ).run(
         run_dir=run_dir,
-        cfg=trial_plan.config,
+        config=cfg,
         scheduler=scheduler,
-        jobs=jobs,
         stop_event=stop_event,
     )
 
@@ -328,31 +308,25 @@ def _run_one_trial(
 def _prepare_one_replay_trial(
     *,
     db_path: Path,
-    jobs: int,
-    repo_root: Path,
     run_dir: Path,
     run_id: str,
     docker_runtime: DockerRuntime,
-    trial_plan: TrialPlan,
-) -> PreparedReplayTrial:
+    cfg: TrialConfig,
+) -> TrialInstance:
     return ReplayTrialRunner(
-        repo_root=repo_root,
         docker_runtime=docker_runtime,
         db_path=db_path,
         run_id=run_id,
-        fuzzer_image=trial_plan.config.runner_image,
-        target_bin_host_path=trial_plan.target_bin,
     ).prepare(
         run_dir=run_dir,
-        cfg=trial_plan.config,
-        jobs=jobs,
+        cfg=cfg,
     )
 
 
 def _set_replay_trial_statuses(
     *,
     db_path: Path,
-    prepared_trials: list[PreparedReplayTrial],
+    prepared_trials: list[TrialInstance],
     status: str,
 ) -> None:
     db = DB.open(Path(db_path))
@@ -360,9 +334,9 @@ def _set_replay_trial_statuses(
         for prepared in prepared_trials:
             db_trials.set_trial_status(
                 db,
-                trial_id=prepared.trial_row_id,
+                trial_id=prepared.db_id,
                 status=status,
-                ended_ts=prepared.replay_end_ts,
+                ended_ts=int(prepared.end_ts),
             )
         db.commit()
     finally:

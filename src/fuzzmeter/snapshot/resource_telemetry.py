@@ -18,7 +18,7 @@ from typing import Any
 
 from ..db import DB
 from ..db import resource_telemetry as db_resource_telemetry
-from ..trial.models import ActiveTrial
+from ..trial.models import TrialInstance
 
 LOG = logging.getLogger(__name__)
 
@@ -72,19 +72,19 @@ def _run_text(cmd: list[str], *, timeout_s: int = 10) -> subprocess.CompletedPro
 class ResourceTelemetryCollector:
     '''Collect docker stats and live corpus disk usage at tick-save time.'''
 
-    def collect(self, *, db: DB, tick_idx: int, ts: int, active_trials: list[ActiveTrial]) -> None:
+    def collect(self, *, db: DB, tick_idx: int, ts: int, active_trials: list[TrialInstance]) -> None:
         '''Collect and persist one resource sample for each active trial.'''
 
         for trial in active_trials:
-            if trial.replay_start_ts is not None or trial.replay_end_ts is not None:
+            if trial.end_ts is not None:
                 continue
             stats = self._docker_stats(trial.container_name)
             if stats is None:
                 continue
-            disk_human, disk_bytes = self._du_hs(trial.live_out)
+            disk_human, disk_bytes = self._du_hs(trial.layout.fuzz_dir)
             db_resource_telemetry.upsert_resource_telemetry(
                 db,
-                trial_row_id=trial.trial_row_id,
+                trial_row_id=trial.db_id,
                 idx=tick_idx,
                 ts=ts,
                 container_name=trial.container_name,

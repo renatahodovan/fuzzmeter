@@ -18,7 +18,7 @@ from pathlib import Path
 from ..db import DB
 from ..db.bug import ensure_bug, get_bug_id, upsert_bug_hits
 from ..docker import DockerClient, DockerRuntime
-from ..trial.models import ActiveTrial
+from ..trial.models import TrialInstance
 from .ingest import DetectedFile
 
 LOG = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ def reproduce_new_crashes(
     db: DB,
     docker_runtime: DockerRuntime,
     run_id: str,
-    trial: ActiveTrial,
+    trial: TrialInstance,
     snapshot_id: int,
     ts: int,
     snapshot_crashes_dir: Path,
@@ -70,18 +70,18 @@ def reproduce_new_crashes(
         bug_id = get_bug_id(
             db,
             run_id=run_id,
-            fuzzer=trial.fuzzer,
-            benchmark=trial.benchmark,
-            fuzz_target=trial.fuzz_target,
+            fuzzer=trial.config.fuzzer,
+            benchmark=trial.config.benchmark,
+            fuzz_target=trial.config.fuzz_target,
             bug_key=bug_key,
         )
         if bug_id is None:
             bug_id = ensure_bug(
                 db,
                 run_id=run_id,
-                fuzzer=trial.fuzzer,
-                benchmark=trial.benchmark,
-                fuzz_target=trial.fuzz_target,
+                fuzzer=trial.config.fuzzer,
+                benchmark=trial.config.benchmark,
+                fuzz_target=trial.config.fuzz_target,
                 bug_key=bug_key,
                 issue_type=metadata[bug_key].get('issue_type'),
                 top_func=metadata[bug_key].get('top_func'),
@@ -98,7 +98,7 @@ def reproduce_new_crashes(
 def _reproduce_crash_batch(
     *,
     docker_runtime: DockerRuntime,
-    trial: ActiveTrial,
+    trial: TrialInstance,
     snapshot_crashes_dir: Path,
     new_files: list[DetectedFile],
     repro_logs_dir: Path,
@@ -158,15 +158,15 @@ def _crash_input_path(snapshot_crashes_dir: Path, new_file: DetectedFile) -> Pat
     return new_file.abs_src
 
 
-def _run_repro_worker(*, docker: DockerClient, trial: ActiveTrial, env: dict[str, str]) -> None:
+def _run_repro_worker(*, docker: DockerClient, trial: TrialInstance, env: dict[str, str]) -> None:
     worker_env = {
-        'FM_TARGET_NAME': trial.fuzz_target,
-        'FM_INPUT_MODE': trial.input_mode,
+        'FM_TARGET_NAME': trial.config.fuzz_target,
+        'FM_INPUT_MODE': trial.config.fuzz_target_input_mode,
         'FM_TIMEOUT_S': _format_timeout(_crash_timeout_s(trial)),
         **env,
     }
     docker.run(
-        image=trial.asan_image,
+        image=trial.config.images.asan,
         volumes=[docker.out_volume()],
         env=worker_env,
         check=False,
@@ -174,8 +174,8 @@ def _run_repro_worker(*, docker: DockerClient, trial: ActiveTrial, env: dict[str
     )
 
 
-def _crash_timeout_s(trial: ActiveTrial) -> float:
-    timeout_s = trial.target_timeout_s
+def _crash_timeout_s(trial: TrialInstance) -> float:
+    timeout_s = trial.config.fuzz_target_timeout
     if timeout_s is None:
         return 10.0
     try:
@@ -192,7 +192,7 @@ def _format_timeout(timeout_s: float) -> str:
 
 def _classify_crash_output(
     *,
-    trial: ActiveTrial,
+    trial: TrialInstance,
     new_file: DetectedFile,
     output: str,
     repro_logs_dir: Path,
@@ -204,9 +204,9 @@ def _classify_crash_output(
 
     _store_repro_output(
         repro_logs_dir,
-        benchmark=trial.benchmark,
-        fuzz_target=trial.fuzz_target,
-        fuzzer=trial.fuzzer,
+        benchmark=trial.config.benchmark,
+        fuzz_target=trial.config.fuzz_target,
+        fuzzer=trial.config.fuzzer,
         bug_key=bug_key,
         text=output,
     )
