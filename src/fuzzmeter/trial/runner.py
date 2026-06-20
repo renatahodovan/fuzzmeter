@@ -17,7 +17,7 @@ import time
 
 from pathlib import Path
 
-from ..db import DB
+from ..db import open_db
 from ..db import trials as db_trials
 from ..docker import DockerRuntime
 from ..snapshot import SnapshotScheduler
@@ -43,16 +43,11 @@ class TrialRunner:
         self.run_id = str(run_id)
 
     def _set_trial_status(self, trial_row_id: int, status: str) -> None:
-        db = DB.open(self.db_path)
-        try:
+        with open_db(self.db_path) as db:
             db_trials.set_trial_status(db, trial_id=trial_row_id, status=status, ended_ts=int(time.time()))
-            db.commit()
-        finally:
-            db.close()
 
     def _record_trial(self, *, config: TrialConfig, start_ts: int) -> int:
-        db = DB.open(self.db_path)
-        try:
+        with open_db(self.db_path) as db:
             trial_row_id = db_trials.ensure_trial_row(
                 db,
                 run_id=self.run_id,
@@ -67,10 +62,7 @@ class TrialRunner:
                 runtime_config_json=json.dumps(config.runtime_config, sort_keys=True),
                 start_ts=start_ts,
             )
-            db.commit()
             return trial_row_id
-        finally:
-            db.close()
 
     def run(
         self,

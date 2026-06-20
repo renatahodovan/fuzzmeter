@@ -5,13 +5,14 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-from .base import DB
+from .base import DB, open_db
 from .schema import ensure_schema
 
 from . import runs, trials, snapshot, bug, resource_telemetry
 
 __all__ = [
     "DB",
+    "open_db",
     "ensure_schema",
     "runs",
     "trials",

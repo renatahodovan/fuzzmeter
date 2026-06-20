@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from ..config import CampaignConfig
-from ..db import DB, ensure_schema
+from ..db import ensure_schema, open_db
 from ..db import runs as db_runs
 
 
@@ -26,13 +26,9 @@ def initialize_run_dir(*, run_dir: Path, run_id: str, config_src: str, campaign_
 
 
 def _initialize_db(*, run_dir: Path, run_id: str, config_src: str) -> None:
-    db = DB.open((Path(run_dir) / 'fuzzmeter.db'))
-    try:
+    with open_db(Path(run_dir) / 'fuzzmeter.db') as db:
         ensure_schema(db)
         db_runs.upsert_run(db, run_id=run_id, created_ts=int(time.time()), config_src=config_src)
-        db.commit()
-    finally:
-        db.close()
 
 
 def _write_run_entries(*, run_dir: Path, campaign_config: CampaignConfig) -> None:

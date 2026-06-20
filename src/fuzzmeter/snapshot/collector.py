@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..db import DB
+from ..db import DB, open_db
 from ..db import snapshot as db_snapshot
 from ..docker import DockerRuntime
 from ..fuzzers import FuzzerLoader, HookRunner, HookSpec
@@ -121,8 +121,7 @@ class SnapshotCollector:
         preprocess_jobs: int,
         render_heavy: bool,
     ) -> _CollectedTrialSnapshot:
-        db = DB.open(self.db_path)
-        try:
+        with open_db(self.db_path) as db:
             snapshot_dir_idx = self._next_snapshot_dir_idx(db=db, trial=trial)
             snap_dir = trial.layout.snapshots_dir / f'snap_{snapshot_dir_idx:06d}'
             snap_corpus = snap_dir / 'corpus'
@@ -180,7 +179,6 @@ class SnapshotCollector:
                 hangs=0,
             )
             if snapshot_id <= 0:
-                db.commit()
                 return _CollectedTrialSnapshot()
 
             coverage_task = None
@@ -223,13 +221,10 @@ class SnapshotCollector:
                     new_crash_files=snapshot_crash_files,
                 )
 
-            db.commit()
             return _CollectedTrialSnapshot(
                 coverage_task=coverage_task,
                 crash_task=crash_task,
             )
-        finally:
-            db.close()
 
     @staticmethod
     def _next_snapshot_dir_idx(*, db: DB, trial: TrialInstance) -> int:

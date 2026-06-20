@@ -7,11 +7,12 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Iterator, Sequence
 
 
 def _row_factory(cur: sqlite3.Cursor, row: tuple) -> dict:
@@ -119,3 +120,14 @@ class DB:
             self.con.rollback()
         except Exception:
             pass
+
+
+@contextmanager
+def open_db(path: Path, *, busy_timeout_ms: int | None = None) -> Iterator[DB]:
+    '''Open a database connection, commit successful work, and always close it.'''
+    db = DB.open(path, busy_timeout_ms=busy_timeout_ms)
+    try:
+        yield db
+        db.commit()
+    finally:
+        db.close()

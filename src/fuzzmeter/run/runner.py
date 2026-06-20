@@ -19,7 +19,7 @@ from typing import TypeVar
 
 from ..artifacts.builder import prepare_artifacts
 from ..config import CampaignConfig
-from ..db import DB
+from ..db import open_db
 from ..db import trials as db_trials
 from ..docker import DockerRuntime
 from ..snapshot import ReplaySnapshotScheduler, SnapshotScheduler
@@ -329,8 +329,7 @@ def _set_replay_trial_statuses(
     prepared_trials: list[TrialInstance],
     status: str,
 ) -> None:
-    db = DB.open(Path(db_path))
-    try:
+    with open_db(db_path) as db:
         for prepared in prepared_trials:
             db_trials.set_trial_status(
                 db,
@@ -338,6 +337,3 @@ def _set_replay_trial_statuses(
                 status=status,
                 ended_ts=int(prepared.end_ts),
             )
-        db.commit()
-    finally:
-        db.close()
