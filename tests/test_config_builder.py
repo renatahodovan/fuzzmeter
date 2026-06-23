@@ -75,8 +75,8 @@ targets:
             [(case.fuzzer_name, case.benchmark, case.fuzz_target) for case in config.cases],
         )
 
-    def test_target_timeout_becomes_runtime_target_default(self) -> None:
-        '''Verify that target-level timeouts feed fuzzer runtime target config.'''
+    def test_target_timeout_is_stored_on_campaign_case(self) -> None:
+        '''Verify that target-level timeouts are stored on the campaign case.'''
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
@@ -92,7 +92,8 @@ targets:
 ''',
             )
 
-        self.assertEqual({'target': {'timeout_s': 10}}, config.cases[0].runtime_config)
+        self.assertEqual(10.0, config.cases[0].target_timeout_s)
+        self.assertEqual({}, config.cases[0].runtime_config)
 
     def test_runtime_target_timeout_overrides_target_default(self) -> None:
         '''Verify that config/fuzzer runtime config can override target defaults.'''
@@ -116,8 +117,8 @@ targets:
 
         self.assertEqual({'target': {'timeout_s': 3}}, config.cases[0].runtime_config)
 
-    def test_snapshot_export_interval_defaults_to_ten_percent_of_ticks(self) -> None:
-        '''Verify that LLVM export defaults to roughly every 10% of the snapshot grid.'''
+    def test_snapshot_export_interval_defaults_to_one(self) -> None:
+        '''Verify that snapshot exports run on every tick by default.'''
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
@@ -137,7 +138,7 @@ targets:
 ''',
             )
 
-        self.assertEqual(5, config.settings.snapshot_export_every_ticks)
+        self.assertEqual(1, config.settings.snapshot_export_every_ticks)
 
     def test_snapshot_export_interval_can_be_configured(self) -> None:
         '''Verify that configs can override the LLVM export cadence.'''

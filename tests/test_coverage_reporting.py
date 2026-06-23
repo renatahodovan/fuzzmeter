@@ -20,7 +20,6 @@ from fuzzmeter.db.snapshot import upsert_agg_snapshot, update_agg_snapshot_cover
 from fuzzmeter.reporting.analyzers.coverage_analysis import CoverageAnalysis
 from fuzzmeter.reporting.generate import ReportBuilder
 from fuzzmeter.reporting.metrics import mann_whitney_u_pvalue
-from fuzzmeter.snapshot.aggregate import SnapshotAggregateUpdater
 
 
 def _coverage_export(branch_line: int) -> dict:
@@ -174,46 +173,6 @@ class CoverageReportingTest(unittest.TestCase):
 
         self.assertEqual(300, overview['elapsed_seconds'])
         self.assertEqual(800, overview['wall_elapsed_seconds'])
-
-    def test_campaign_profdata_paths_include_inactive_repetitions(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = Path(tmp)
-            db = DB.open(run_dir / 'fuzzmeter.db')
-            try:
-                ensure_schema(db)
-                db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
-                for rep in (0, 1, 2):
-                    db.exec(
-                        '''
-                        INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep, status)
-                        VALUES(?,?,?,?,?,?)
-                        ''',
-                        ('run', 'libfuzzer', 'jerryscript', 'jerry', rep, 'done'),
-                    )
-                    profdata = (
-                        run_dir
-                        / 'trials'
-                        / f'libfuzzer__jerryscript-jerry__rep{rep}'
-                        / 'coverage_state'
-                        / 'merged.profdata'
-                    )
-                    profdata.parent.mkdir(parents=True)
-                    profdata.write_bytes(b'x' * 128)
-
-                paths = SnapshotAggregateUpdater._campaign_profdata_paths(
-                    db=db,
-                    run_dir=run_dir,
-                    run_id='run',
-                    fuzzer='libfuzzer',
-                    benchmark='jerryscript',
-                    fuzz_target='jerry',
-                )
-            finally:
-                db.close()
-
-            self.assertEqual(3, len(paths))
-            self.assertTrue(all(path.exists() for path in paths))
-            self.assertTrue(str(paths[-1]).endswith('libfuzzer__jerryscript-jerry__rep2/coverage_state/merged.profdata'))
 
     def test_report_links_campaign_coverage_per_fuzzer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

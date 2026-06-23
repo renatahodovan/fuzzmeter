@@ -243,10 +243,6 @@ class TrialAnalysis:
             point["resource_memory_limit_bytes"] = safe_int(row.get("memory_limit_bytes"))
             point["resource_corpus_disk_bytes"] = disk_bytes
             point["resource_corpus_disk_mib"] = (disk_bytes / (1024 * 1024)) if disk_bytes is not None else None
-            point["resource_corpus_disk_human"] = row.get("corpus_disk_usage_human")
-            stats = _parse_json_text(row.get("stats_json"))
-            if stats:
-                point["resource_stats"] = stats
 
         for entry in per_trial.values():
             points = sorted(entry["points"], key=lambda point: int(point.get("idx") or 0))

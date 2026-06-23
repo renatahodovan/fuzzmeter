@@ -24,9 +24,9 @@ from ..db import trials as db_trials
 from ..docker import DockerRuntime
 from ..snapshot import ReplaySnapshotScheduler, SnapshotScheduler
 from ..trial.builder import plan_trials
-from ..trial.models import TrialConfig, TrialInstance
-from ..trial.replay import ReplayTrialRunner
-from ..trial.runner import TrialRunner
+from ..trial.models import TrialConfig
+from ..trial.replay import prepare_replay_trial
+from ..trial.runner import run_one_trial
 from ..trial.runtime import TrialContainer
 from .workspace import initialize_run_dir
 
@@ -35,18 +35,21 @@ LOG = logging.getLogger(__name__)
 _T = TypeVar('_T')
 
 
-def _live_resource_plan(*, total_jobs: int, requested_snapshot_jobs: int | None = None) -> tuple[int, int]:
-    if requested_snapshot_jobs is not None:
-        snapshot_workers = min(max(0, int(requested_snapshot_jobs)), max(0, int(total_jobs) - 1))
-        trial_workers = max(1, int(total_jobs) - snapshot_workers)
-        return trial_workers, snapshot_workers
+def _live_resource_plan(*, total_jobs: int, snapshot_jobs: int | None = None) -> tuple[int, int]:
+    if snapshot_jobs is not None:
+        if snapshot_jobs >= total_jobs:
+            raise ValueError('Snapshot jobs must not exhaust all the available parallelism (%d > %d)' % (total_jobs, snapshot_jobs))
+        if not snapshot_jobs:
+            raise ValueError('Snapshot jobs must be at least 1.')
+
+        return total_jobs - snapshot_jobs, snapshot_jobs
 
     if total_jobs == 1:
         trial_workers, snapshot_workers = 1, 0
     elif total_jobs == 2:
         trial_workers, snapshot_workers = 1, 1
     else:
-        snapshot_workers = total_jobs // 2
+        snapshot_workers = total_jobs // 3
         trial_workers = total_jobs - snapshot_workers
 
     return trial_workers, snapshot_workers
@@ -72,7 +75,9 @@ def run_experiment(campaign_config: CampaignConfig, out_root: Path, repo_root: P
 
     fuzz_binaries = prepare_artifacts(
         campaign_config=campaign_config,
+        db_path=db_path,
         run_dir=run_dir,
+        run_id=run_id,
         repo_root=repo_root,
         docker_runtime=docker_runtime,
     )
@@ -87,7 +92,7 @@ def run_experiment(campaign_config: CampaignConfig, out_root: Path, repo_root: P
         if len(replay_trial_configs) != len(trial_configs):
             raise RuntimeError('Replay trials cannot be mixed with live fuzzing trials in the same run')
 
-        return _run_replay_experiment(
+        _run_replay_experiment(
             db_path=db_path,
             campaign_config=campaign_config,
             run_dir=run_dir,
@@ -95,11 +100,12 @@ def run_experiment(campaign_config: CampaignConfig, out_root: Path, repo_root: P
             docker_runtime=docker_runtime,
             trial_configs=replay_trial_configs,
         )
+        return run_dir
 
     if not trial_configs:
         raise RuntimeError('Does not found any valid experiment to run.')
 
-    return _run_live_experiment(
+    _run_live_experiment(
         db_path=db_path,
         campaign_config=campaign_config,
         run_dir=run_dir,
@@ -107,6 +113,7 @@ def run_experiment(campaign_config: CampaignConfig, out_root: Path, repo_root: P
         docker_runtime=docker_runtime,
         trial_configs=trial_configs,
     )
+    return run_dir
 
 
 def _run_live_experiment(
@@ -118,9 +125,13 @@ def _run_live_experiment(
     docker_runtime: DockerRuntime,
     trial_configs: list[TrialConfig],
 ) -> Path:
+    if not trial_configs:
+        LOG.warning('No trials were planned for this live run')
+        return run_dir
+
     trial_workers, snap_jobs = _live_resource_plan(
         total_jobs=campaign_config.settings.parallel_jobs,
-        requested_snapshot_jobs=campaign_config.settings.snapshot_jobs,
+        snapshot_jobs=campaign_config.settings.snapshot_jobs,
     )
     LOG.info(
         'Using trial_workers=%s snapshot_jobs=%s (parallel_jobs=%s)',
@@ -135,7 +146,7 @@ def _run_live_experiment(
         run_id=run_id,
         campaign_seconds=campaign_config.settings.time_seconds,
         every_seconds=campaign_config.settings.snapshot_every_seconds,
-        coverage_export_every_ticks=campaign_config.settings.snapshot_export_every_ticks,
+        coverage_export_every=campaign_config.settings.snapshot_export_every_ticks,
         docker_runtime=docker_runtime,
         jobs=snap_jobs,
     )
@@ -152,14 +163,14 @@ def _run_live_experiment(
         executor = ThreadPoolExecutor(max_workers=trial_workers)
         futures = [
             executor.submit(
-                _run_one_trial,
+                run_one_trial,
+                docker_runtime=docker_runtime,
                 db_path=db_path,
                 run_dir=run_dir,
                 run_id=run_id,
-                docker_runtime=docker_runtime,
+                config=cfg,
                 scheduler=scheduler,
                 stop_event=stop_event,
-                cfg=cfg,
             )
             for cfg in trial_configs
         ]
@@ -203,40 +214,38 @@ def _run_replay_experiment(
     docker_runtime: DockerRuntime,
     trial_configs: list[TrialConfig],
 ) -> Path:
-    prep_workers = max(min(max(1, int(campaign_config.settings.parallel_jobs)), len(trial_configs)), 1)
-    snap_jobs = max(
-        1,
-        int(campaign_config.settings.snapshot_jobs)
-        if campaign_config.settings.snapshot_jobs is not None
-        else int(campaign_config.settings.parallel_jobs),
-    )
-    LOG.info('Using replay prep_workers=%s snap_jobs=%s', prep_workers, snap_jobs)
+    prep_jobs = min(campaign_config.settings.parallel_jobs, len(trial_configs))
+    snap_jobs = max(campaign_config.settings.snapshot_jobs or campaign_config.settings.parallel_jobs, 1)
+    LOG.info('Using replay prep_workers=%s snap_jobs=%s', prep_jobs, snap_jobs)
 
-    with ThreadPoolExecutor(max_workers=prep_workers) as executor:
+    with ThreadPoolExecutor(max_workers=prep_jobs) as executor:
         futures = [
             executor.submit(
-                _prepare_one_replay_trial,
+                prepare_replay_trial,
                 db_path=db_path,
+                docker_runtime=docker_runtime,
                 run_dir=run_dir,
                 run_id=run_id,
-                docker_runtime=docker_runtime,
                 cfg=cfg,
             )
             for cfg in trial_configs
         ]
         prepared_trials = _wait_for_futures(futures)
 
-    campaign_seconds = max(
-        max(0, int(prepared.end_ts) - int(prepared.start_ts))
-        for prepared in prepared_trials
-    )
+    if not prepared_trials:
+        raise RuntimeError('Could not find any replayable artifacts.')
+    
+    for trial in prepared_trials:
+        if trial.end_ts - trial.start_ts <= 0:
+            raise ValueError('The length of the replayable data in %s is 0 or shorter.' % trial.layout.fuzz_dir)
+
     scheduler = ReplaySnapshotScheduler(
         db_path=db_path,
         run_dir=run_dir,
         run_id=run_id,
-        campaign_seconds=max(campaign_seconds, 1),
+        campaign_seconds=max(trial.end_ts - trial.start_ts for trial in prepared_trials),
         every_seconds=campaign_config.settings.snapshot_every_seconds,
-        coverage_export_every_ticks=campaign_config.settings.snapshot_export_every_ticks,
+        coverage_export_every=campaign_config.settings.snapshot_export_every_ticks,
         docker_runtime=docker_runtime,
         jobs=snap_jobs,
     )
@@ -244,7 +253,7 @@ def _run_replay_experiment(
     for prepared in prepared_trials:
         scheduler.register(prepared)
 
-    status: str | None = 'done'
+    status: str = 'done'
     try:
         scheduler.run_loop()
     except KeyboardInterrupt:
@@ -256,12 +265,14 @@ def _run_replay_experiment(
         raise
     finally:
         try:
-            if status is not None:
-                _set_replay_trial_statuses(
-                    db_path=db_path,
-                    prepared_trials=prepared_trials,
-                    status=status,
-                )
+            with open_db(db_path) as db:
+                for prepared in prepared_trials:
+                    db_trials.set_trial_status(
+                        db,
+                        trial_id=prepared.db_id,
+                        status=status,
+                        ended_ts=prepared.end_ts,
+                    )
         finally:
             for prepared in prepared_trials:
                 scheduler.unregister(prepared.config.trial_key)
@@ -281,59 +292,3 @@ def _wait_for_futures(futures: list[Future[_T]]) -> list[_T]:
             raise exc
 
     return results
-
-
-def _run_one_trial(
-    *,
-    db_path: Path,
-    run_dir: Path,
-    run_id: str,
-    docker_runtime: DockerRuntime,
-    scheduler: SnapshotScheduler,
-    stop_event: threading.Event | None,
-    cfg: TrialConfig,
-) -> None:
-    TrialRunner(
-        docker_runtime=docker_runtime,
-        db_path=db_path,
-        run_id=run_id,
-    ).run(
-        run_dir=run_dir,
-        config=cfg,
-        scheduler=scheduler,
-        stop_event=stop_event,
-    )
-
-
-def _prepare_one_replay_trial(
-    *,
-    db_path: Path,
-    run_dir: Path,
-    run_id: str,
-    docker_runtime: DockerRuntime,
-    cfg: TrialConfig,
-) -> TrialInstance:
-    return ReplayTrialRunner(
-        docker_runtime=docker_runtime,
-        db_path=db_path,
-        run_id=run_id,
-    ).prepare(
-        run_dir=run_dir,
-        cfg=cfg,
-    )
-
-
-def _set_replay_trial_statuses(
-    *,
-    db_path: Path,
-    prepared_trials: list[TrialInstance],
-    status: str,
-) -> None:
-    with open_db(db_path) as db:
-        for prepared in prepared_trials:
-            db_trials.set_trial_status(
-                db,
-                trial_id=prepared.db_id,
-                status=status,
-                ended_ts=int(prepared.end_ts),
-            )

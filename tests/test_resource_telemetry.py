@@ -15,69 +15,79 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.snapshot.resource_telemetry import ResourceTelemetryCollector
-from fuzzmeter.trial.models import ActiveTrial
+from fuzzmeter.trial.models import TrialConfig, TrialImages, TrialInstance, TrialLayout
 
 
-class ResourceTelemetryTest(unittest.TestCase):
-    '''Verify container telemetry is collected only for live trials.'''
-
-    def test_replay_trials_skip_docker_stats(self) -> None:
-        '''Replay trials have no live fuzzer container, so docker stats must not run.'''
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trial = _active_trial(Path(tmp_dir), replay=True)
-
-            with patch.object(ResourceTelemetryCollector, '_docker_stats') as docker_stats:
-                ResourceTelemetryCollector().collect(db=None, tick_idx=1, ts=100, active_trials=[trial])
-
-            docker_stats.assert_not_called()
-
-    def test_live_trials_collect_docker_stats(self) -> None:
-        '''Live trials still collect CPU and memory data from their container.'''
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            trial = _active_trial(Path(tmp_dir), replay=False)
-
-            with patch.object(
-                ResourceTelemetryCollector,
-                '_docker_stats',
-                return_value={'CPUPerc': '1.5%', 'MemUsage': '2MiB / 4MiB', 'MemPerc': '50%'},
-            ) as docker_stats, \
-                 patch.object(ResourceTelemetryCollector, '_du_hs', return_value=('1K', 1024)), \
-                 patch('fuzzmeter.snapshot.resource_telemetry.db_resource_telemetry.upsert_resource_telemetry') as upsert:
-                ResourceTelemetryCollector().collect(db=None, tick_idx=1, ts=100, active_trials=[trial])
-
-            docker_stats.assert_called_once_with('container')
-            upsert.assert_called_once()
-
-
-def _active_trial(root: Path, *, replay: bool) -> ActiveTrial:
-    trial_root = root / 'trial'
-    return ActiveTrial(
-        trial_row_id=1,
-        trial_id='trial',
-        container_name='replay-trial' if replay else 'container',
+def _active_trial(root: Path, *, db_id: int = 1) -> TrialInstance:
+    config = TrialConfig(
         fuzzer='aflplusplus',
         fuzzer_base='aflplusplus',
         benchmark='bench',
         fuzz_target='target',
-        input_mode='file',
-        rep=0,
-        runner_image='runner',
-        coverage_image='coverage',
-        asan_image='asan',
-        snapshot_preprocess_script=None,
-        trial_root=trial_root,
-        live_out=trial_root / 'work',
-        fuzzer_log=trial_root / 'logs' / 'fuzzer.log',
-        corpus_root=trial_root / 'work' / 'default' / 'queue',
-        crashes_root=trial_root / 'work' / 'default' / 'crashes',
-        snapshots_root=trial_root / 'snapshots',
-        seed_root=None,
-        repo_root=root,
-        started_ts=100,
-        replay_start_ts=100 if replay else None,
-        replay_end_ts=200 if replay else None,
+        fuzz_target_bin=root / 'target_bin',
+        fuzz_target_input_mode='file',
+        fuzz_target_timeout=1.0,
+        rep_idx=0,
+        trial_key='trial',
+        output_paths=OutputPaths(
+            corpus_root=Path('default/queue'),
+            crashes_root=Path('default/crashes'),
+        ),
+        trial_timeout=300,
+        snapshot_preprocess=None,
+        images=TrialImages(fuzzer_name='aflplusplus', target_id='bench-target'),
     )
+    layout = TrialLayout.from_config(trial_dir=root / 'trial', cfg=config)
+    layout.fuzz_dir.mkdir(parents=True, exist_ok=True)
+    return TrialInstance(
+        db_id=db_id,
+        config=config,
+        layout=layout,
+        container_name='container',
+        repo_root=root,
+        start_ts=100,
+    )
+
+
+class ResourceTelemetryTest(unittest.TestCase):
+    '''Verify container telemetry is collected for active live trials.'''
+
+    def test_live_trials_collect_docker_stats(self) -> None:
+        '''Live trials collect CPU, memory, and disk telemetry.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trial = _active_trial(Path(tmp_dir))
+
+            with patch.object(
+                ResourceTelemetryCollector,
+                '_docker_stats_by_container',
+                return_value={
+                    'container': {
+                        'Name': 'container',
+                        'CPUPerc': '1.5%',
+                        'MemUsage': '2MiB / 4MiB',
+                        'MemPerc': '50%',
+                    }
+                },
+            ) as docker_stats, \
+                 patch.object(ResourceTelemetryCollector, '_du_sk', return_value=2), \
+                 patch('fuzzmeter.snapshot.resource_telemetry.db_resource_telemetry.upsert_resource_telemetry') as upsert:
+                ResourceTelemetryCollector().collect(db=None, tick_idx=1, ts=100, active_trials=[trial])
+
+        docker_stats.assert_called_once_with(['container'])
+        upsert.assert_called_once_with(
+            None,
+            trial_row_id=trial.db_id,
+            idx=1,
+            ts=100,
+            container_name='container',
+            cpu_percent=1.5,
+            memory_usage_bytes=2 * 1024 * 1024,
+            memory_limit_bytes=4 * 1024 * 1024,
+            memory_percent=50.0,
+            corpus_disk_usage_bytes=2 * 1024,
+        )
 
 
 if __name__ == '__main__':

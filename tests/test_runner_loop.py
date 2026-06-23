@@ -16,13 +16,14 @@ import unittest
 
 from concurrent.futures import Future
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from fuzzmeter.config import CampaignConfig, CampaignSettings
 from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.db import snapshot as db_snapshot
 from fuzzmeter.db import trials as db_trials
+from fuzzmeter.fuzzers.models import OutputPaths
+from fuzzmeter.repro.ingest import DetectedFile
 from fuzzmeter.run.runner import (
     _live_resource_plan,
     _run_live_experiment,
@@ -30,35 +31,105 @@ from fuzzmeter.run.runner import (
     _wait_for_futures,
     run_experiment,
 )
-from fuzzmeter.snapshot.collector import SnapshotCollector
-from fuzzmeter.snapshot.collector import _CollectedTrialSnapshot
+from fuzzmeter.snapshot.collector import collect_snapshots
 from fuzzmeter.snapshot.scheduler import ReplaySnapshotScheduler, SnapshotScheduler
-from fuzzmeter.trial.models import ActiveTrial
-from fuzzmeter.trial.replay import PreparedReplayTrial
+from fuzzmeter.snapshot.trial_snapshot import TrialCoverageSnapshot, TrialCrashSnapshot
+from fuzzmeter.trial.models import ReplayTrialInstance, TrialConfig, TrialImages, TrialInstance, TrialLayout
 
 
-class _ProcessorRecorder:
-    def __init__(self) -> None:
-        self.calls = []
+def _trial_config(root: Path, *, rep_idx: int = 0, replay_dir: Path | None = None) -> TrialConfig:
+    return TrialConfig(
+        fuzzer='aflplusplus',
+        fuzzer_base='aflplusplus',
+        benchmark='bench',
+        fuzz_target='target',
+        fuzz_target_bin=root / f'target-{rep_idx}',
+        fuzz_target_input_mode='file',
+        fuzz_target_timeout=1.0,
+        rep_idx=rep_idx,
+        trial_key=f'trial-{rep_idx}',
+        output_paths=OutputPaths(
+            corpus_root=Path('default/queue'),
+            crashes_root=Path('default/crashes'),
+        ),
+        trial_timeout=300,
+        snapshot_preprocess=None,
+        images=TrialImages(fuzzer_name='aflplusplus', target_id='bench-target'),
+        replay_dir=replay_dir,
+    )
 
-    def process(self, **kwargs) -> None:
-        self.calls.append(kwargs)
+
+def _bare_trial_instance(
+    *,
+    db_id: int,
+    root: Path,
+    start_ts: int,
+    rep_idx: int = 0,
+    end_ts: int | None = None,
+) -> TrialInstance:
+    config = _trial_config(root, rep_idx=rep_idx)
+    layout = TrialLayout.from_config(trial_dir=root / f'trial-{db_id}', cfg=config)
+    trial = TrialInstance(
+        db_id=db_id,
+        config=config,
+        layout=layout,
+        container_name=f'container-{db_id}',
+        repo_root=root,
+        start_ts=start_ts,
+    )
+    if end_ts is None:
+        return trial
+    return ReplayTrialInstance(
+        db_id=trial.db_id,
+        config=trial.config,
+        layout=trial.layout,
+        container_name=trial.container_name,
+        repo_root=trial.repo_root,
+        start_ts=trial.start_ts,
+        end_ts=end_ts,
+    )
 
 
-class _AggregateRecorder:
-    def __init__(self) -> None:
-        self.calls = []
+def _create_trial_instance(
+    *,
+    root: Path,
+    db_path: Path,
+    start_ts: int,
+    rep_idx: int = 0,
+    end_ts: int | None = None,
+) -> TrialInstance:
+    db = DB.open(db_path)
+    try:
+        ensure_schema(db)
+        trial_db_id = db_trials.ensure_trial_row(
+            db,
+            run_id='run',
+            fuzzer='aflplusplus',
+            benchmark='bench',
+            fuzz_target='target',
+            rep=rep_idx,
+            time_seconds=300,
+            status='running',
+            fuzzer_image='runner',
+            build_config_json=None,
+            runtime_config_json=None,
+            start_ts=start_ts,
+        )
+        db.commit()
+    finally:
+        db.close()
 
-    def update(self, **kwargs) -> None:
-        self.calls.append(kwargs)
-
-
-class _ResourceRecorder:
-    def __init__(self) -> None:
-        self.calls = []
-
-    def collect(self, **kwargs) -> None:
-        self.calls.append(kwargs)
+    trial = _bare_trial_instance(
+        db_id=trial_db_id,
+        root=root,
+        start_ts=start_ts,
+        rep_idx=rep_idx,
+        end_ts=end_ts,
+    )
+    trial.layout.corpus_dir.mkdir(parents=True, exist_ok=True)
+    trial.layout.crashes_dir.mkdir(parents=True, exist_ok=True)
+    trial.layout.snapshots_dir.mkdir(parents=True, exist_ok=True)
+    return trial
 
 
 class _SchedulerStub:
@@ -68,12 +139,11 @@ class _SchedulerStub:
         self.run_calls = 0
         self.stop_calls = 0
 
-    def register(self, trial: ActiveTrial) -> None:
+    def register(self, trial: TrialInstance) -> None:
         self.registered.append(trial)
 
     def run_loop(self) -> None:
         self.run_calls += 1
-        return None
 
     def stop(self) -> None:
         self.stop_calls += 1
@@ -109,19 +179,10 @@ class _ExecutorStub:
         return None
 
 
-class _ParallelCollector(SnapshotCollector):
-    def __init__(self, *, barrier: threading.Barrier, seen_threads: set[int]) -> None:
-        super().__init__(db_path=Path('/tmp/unused.db'), run_id='run', docker_runtime=None)
-        self.barrier = barrier
-        self.seen_threads = seen_threads
-
-    def _collect_trial_snapshot(self, **kwargs) -> _CollectedTrialSnapshot:
-        self.seen_threads.add(threading.get_ident())
-        try:
-            self.barrier.wait(timeout=2)
-        except threading.BrokenBarrierError:
-            pass
-        return _CollectedTrialSnapshot()
+def _write_output(path: Path, content: str, *, mtime_s: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding='utf-8')
+    os.utime(path, ns=(mtime_s * 1_000_000_000, mtime_s * 1_000_000_000))
 
 
 class RunnerLoopTest(unittest.TestCase):
@@ -130,34 +191,32 @@ class RunnerLoopTest(unittest.TestCase):
     def test_live_resource_plan_and_empty_live_run_do_not_create_zero_worker_pool(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             run_dir = Path(tmp_dir)
-            config = CampaignConfig(settings=CampaignSettings(parallel_jobs=1), cases=[])
+            config = CampaignConfig(settings=CampaignSettings(parallel_jobs=1, snapshot_jobs=0), cases=[])
 
             self.assertEqual((1, 0), _live_resource_plan(total_jobs=1))
-            self.assertEqual((24, 24), _live_resource_plan(total_jobs=48))
-            self.assertEqual((36, 12), _live_resource_plan(total_jobs=48, requested_snapshot_jobs=12))
-            with self.assertLogs('fuzzmeter.run.runner', level='WARNING') as logs:
-                result = _run_live_experiment(
-                    db_path=run_dir / 'state.db',
-                    repo_root=run_dir,
-                    campaign_config=config,
-                    run_dir=run_dir,
-                    run_id='run',
-                    docker_runtime=None,
-                    trial_plans=[],
-                )
+            self.assertEqual((32, 16), _live_resource_plan(total_jobs=48))
+            self.assertEqual((36, 12), _live_resource_plan(total_jobs=48, snapshot_jobs=12))
 
-            self.assertEqual(run_dir, result)
-            self.assertEqual(['WARNING:fuzzmeter.run.runner:No trials were planned for this live run'], logs.output)
+            result = _run_live_experiment(
+                db_path=run_dir / 'state.db',
+                campaign_config=config,
+                run_dir=run_dir,
+                run_id='run',
+                docker_runtime=None,
+                trial_configs=[],
+            )
+
+        self.assertEqual(run_dir, result)
 
     def test_run_experiment_rejects_mixed_live_and_replay_trials(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             config = CampaignConfig(settings=CampaignSettings(), cases=[])
-            live_plan = SimpleNamespace(config=SimpleNamespace(replay_trial_path=None))
-            replay_plan = SimpleNamespace(config=SimpleNamespace(replay_trial_path=root / 'replay'))
+            live_cfg = _trial_config(root, rep_idx=0)
+            replay_cfg = _trial_config(root, rep_idx=1, replay_dir=root / 'replay')
 
             with patch('fuzzmeter.run.runner.prepare_artifacts', return_value={}), \
-                 patch('fuzzmeter.run.runner.plan_trials', return_value=[live_plan, replay_plan]):
+                 patch('fuzzmeter.run.runner.plan_trials', return_value=[live_cfg, replay_cfg]):
                 with self.assertRaisesRegex(RuntimeError, 'Replay trials cannot be mixed'):
                     run_experiment(
                         campaign_config=config,
@@ -174,7 +233,7 @@ class RunnerLoopTest(unittest.TestCase):
             try:
                 ensure_schema(db)
                 db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
-                trial_ids = [
+                trial_db_ids = [
                     db_trials.ensure_trial_row(
                         db,
                         run_id='run',
@@ -183,7 +242,6 @@ class RunnerLoopTest(unittest.TestCase):
                         fuzz_target='target',
                         rep=idx,
                         time_seconds=300,
-                        jobs=1,
                         status='preparing_replay',
                         fuzzer_image='runner',
                         build_config_json=None,
@@ -196,64 +254,25 @@ class RunnerLoopTest(unittest.TestCase):
             finally:
                 db.close()
 
-            active_trials = [
-                _bare_active_trial(
-                    trial_row_id=trial_ids[0],
-                    root=root,
-                    started_ts=101,
-                    replay_start_ts=100,
-                    replay_end_ts=160,
-                ),
-                _bare_active_trial(
-                    trial_row_id=trial_ids[1],
-                    root=root,
-                    started_ts=102,
-                    replay_start_ts=110,
-                    replay_end_ts=190,
-                ),
-            ]
-            prepared_by_key = {
-                'trial-1': PreparedReplayTrial(
-                    trial_row_id=trial_ids[0],
-                    trial_id='trial-1',
-                    replay_start_ts=100,
-                    replay_end_ts=160,
-                    active_trial=active_trials[0],
-                ),
-                'trial-2': PreparedReplayTrial(
-                    trial_row_id=trial_ids[1],
-                    trial_id='trial-2',
-                    replay_start_ts=110,
-                    replay_end_ts=190,
-                    active_trial=active_trials[1],
-                ),
-            }
-            trial_plans = [
-                SimpleNamespace(
-                    config=SimpleNamespace(trial_key='trial-1', runner_image='runner'),
-                    target_bin=root / 'bin1',
-                ),
-                SimpleNamespace(
-                    config=SimpleNamespace(trial_key='trial-2', runner_image='runner'),
-                    target_bin=root / 'bin2',
-                ),
+            prepared_trials = [
+                _bare_trial_instance(db_id=trial_db_ids[0], root=root, start_ts=101, rep_idx=0, end_ts=160),
+                _bare_trial_instance(db_id=trial_db_ids[1], root=root, start_ts=102, rep_idx=1, end_ts=190),
             ]
             scheduler_refs: list[_SchedulerStub] = []
 
             def _prepare_factory(**kwargs):
-                return prepared_by_key[kwargs['trial_plan'].config.trial_key]
+                return prepared_trials[kwargs['cfg'].rep_idx]
 
             def _scheduler_factory(**kwargs):
                 scheduler = _SchedulerStub()
                 scheduler_refs.append(scheduler)
-                self.assertEqual(80, kwargs['campaign_seconds'])
+                self.assertEqual(88, kwargs['campaign_seconds'])
                 return scheduler
 
-            with patch('fuzzmeter.run.runner._prepare_one_replay_trial', side_effect=_prepare_factory), \
+            with patch('fuzzmeter.run.runner.prepare_replay_trial', side_effect=_prepare_factory), \
                  patch('fuzzmeter.run.runner.ReplaySnapshotScheduler', side_effect=_scheduler_factory):
                 result = _run_replay_experiment(
                     db_path=db_path,
-                    repo_root=root,
                     campaign_config=CampaignConfig(
                         settings=CampaignSettings(parallel_jobs=2, snapshot_every_seconds=30),
                         cases=[],
@@ -261,17 +280,20 @@ class RunnerLoopTest(unittest.TestCase):
                     run_dir=root,
                     run_id='run',
                     docker_runtime=None,
-                    trial_plans=trial_plans,
+                    trial_configs=[_trial_config(root, rep_idx=0), _trial_config(root, rep_idx=1)],
                 )
 
             self.assertEqual(root, result)
             self.assertEqual(1, len(scheduler_refs))
             self.assertEqual(
-                sorted(trial.trial_id for trial in active_trials),
-                sorted(trial.trial_id for trial in scheduler_refs[0].registered),
+                sorted(trial.config.trial_key for trial in prepared_trials),
+                sorted(trial.config.trial_key for trial in scheduler_refs[0].registered),
             )
             self.assertEqual(1, scheduler_refs[0].run_calls)
-            self.assertEqual(['trial-1', 'trial-2'], sorted(scheduler_refs[0].unregistered))
+            self.assertEqual(
+                sorted(trial.config.trial_key for trial in prepared_trials),
+                sorted(scheduler_refs[0].unregistered),
+            )
 
             db = DB.open(db_path)
             try:
@@ -280,8 +302,8 @@ class RunnerLoopTest(unittest.TestCase):
                 db.close()
             self.assertEqual(
                 [
-                    {'trial_id': trial_ids[0], 'status': 'done', 'ended_ts': 160},
-                    {'trial_id': trial_ids[1], 'status': 'done', 'ended_ts': 190},
+                    {'trial_id': trial_db_ids[0], 'status': 'done', 'ended_ts': 160},
+                    {'trial_id': trial_db_ids[1], 'status': 'done', 'ended_ts': 190},
                 ],
                 rows,
             )
@@ -318,17 +340,11 @@ class RunnerLoopTest(unittest.TestCase):
                  patch('fuzzmeter.run.runner.ThreadPoolExecutor', _ExecutorStub):
                 result = _run_live_experiment(
                     db_path=run_dir / 'state.db',
-                    repo_root=run_dir,
                     campaign_config=config,
                     run_dir=run_dir,
                     run_id='run',
                     docker_runtime=None,
-                    trial_plans=[
-                        SimpleNamespace(
-                            config=SimpleNamespace(runner_image='runner'),
-                            target_bin=run_dir / 'target-bin',
-                        )
-                    ],
+                    trial_configs=[_trial_config(run_dir)],
                 )
 
             self.assertEqual(run_dir, result)
@@ -342,9 +358,9 @@ class RunnerLoopTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             db_path = root / 'state.db'
-            trial = _create_active_trial(root=root, db_path=db_path, started_ts=100)
-            _write_output(trial.corpus_root / 'id:000001', 'corpus', mtime_s=110)
-            _write_output(trial.crashes_root / 'id:000002', 'crash', mtime_s=120)
+            trial = _create_trial_instance(root=root, db_path=db_path, start_ts=100)
+            _write_output(trial.layout.corpus_dir / 'id:000001', 'corpus', mtime_s=110)
+            _write_output(trial.layout.crashes_dir / 'id:000002', 'crash', mtime_s=120)
 
             scheduler = SnapshotScheduler(
                 db_path=db_path,
@@ -355,54 +371,93 @@ class RunnerLoopTest(unittest.TestCase):
                 docker_runtime=None,
                 jobs=2,
             )
-            _install_recorders(scheduler)
-            scheduler._collector._read_stats = lambda trial, tick_ts=None: {'execs_done': 42}
+            coverage_snapshot = TrialCoverageSnapshot(
+                trial=trial,
+                snapshot_id=1,
+                snapshot_dir=trial.layout.snapshots_dir / 'snap_000001',
+                tick_idx=1,
+            )
+            crash_snapshot = TrialCrashSnapshot(
+                trial=trial,
+                snapshot_id=1,
+                snapshot_dir=trial.layout.snapshots_dir / 'snap_000001',
+                tick_idx=1,
+                crash_files=[
+                    DetectedFile(
+                        rel_path='id:000002',
+                        abs_src=trial.layout.crashes_dir / 'id:000002',
+                        mtime_ns=120_000_000_000,
+                    )
+                ],
+            )
 
             db = DB.open(db_path)
             try:
-                scheduler._process_tick(db=db, tick_idx=1, ts=130, selected_trials=(trial,), render_heavy=True)
-
-                self.assertEqual([{'run_id': 'run', 'idx': 1, 'ts': 130}], db_snapshot.list_ticks(db, run_id='run'))
-                snapshots = db_snapshot.list_trial_snapshots(db, trial_row_id=trial.trial_row_id)
+                with patch(
+                    'fuzzmeter.snapshot.scheduler.collect_snapshots',
+                    return_value=([coverage_snapshot], [crash_snapshot]),
+                ) as collect, \
+                     patch('fuzzmeter.snapshot.scheduler.process_snapshot_coverage') as process_coverage, \
+                     patch('fuzzmeter.snapshot.scheduler.process_snapshot_crashes') as process_crashes:
+                    scheduler._process_tick(
+                        db=db,
+                        tick_idx=1,
+                        end_ts=130,
+                        selected_trials=(trial,),
+                        campaign_trials=(trial,),
+                        render_heavy=True,
+                    )
             finally:
                 db.close()
 
-            self.assertEqual(1, len(snapshots))
-            self.assertEqual(1, snapshots[0]['idx'])
-            self.assertEqual(1, snapshots[0]['corpus_files'])
-            self.assertEqual(42, snapshots[0]['execs_done'])
-            self.assertTrue((trial.snapshots_root / 'snap_000001' / 'corpus' / 'id:000001').is_file())
-            self.assertTrue((trial.snapshots_root / 'snap_000001' / 'crashes' / 'id:000002').is_file())
-            self.assertEqual(1, len(scheduler._coverage_runner.calls))
-            self.assertEqual(1, len(scheduler._crash_runner.calls))
-            self.assertEqual(1, len(scheduler._aggregate_updater.calls))
-            self.assertEqual(1, len(scheduler._resource_telemetry.calls))
+            collect.assert_called_once()
+            self.assertEqual([trial], collect.call_args.kwargs['active_trials'])
+            self.assertEqual(False, collect.call_args.kwargs['replay_mode'])
+            process_coverage.assert_called_once()
+            self.assertEqual([coverage_snapshot], process_coverage.call_args.kwargs['snapshots'])
+            self.assertEqual((trial,), process_coverage.call_args.kwargs['campaign_trials'])
+            process_crashes.assert_called_once()
+            self.assertEqual([crash_snapshot], process_crashes.call_args.kwargs['snapshots'])
 
     def test_collector_parallelizes_trial_snapshot_collection(self) -> None:
         seen_threads: set[int] = set()
-        collector = _ParallelCollector(barrier=threading.Barrier(2), seen_threads=seen_threads)
-        trials = [_bare_active_trial(trial_row_id=idx, root=Path('/tmp'), started_ts=100) for idx in (1, 2, 3)]
+        barrier = threading.Barrier(2)
+        trials = [_bare_trial_instance(db_id=idx, root=Path('/tmp'), start_ts=100, rep_idx=idx) for idx in (1, 2, 3)]
 
-        plan = collector.collect(
-            tick_idx=1,
-            ts=200,
-            active_trials=trials,
-            jobs=2,
-        )
+        def _collect_trial_snapshot(**kwargs):
+            seen_threads.add(threading.get_ident())
+            try:
+                barrier.wait(timeout=2)
+            except threading.BrokenBarrierError:
+                pass
+            return None, None
 
-        self.assertEqual(trials, plan.active_trials)
+        with patch('fuzzmeter.snapshot.collector._collect_trial_snapshot', side_effect=_collect_trial_snapshot):
+            coverage_snapshots, crash_snapshots = collect_snapshots(
+                db_path=Path('/tmp/unused.db'),
+                run_id='run',
+                docker_runtime=None,
+                tick_idx=1,
+                end_ts=200,
+                active_trials=trials,
+                replay_mode=False,
+                jobs=2,
+            )
+
+        self.assertEqual([], coverage_snapshots)
+        self.assertEqual([], crash_snapshots)
         self.assertGreaterEqual(len(seen_threads), 2)
 
     def test_replay_scheduler_creates_periodic_and_last_ticks_from_replay_time(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             db_path = root / 'state.db'
-            trial = _create_active_trial(root=root, db_path=db_path, started_ts=100, replay_start_ts=100, replay_end_ts=220)
-            _write_output(trial.corpus_root / 'id:000001', 'first', mtime_s=110)
-            _write_output(trial.corpus_root / 'id:000002', 'last', mtime_s=210)
-            (trial.trial_root / 'replay_timeline.json').write_text(
+            trial = _create_trial_instance(root=root, db_path=db_path, start_ts=100, end_ts=220)
+            _write_output(trial.layout.corpus_dir / 'id:000001', 'first', mtime_s=110)
+            _write_output(trial.layout.corpus_dir / 'id:000002', 'last', mtime_s=210)
+            (trial.layout.trial_dir / 'replay_timeline.json').write_text(
                 (
-                    '{"replay_start_ts":100,"replay_end_ts":220,'
+                    '{"start_ts":100,"end_ts":220,'
                     '"file_times_ns":{"default/queue/id:000001":110000000000,'
                     '"default/queue/id:000002":210000000000}}'
                 ),
@@ -418,16 +473,17 @@ class RunnerLoopTest(unittest.TestCase):
                 docker_runtime=None,
                 jobs=2,
             )
-            _install_recorders(scheduler)
-            scheduler._collector._read_stats = lambda trial, tick_ts=None: {}
             scheduler.register(trial)
 
-            scheduler.run_loop()
+            with patch('fuzzmeter.snapshot.collector._read_stats', return_value={}), \
+                 patch('fuzzmeter.snapshot.scheduler.process_snapshot_coverage'), \
+                 patch('fuzzmeter.snapshot.scheduler.process_snapshot_crashes'):
+                scheduler.run_loop()
 
             db = DB.open(db_path)
             try:
                 ticks = db_snapshot.list_ticks(db, run_id='run')
-                snapshots = db_snapshot.list_trial_snapshots(db, trial_row_id=trial.trial_row_id)
+                snapshots = db_snapshot.list_trial_snapshots(db, trial_row_id=trial.db_id)
             finally:
                 db.close()
 
@@ -435,100 +491,7 @@ class RunnerLoopTest(unittest.TestCase):
             self.assertEqual([1, 2, 3], [row['idx'] for row in ticks])
             self.assertEqual([1, 2, 3], [row['idx'] for row in snapshots])
             self.assertEqual(2, snapshots[-1]['corpus_files'])
-            self.assertTrue((trial.snapshots_root / 'snap_000003' / 'corpus' / 'id:000002').is_file())
-
-
-def _install_recorders(scheduler: SnapshotScheduler) -> None:
-    scheduler._coverage_runner = _ProcessorRecorder()
-    scheduler._crash_runner = _ProcessorRecorder()
-    scheduler._aggregate_updater = _AggregateRecorder()
-    scheduler._resource_telemetry = _ResourceRecorder()
-
-
-def _create_active_trial(
-    *,
-    root: Path,
-    db_path: Path,
-    started_ts: int,
-    replay_start_ts: int | None = None,
-    replay_end_ts: int | None = None,
-) -> ActiveTrial:
-    db = DB.open(db_path)
-    try:
-        ensure_schema(db)
-        trial_row_id = db_trials.ensure_trial_row(
-            db,
-            run_id='run',
-            fuzzer='aflplusplus',
-            benchmark='bench',
-            fuzz_target='target',
-            rep=0,
-            time_seconds=300,
-            jobs=1,
-            status='running',
-            fuzzer_image='runner',
-            build_config_json=None,
-            runtime_config_json=None,
-            start_ts=started_ts,
-        )
-        db.commit()
-    finally:
-        db.close()
-
-    trial = _bare_active_trial(
-        trial_row_id=trial_row_id,
-        root=root,
-        started_ts=started_ts,
-        replay_start_ts=replay_start_ts,
-        replay_end_ts=replay_end_ts,
-    )
-    trial.corpus_root.mkdir(parents=True)
-    trial.crashes_root.mkdir(parents=True)
-    trial.snapshots_root.mkdir(parents=True)
-    return trial
-
-
-def _bare_active_trial(
-    *,
-    trial_row_id: int,
-    root: Path,
-    started_ts: int,
-    replay_start_ts: int | None = None,
-    replay_end_ts: int | None = None,
-) -> ActiveTrial:
-    trial_root = root / f'trial-{trial_row_id}'
-    return ActiveTrial(
-        trial_row_id=trial_row_id,
-        trial_id=f'aflplusplus__target__rep{trial_row_id}',
-        container_name=f'container-{trial_row_id}',
-        fuzzer='aflplusplus',
-        fuzzer_base='aflplusplus',
-        benchmark='bench',
-        fuzz_target='target',
-        input_mode='mode',
-        rep=trial_row_id,
-        runner_image='runner',
-        coverage_image='coverage',
-        asan_image='asan',
-        snapshot_preprocess_script=None,
-        trial_root=trial_root,
-        live_out=trial_root / 'work',
-        fuzzer_log=trial_root / 'logs' / 'fuzzer.log',
-        corpus_root=trial_root / 'work' / 'default' / 'queue',
-        crashes_root=trial_root / 'work' / 'default' / 'crashes',
-        snapshots_root=trial_root / 'snapshots',
-        seed_root=None,
-        repo_root=root,
-        started_ts=started_ts,
-        replay_start_ts=replay_start_ts,
-        replay_end_ts=replay_end_ts,
-    )
-
-
-def _write_output(path: Path, content: str, *, mtime_s: int) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding='utf-8')
-    os.utime(path, ns=(mtime_s * 1_000_000_000, mtime_s * 1_000_000_000))
+            self.assertTrue((trial.layout.snapshots_dir / 'snap_000003' / 'corpus' / 'id:000002').is_file())
 
 
 if __name__ == '__main__':

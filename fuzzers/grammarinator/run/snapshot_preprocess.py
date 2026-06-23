@@ -6,7 +6,7 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-'''Decode Grammarinator tree corpora before coverage reproduction.'''
+'''Decode Grammarinator snapshot inputs before coverage reproduction.'''
 
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ def _is_snapshot_input_file(path: Path, root: Path) -> bool:
 
 
 def main() -> None:
-    '''Decode snapshot corpus files in-place when they are Grammarinator trees.'''
+    '''Decode snapshot input files in-place when they are Grammarinator trees.'''
     logging.basicConfig(level=logging.INFO, format='%(levelname)s:%(name)s:%(message)s')
 
     fuzzer = os.environ['FM_FUZZER']
@@ -83,14 +83,14 @@ def main() -> None:
     fuzz_target = os.environ['FM_FUZZ_TARGET']
     runner_image = os.environ['FM_RUNNER_IMAGE']
     snapshot_dir = Path(os.environ['FM_SNAPSHOT_DIR']).resolve()
-    corpus_dir = Path(os.environ.get('FM_SNAPSHOT_CORPUS_DIR', snapshot_dir / 'corpus')).resolve()
+    input_dir = Path(os.environ.get('FM_SNAPSHOT_INPUT_DIR', snapshot_dir / 'corpus')).resolve()
     jobs = int(os.environ.get('FM_JOBS', '1'))
-    tmp_dir = corpus_dir.with_name(f'{corpus_dir.name}_tmp')
-    host_snapshot_dir = _map_to_host(corpus_dir)
+    tmp_dir = input_dir.with_name(f'{input_dir.name}_tmp')
+    host_snapshot_dir = _map_to_host(input_dir)
     host_tmp_dir = _map_to_host(tmp_dir)
     LOG.debug(
-        'Decoding snapshot corpus %s using host mount %s (tmp=%s host_tmp=%s)',
-        corpus_dir,
+        'Decoding snapshot inputs %s using host mount %s (tmp=%s host_tmp=%s)',
+        input_dir,
         host_snapshot_dir,
         tmp_dir,
         host_tmp_dir,
@@ -100,19 +100,19 @@ def main() -> None:
     if tmp_dir.exists():
         raise SystemExit(f'Temporary decode dir still exists: {tmp_dir}')
 
-    corpus_dir.rename(tmp_dir)
-    corpus_dir.mkdir(parents=True, exist_ok=True)
+    input_dir.rename(tmp_dir)
+    input_dir.mkdir(parents=True, exist_ok=True)
 
     input_files = sorted(p for p in tmp_dir.rglob('*') if _is_snapshot_input_file(p, tmp_dir))
     if not input_files:
-        tmp_dir.rename(corpus_dir)
+        tmp_dir.rename(input_dir)
         return
 
     mutator_counts = _collect_mutator_counts(tmp_dir)
     (snapshot_dir / MUTATOR_MANIFEST).write_text(
         json.dumps(
             {
-                'source': 'preprocess_tmp_corpus',
+                'source': 'preprocess_tmp_input',
                 'mutator_counts': mutator_counts,
                 'total_files': sum(mutator_counts.values()),
             },
@@ -159,7 +159,7 @@ def main() -> None:
         if len(batch_files) == 1:
             output = (result.stdout or '') + '\n' + (result.stderr or '')
             rel_path = batch_files[0].relative_to(tmp_dir)
-            LOG.warning('Failed to decode snapshot corpus file %s with exit code %s', rel_path, result.returncode)
+            LOG.warning('Failed to decode snapshot input file %s with exit code %s', rel_path, result.returncode)
             return [{
                 'path': str(rel_path),
                 'returncode': result.returncode,
@@ -186,9 +186,9 @@ def main() -> None:
             decode_failures = _run_decode_batch(input_files)
     except Exception:
         _write_preprocess_error(snapshot_dir=snapshot_dir)
-        shutil.rmtree(corpus_dir, ignore_errors=True)
+        shutil.rmtree(input_dir, ignore_errors=True)
         if tmp_dir.exists():
-            tmp_dir.rename(corpus_dir)
+            tmp_dir.rename(input_dir)
         raise
     else:
         if decode_failures:

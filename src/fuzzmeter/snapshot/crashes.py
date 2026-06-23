@@ -5,97 +5,64 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Run crash reproduction work for snapshot batches.'''
+
 from __future__ import annotations
 
 from pathlib import Path
 
-from ..db import DB
 from ..docker import DockerRuntime
 from ..repro import bugs as repro_bugs
-from .common import run_parallel_jobs
-from .models import DEFAULT_CRASH_BATCH_SIZE, CrashBatchTask, SnapshotTickPlan
+from ..repro.ingest import DetectedFile
+from .parallel import run_parallel_jobs
+from .progress import SnapshotProgress
+from .trial_snapshot import TrialCrashSnapshot
+
+DEFAULT_CRASH_BATCH_SIZE = 64
 
 
-class SnapshotCrashRunner:
-    '''Run crash reproduction for snapshot ticks.'''
+def process_snapshot_crashes(
+    *,
+    db_path: Path,
+    run_dir: Path,
+    run_id: str,
+    tick_idx: int,
+    jobs: int,
+    snapshots: list[TrialCrashSnapshot],
+    docker_runtime: DockerRuntime,
+    progress: SnapshotProgress | None = None,
+) -> None:
+    '''Process every crash snapshot scheduled for a tick.'''
+    crash_batches: list[tuple[TrialCrashSnapshot, int, list[DetectedFile]]] = []
+    for snapshot in snapshots:
+        for batch_index, index in enumerate(range(0, len(snapshot.crash_files), DEFAULT_CRASH_BATCH_SIZE)):
+            crash_batches.append((snapshot, batch_index, snapshot.crash_files[index:index + DEFAULT_CRASH_BATCH_SIZE]))
 
-    def __init__(self, *, docker_runtime: DockerRuntime) -> None:
-        self.docker_runtime = docker_runtime
+    if progress is not None:
+        progress.start_crashes(tick_idx=tick_idx, total=len(crash_batches))
 
-    def process(
-        self,
-        *,
-        db: DB,
-        db_path: Path,
-        run_id: str,
-        repro_logs_dir: Path,
-        tick_idx: int,
-        jobs: int,
-        plan: SnapshotTickPlan,
-    ) -> None:
-        '''Process every crash reproduction task scheduled for a snapshot tick.'''
-        batch_tasks = self._build_batch_tasks(plan)
-        run_parallel_jobs(
-            jobs=jobs,
-            total=len(batch_tasks),
-            desc=f"Snapshot {tick_idx} crashes",
-            position=1,
-            leave=False,
-            submit_jobs=lambda executor: [
-                executor.submit(
-                    self._bugs_one_repro,
-                    db_path=db_path,
-                    run_id=run_id,
-                    task=task,
-                    repro_logs_dir=repro_logs_dir,
-                )
-                for task in batch_tasks
-            ],
-        )
-
-    def _bugs_one_repro(
-        self,
-        *,
-        db_path: Path,
-        run_id: str,
-        task: CrashBatchTask,
-        repro_logs_dir: Path,
-    ) -> None:
-        db = DB.open(db_path)
-        try:
-            repro_bugs.reproduce_new_crashes(
-                db=db,
-                docker_runtime=self.docker_runtime,
+    run_parallel_jobs(
+        jobs=jobs,
+        total=len(crash_batches),
+        desc=f'Snapshot {tick_idx} crashes',
+        position=1,
+        leave=False,
+        submit_jobs=lambda executor: [
+            executor.submit(
+                repro_bugs.repro_crash_batch,
+                db_path=db_path,
+                docker_runtime=docker_runtime,
                 run_id=run_id,
-                trial=task.trial,
-                snapshot_id=task.snapshot_id,
-                ts=task.ts,
-                snapshot_crashes_dir=task.snapshot_crashes_dir,
-                new_crash_files=task.new_crash_files,
-                repro_logs_dir=repro_logs_dir,
-                batch_index=task.batch_index,
+                trial=snapshot.trial,
+                snapshot_id=snapshot.snapshot_id,
+                snapshot_crashes_dir=snapshot.snapshot_dir / 'crashes',
+                crash_files=crash_files,
+                batch_index=batch_index,
+                repro_logs_dir=run_dir / 'repro_logs',
             )
-        finally:
-            db.close()
-
-    @staticmethod
-    def _build_batch_tasks(plan: SnapshotTickPlan) -> list[CrashBatchTask]:
-        batch_tasks: list[CrashBatchTask] = []
-        for task in plan.crash_tasks:
-            for batch_index, batch in enumerate(_chunks(task.new_crash_files, DEFAULT_CRASH_BATCH_SIZE)):
-                batch_tasks.append(
-                    CrashBatchTask(
-                        trial=task.trial,
-                        snapshot_id=task.snapshot_id,
-                        ts=task.ts,
-                        snapshot_crashes_dir=task.snapshot_crashes_dir,
-                        new_crash_files=batch,
-                        batch_index=batch_index,
-                    )
-                )
-        return batch_tasks
-
-
-def _chunks(items, size: int):
-    for index in range(0, len(items), size):
-        yield items[index:index + size]
+            for snapshot, batch_index, crash_files in crash_batches
+        ],
+        progress_step=progress.step_crashes if progress is not None else None,
+    )
+    if progress is not None:
+        progress.idle_crashes()

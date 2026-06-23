@@ -16,6 +16,7 @@ from typing import Any
 from .base import DB
 
 LOG = logging.getLogger(__name__)
+SEED_BASELINE_IDX = 0
 
 
 def insert_tick(db: DB, *, run_id: str, idx: int, ts: int) -> None:
@@ -59,12 +60,12 @@ def list_trial_snapshots(db: DB, *, trial_row_id: int) -> list[dict[str, Any]]:
     )
 
 
-def ensure_snapshot_row(
+def save_snapshot_data(
     db: DB,
     *,
-    trial_row_id: int,
-    idx: int,
-    ts: int,
+    trial_db_id: int,
+    tick_idx: int,
+    end_ts: int,
     corpus_files: int,
     execs_done: int | None,
     stats: dict[str, Any] | None,
@@ -80,9 +81,9 @@ def ensure_snapshot_row(
         VALUES(?,?,?,?,?,?,?,?)
         """,
         (
-            int(trial_row_id),
-            int(idx),
-            int(ts),
+            int(trial_db_id),
+            int(tick_idx),
+            int(end_ts),
             int(corpus_files),
             None if execs_done is None else int(execs_done),
             stats_json,
@@ -90,7 +91,7 @@ def ensure_snapshot_row(
             hangs,
         ),
     )
-    sid = db.scalar('SELECT snapshot_id FROM snapshots WHERE trial_id=? AND idx=?', (int(trial_row_id), int(idx)))
+    sid = db.scalar('SELECT snapshot_id FROM snapshots WHERE trial_id=? AND idx=?', (int(trial_db_id), int(tick_idx)))
     return int(sid or 0)
 
 
@@ -166,24 +167,68 @@ def copy_previous_coverage_fields(db: DB, *, trial_row_id: int, snapshot_id: int
     )
 
 
-def trial_has_coverage_snapshots(db: DB, *, trial_row_id: int) -> bool:
-    return bool(
-        db.scalar(
-            """
-            SELECT 1
-              FROM snapshots
-             WHERE trial_id=?
-               AND (
-                    cov_lines_covered IS NOT NULL
-                 OR cov_branches_covered IS NOT NULL
-                 OR cov_regions_covered IS NOT NULL
-                 OR cov_functions_covered IS NOT NULL
-               )
-             LIMIT 1
-            """,
-            (int(trial_row_id),),
-        )
+def copy_seed_baseline_coverage_fields(
+    db: DB,
+    *,
+    run_id: str,
+    fuzzer: str,
+    benchmark: str,
+    fuzz_target: str,
+    snapshot_id: int,
+) -> bool:
+    '''Copy recorded seed baseline coverage fields into one trial snapshot row.'''
+    baseline = db.q(
+        """
+        SELECT coverage_html_dir,
+               cov_lines_covered,
+               cov_lines_total,
+               cov_branches_covered,
+               cov_branches_total,
+               cov_regions_covered,
+               cov_regions_total,
+               cov_functions_covered,
+               cov_functions_total
+          FROM agg_snapshots
+         WHERE run_id=?
+           AND fuzzer=?
+           AND benchmark=?
+           AND fuzz_target=?
+           AND idx=?
+         LIMIT 1
+        """,
+        (str(run_id), str(fuzzer), str(benchmark), str(fuzz_target), SEED_BASELINE_IDX),
     )
+    if not baseline:
+        return False
+    row = baseline[0]
+    db.exec(
+        """
+        UPDATE snapshots
+           SET coverage_html_dir=?,
+               cov_lines_covered=?,
+               cov_lines_total=?,
+               cov_branches_covered=?,
+               cov_branches_total=?,
+               cov_regions_covered=?,
+               cov_regions_total=?,
+               cov_functions_covered=?,
+               cov_functions_total=?
+         WHERE snapshot_id=?
+        """,
+        (
+            row.get('coverage_html_dir'),
+            row.get('cov_lines_covered'),
+            row.get('cov_lines_total'),
+            row.get('cov_branches_covered'),
+            row.get('cov_branches_total'),
+            row.get('cov_regions_covered'),
+            row.get('cov_regions_total'),
+            row.get('cov_functions_covered'),
+            row.get('cov_functions_total'),
+            int(snapshot_id),
+        ),
+    )
+    return True
 
 
 def set_snapshot_coverage_fields(

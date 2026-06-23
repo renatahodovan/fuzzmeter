@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import subprocess
+
 from pathlib import Path
 from typing import Any
 
@@ -65,23 +66,16 @@ def _parse_size(value: Any) -> int | None:
     return int(float(match.group(1)) * factor)
 
 
-def _run_text(cmd: list[str], *, timeout_s: int = 10) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, text=True, capture_output=True, timeout=timeout_s, check=False)
-
-
 class ResourceTelemetryCollector:
     '''Collect docker stats and live corpus disk usage at tick-save time.'''
 
     def collect(self, *, db: DB, tick_idx: int, ts: int, active_trials: list[TrialInstance]) -> None:
         '''Collect and persist one resource sample for each active trial.'''
-
+        stats_by_container = self._docker_stats_by_container([trial.container_name for trial in active_trials])
         for trial in active_trials:
-            if trial.end_ts is not None:
-                continue
-            stats = self._docker_stats(trial.container_name)
-            if stats is None:
-                continue
-            disk_human, disk_bytes = self._du_hs(trial.layout.fuzz_dir)
+            stats = stats_by_container[trial.container_name]
+            disk_kib = self._du_sk(trial.layout.fuzz_dir)
+            disk_bytes = None if disk_kib is None else disk_kib * 1024
             db_resource_telemetry.upsert_resource_telemetry(
                 db,
                 trial_row_id=trial.db_id,
@@ -93,32 +87,29 @@ class ResourceTelemetryCollector:
                 memory_limit_bytes=self._memory_limit_bytes(stats),
                 memory_percent=_parse_percent(stats.get('MemPerc')),
                 corpus_disk_usage_bytes=disk_bytes,
-                corpus_disk_usage_human=disk_human,
-                stats=stats,
             )
 
     @staticmethod
-    def _docker_stats(container_name: str) -> dict[str, Any] | None:
+    def _docker_stats_by_container(container_names: list[str]) -> dict[str, dict[str, Any]]:
         try:
-            result = _run_text(
-                ['docker', 'stats', '--no-stream', '--format', '{{json .}}', container_name],
-                timeout_s=15,
+            result = subprocess.run(
+                ['docker', 'stats', '--no-stream', '--format', '{{json .}}', *container_names],
+                timeout=15,
+                text=True,
+                capture_output=True,
+                check=True,
             )
-        except Exception as exc:
-            LOG.error('Docker stats failed for %s: %s', container_name, exc)
-            return None
-        if result.returncode != 0:
-            LOG.error('Docker stats skipped for %s: %s', container_name, (result.stderr or '').strip())
-            return None
-        lines = (result.stdout or '').strip().splitlines()
-        if not lines:
-            return None
-        try:
-            parsed = json.loads(lines[0])
-        except json.JSONDecodeError:
-            LOG.error('Docker stats returned non-json output for %s: %s', container_name, lines[0])
-            return None
-        return parsed if isinstance(parsed, dict) else None
+            lines = (result.stdout or '').strip().splitlines()
+            if not lines:
+                raise RuntimeError('Docker stats returned no output')
+
+            return {
+                str(parsed['Name']): parsed
+                for parsed in (json.loads(line) for line in lines)
+            }
+        except (KeyError, RuntimeError, TypeError, ValueError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
+            message = (getattr(exc, 'stderr', '') or '').strip() or str(exc) or 'docker stats failed'
+            raise RuntimeError(f'Docker stats failed for {len(container_names)} container(s): {message}') from exc
 
     @staticmethod
     def _memory_usage_bytes(stats: dict[str, Any]) -> int | None:
@@ -135,16 +126,11 @@ class ResourceTelemetryCollector:
         return _parse_size(limit)
 
     @staticmethod
-    def _du_hs(path: Path) -> tuple[str | None, int | None]:
-        if not path.exists():
-            return None, None
+    def _du_sk(path: Path) -> int | None:
         try:
-            result = _run_text(['du', '-hs', str(path)], timeout_s=30)
-        except Exception as exc:
-            LOG.warning('du -hs failed for %s: %s', path, exc)
-            return None, None
-        if result.returncode != 0:
-            LOG.debug('du -hs failed for %s: %s', path, (result.stderr or '').strip())
-            return None, None
-        size_text = (result.stdout or '').strip().split(maxsplit=1)[0]
-        return size_text, _parse_size(size_text)
+            result = subprocess.run(['du', '-sk', str(path)],
+                                    timeout=30, text=True, capture_output=True, check=True)
+            return int((result.stdout or '').strip().split(maxsplit=1)[0])
+        except (IndexError, ValueError, subprocess.SubprocessError) as exc:
+            LOG.warning('du -sk failed for %s: %s', path, exc)
+            return None

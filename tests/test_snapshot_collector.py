@@ -19,66 +19,98 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fuzzmeter.db import DB, ensure_schema
-from fuzzmeter.db import snapshot as db_snapshot
-from fuzzmeter.repro.coverage_state import seed_coverage_root
-from fuzzmeter.repro.ingest import DetectedFile, copy_into_snapshot, detect_new_files
-from fuzzmeter.snapshot.collector import SnapshotCollector
-from fuzzmeter.snapshot.coverage import SnapshotCoverageRunner
-from fuzzmeter.snapshot.models import CoverageTask
+from fuzzmeter.fuzzers.models import OutputPaths
+from fuzzmeter.repro.ingest import DetectedFile, detect_new_files, prepare_snapshot_inputs
+from fuzzmeter.snapshot.collector import _collect_trial_snapshot, _detect_replay_files
 from fuzzmeter.snapshot.scheduler import SnapshotScheduler
-from fuzzmeter.trial.models import ActiveTrial
+from fuzzmeter.trial.models import ReplayTrialInstance, TrialConfig, TrialImages, TrialInstance, TrialLayout
 from fuzzers.aflplusplus.run import fuzz as aflplusplus_fuzzer
 from fuzzers.libfuzzer.run import fuzz as libfuzzer_fuzzer
 
 
-def _active_trial(root: Path, *, started_ts: int | None = None) -> ActiveTrial:
-    trial_root = root / 'trial'
-    return ActiveTrial(
-        trial_row_id=1,
-        trial_id='aflplusplus__target__rep0',
-        container_name='container',
+def _active_trial(
+    root: Path,
+    *,
+    started_ts: int | None = None,
+    db_id: int = 1,
+    rep_idx: int = 0,
+) -> TrialInstance:
+    trial_root = root / f'trial_{db_id}'
+    config = TrialConfig(
         fuzzer='aflplusplus',
         fuzzer_base='aflplusplus',
         benchmark='bench',
         fuzz_target='target',
-        input_mode='mode',
-        rep=0,
-        runner_image='runner',
-        coverage_image='coverage',
-        asan_image='asan',
-        snapshot_preprocess_script=None,
-        trial_root=trial_root,
-        live_out=trial_root / 'work',
-        fuzzer_log=trial_root / 'logs' / 'fuzzer.log',
-        corpus_root=trial_root / 'work' / 'default' / 'queue',
-        crashes_root=trial_root / 'work' / 'default' / 'crashes',
-        snapshots_root=trial_root / 'snapshots',
-        seed_root=None,
+        fuzz_target_bin=root / 'target_bin',
+        fuzz_target_input_mode='mode',
+        fuzz_target_timeout=1.0,
+        rep_idx=rep_idx,
+        trial_key=f'aflplusplus__bench-target__rep{rep_idx}',
+        output_paths=OutputPaths(
+            corpus_root=Path('default/queue'),
+            crashes_root=Path('default/crashes'),
+        ),
+        trial_timeout=300,
+        snapshot_preprocess=None,
+        images=TrialImages(fuzzer_name='aflplusplus', target_id='bench-target'),
+    )
+    layout = TrialLayout.from_config(trial_dir=trial_root, cfg=config)
+    layout.corpus_dir.mkdir(parents=True, exist_ok=True)
+    layout.crashes_dir.mkdir(parents=True, exist_ok=True)
+    layout.snapshots_dir.mkdir(parents=True, exist_ok=True)
+    return TrialInstance(
+        db_id=db_id,
+        config=config,
+        layout=layout,
+        container_name=f'container-{db_id}',
         repo_root=root,
-        started_ts=started_ts,
+        start_ts=0 if started_ts is None else started_ts,
+    )
+
+
+def _replay_trial(root: Path, *, start_ts: int, end_ts: int, db_id: int = 1, rep_idx: int = 0) -> ReplayTrialInstance:
+    trial = _active_trial(root, started_ts=start_ts, db_id=db_id, rep_idx=rep_idx)
+    return ReplayTrialInstance(
+        db_id=trial.db_id,
+        config=trial.config,
+        layout=trial.layout,
+        container_name=trial.container_name,
+        repo_root=trial.repo_root,
+        start_ts=trial.start_ts,
+        end_ts=end_ts,
     )
 
 
 class SnapshotCollectorTest(unittest.TestCase):
     '''Verify snapshot collection and scheduling corner cases.'''
 
-    def test_copy_into_snapshot_prefers_hardlink_when_possible(self) -> None:
+    def test_prepare_snapshot_inputs_prefers_hardlink_when_possible(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             src = root / 'live' / 'id:000001'
             src.parent.mkdir(parents=True)
             src.write_text('input', encoding='utf-8')
             detected = DetectedFile(
-                kind='corpus',
                 rel_path='id:000001',
-                db_rel_path='id:000001',
                 abs_src=src,
                 mtime_ns=src.stat().st_mtime_ns,
             )
 
-            self.assertEqual(1, copy_into_snapshot([detected], snap_dir=root / 'snap', subdir='corpus'))
+            copied = prepare_snapshot_inputs(
+                docker_runtime=None,
+                snapshot_dir=root / 'snap',
+                input_dir=root / 'snap' / 'corpus',
+                input_files=[detected],
+                snapshot_preprocess=None,
+                benchmark='bench',
+                fuzz_target='target',
+                fuzzer='fuzzer',
+                runner_image='runner',
+                repo_root=root,
+            )
 
             dst = root / 'snap' / 'corpus' / 'id:000001'
+            self.assertEqual([dst], copied)
             self.assertTrue(dst.is_file())
             if src.stat().st_dev == dst.stat().st_dev:
                 self.assertEqual(src.stat().st_ino, dst.stat().st_ino)
@@ -91,22 +123,20 @@ class SnapshotCollectorTest(unittest.TestCase):
             ensure_schema(db)
             corpus_root = root / 'queue'
             corpus_root.mkdir()
-            files = {
-                'old': 90_000_000_000,
-                'start': 100_000_000_000,
-                'new': 150_000_000_000,
-                'future': 210_000_000_000,
-            }
-            for name in files:
-                (corpus_root / name).write_text(name, encoding='utf-8')
+            (corpus_root / 'old').write_text('old', encoding='utf-8')
+            time.sleep(1.1)
+            start_ts = int(time.time())
+            (corpus_root / 'new').write_text('new', encoding='utf-8')
+            time.sleep(1.1)
+            end_ts = int(time.time())
+            (corpus_root / 'future').write_text('future', encoding='utf-8')
 
             try:
                 detected = detect_new_files(
                     kind='corpus',
                     src_root=corpus_root,
-                    start_ts=100,
-                    end_ts=200,
-                    replay_time_fn=lambda path: files[Path(path).name],
+                    start_ts=start_ts,
+                    end_ts=end_ts,
                 )
                 self.assertIsNone(
                     db.scalar("SELECT name FROM sqlite_master WHERE type='table' AND name='seen_corpus_files'")
@@ -114,7 +144,7 @@ class SnapshotCollectorTest(unittest.TestCase):
             finally:
                 db.close()
 
-            self.assertEqual(['new', 'start'], sorted(item.rel_path for item in detected))
+            self.assertEqual(['new'], sorted(item.rel_path for item in detected))
 
     def test_collect_trial_snapshot_uses_tick_time_for_live_file_cutoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -124,63 +154,33 @@ class SnapshotCollectorTest(unittest.TestCase):
             ensure_schema(db)
             db.close()
 
-            trial_root = root / 'trial'
-            (trial_root / 'work' / 'default' / 'queue').mkdir(parents=True)
-            (trial_root / 'work' / 'default' / 'crashes').mkdir(parents=True)
-            (trial_root / 'snapshots').mkdir()
-
-            trial = ActiveTrial(
-                trial_row_id=1,
-                trial_id='aflplusplus__target__rep0',
-                container_name='container',
-                fuzzer='aflplusplus',
-                fuzzer_base='aflplusplus',
-                benchmark='bench',
-                fuzz_target='target',
-                input_mode='mode',
-                rep=0,
-                runner_image='runner',
-                coverage_image='coverage',
-                asan_image='asan',
-                snapshot_preprocess_script=None,
-                trial_root=trial_root,
-                live_out=trial_root / 'work',
-                fuzzer_log=trial_root / 'logs' / 'fuzzer.log',
-                corpus_root=trial_root / 'work' / 'default' / 'queue',
-                crashes_root=trial_root / 'work' / 'default' / 'crashes',
-                snapshots_root=trial_root / 'snapshots',
-                seed_root=None,
-                repo_root=root,
-                started_ts=0,
-            )
-            collector = SnapshotCollector(db_path=db_path, run_id='run-1', docker_runtime=None)
+            trial = _active_trial(root, started_ts=0)
             seen_intervals: list[tuple[int, int]] = []
 
-            def _capture_detect_new_files(*, kind, src_root, start_ts, end_ts, replay_time_fn=None):
+            def _capture_detect_new_files(*, kind, src_root, start_ts, end_ts):
                 seen_intervals.append((int(start_ts), int(end_ts)))
                 return []
 
             with patch('fuzzmeter.snapshot.collector.time.time', return_value=120), \
-                 patch.object(SnapshotCollector, '_read_stats', return_value={}), \
-                 patch.object(SnapshotCollector, '_copy_new_corpus', return_value=0), \
-                 patch.object(SnapshotCollector, '_should_run_coverage', return_value=False), \
-                 patch('fuzzmeter.snapshot.collector.repro_ingest.detect_new_files', side_effect=_capture_detect_new_files), \
-                 patch('fuzzmeter.snapshot.collector.db_snapshot.ensure_snapshot_row', return_value=1):
-                collector._collect_trial_snapshot(
+                 patch('fuzzmeter.snapshot.collector._read_stats', return_value={}), \
+                 patch('fuzzmeter.snapshot.collector.repro_ingest.detect_new_files', side_effect=_capture_detect_new_files):
+                _collect_trial_snapshot(
+                    db_path=db_path,
+                    run_id='run-1',
+                    docker_runtime=None,
                     tick_idx=2,
-                    ts=100,
+                    end_ts=100,
                     trial=trial,
+                    replay_mode=False,
                     preprocess_jobs=1,
-                    render_heavy=False,
                 )
 
-            self.assertEqual(seen_intervals, [(0, 100), (0, 100)])
+            self.assertEqual(seen_intervals, [(-1, 100), (-1, 100)])
 
     def test_collect_trial_snapshot_uses_tick_time_for_replay_file_cutoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
-            db_path = root / 'state.db'
-            trial_root = root / 'trial'
+            trial_root = root / 'trial_1'
             (trial_root / 'work' / 'default' / 'queue').mkdir(parents=True)
             (trial_root / 'work' / 'default' / 'crashes').mkdir(parents=True)
             (trial_root / 'work' / 'default' / 'queue' / 'id:000001').write_text('a', encoding='utf-8')
@@ -189,8 +189,8 @@ class SnapshotCollectorTest(unittest.TestCase):
             (trial_root / 'replay_timeline.json').write_text(
                 json.dumps(
                     {
-                        'replay_start_ts': 100,
-                        'replay_end_ts': 200,
+                        'start_ts': 100,
+                        'end_ts': 200,
                         'file_times_ns': {
                             'default/queue/id:000001': 110_000_000_000,
                             'default/queue/id:000002': 120_000_000_000,
@@ -201,57 +201,28 @@ class SnapshotCollectorTest(unittest.TestCase):
                 encoding='utf-8',
             )
 
-            trial = ActiveTrial(
-                trial_row_id=1,
-                trial_id='aflplusplus__target__rep0',
-                container_name='container',
-                fuzzer='aflplusplus_replay',
-                fuzzer_base='aflplusplus',
-                benchmark='bench',
-                fuzz_target='target',
-                input_mode='mode',
-                rep=0,
-                runner_image='runner',
-                coverage_image='coverage',
-                asan_image='asan',
-                snapshot_preprocess_script=None,
-                trial_root=trial_root,
-                live_out=trial_root / 'work',
-                fuzzer_log=trial_root / 'logs' / 'fuzzer.log',
-                corpus_root=trial_root / 'work' / 'default' / 'queue',
-                crashes_root=trial_root / 'work' / 'default' / 'crashes',
-                snapshots_root=trial_root / 'snapshots',
-                seed_root=None,
-                repo_root=root,
-                replay_start_ts=100,
-                replay_end_ts=200,
+            trial = _replay_trial(root, start_ts=100, end_ts=200)
+            first_tick = _detect_replay_files(
+                kind='corpus',
+                trial=trial,
+                src_root=trial.layout.corpus_dir,
+                start_ts=100,
+                end_ts=110,
             )
-            collector = SnapshotCollector(db_path=db_path, run_id='run-1', docker_runtime=None)
-            db = DB.open(root / 'unused.db')
-            try:
-                first_tick = collector._detect_new_files(
-                    kind='corpus',
-                    trial=trial,
-                    src_root=trial.corpus_root,
-                    start_ts=100,
-                    end_ts=110,
-                )
-                second_tick = collector._detect_new_files(
-                    kind='corpus',
-                    trial=trial,
-                    src_root=trial.corpus_root,
-                    start_ts=110,
-                    end_ts=120,
-                )
-                crashes = collector._detect_new_files(
-                    kind='crashes',
-                    trial=trial,
-                    src_root=trial.crashes_root,
-                    start_ts=100,
-                    end_ts=120,
-                )
-            finally:
-                db.close()
+            second_tick = _detect_replay_files(
+                kind='corpus',
+                trial=trial,
+                src_root=trial.layout.corpus_dir,
+                start_ts=110,
+                end_ts=120,
+            )
+            crashes = _detect_replay_files(
+                kind='crashes',
+                trial=trial,
+                src_root=trial.layout.crashes_dir,
+                start_ts=100,
+                end_ts=120,
+            )
 
             self.assertEqual(['id:000001'], [file.rel_path for file in first_tick])
             self.assertEqual(['id:000002'], [file.rel_path for file in second_tick])
@@ -278,7 +249,7 @@ class SnapshotCollectorTest(unittest.TestCase):
                 scheduler.schedule_final_tick(_active_trial(root, started_ts=934))
 
             item = scheduler._tick_queue.get_nowait()
-            self.assertEqual(1234, item.ts)
+            self.assertEqual(1234, item.end_ts)
 
     def test_equal_period_and_campaign_time_only_runs_requested_final_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -298,14 +269,15 @@ class SnapshotCollectorTest(unittest.TestCase):
             )
             trial = _active_trial(root, started_ts=int(time.time()))
             scheduler.register(trial)
-            processed: list[tuple[int, tuple[ActiveTrial, ...] | None]] = []
+            processed: list[tuple[int, tuple[TrialInstance, ...] | None]] = []
             processed_event = threading.Event()
 
             def _capture_tick(**kwargs):
                 processed.append((int(kwargs['tick_idx']), kwargs.get('selected_trials')))
                 processed_event.set()
 
-            with patch.object(scheduler, '_process_tick', side_effect=_capture_tick):
+            with patch.object(scheduler, '_process_tick', side_effect=_capture_tick), \
+                 patch.object(scheduler._resource_telemetry, 'collect'):
                 worker = threading.Thread(target=scheduler.run_loop)
                 worker.start()
                 try:
@@ -337,7 +309,7 @@ class SnapshotCollectorTest(unittest.TestCase):
                 every_seconds=1,
                 docker_runtime=None,
             )
-            scheduler.started_ts = int(time.time())
+            scheduler.start_ts = int(time.time())
             trial = _active_trial(root, started_ts=int(time.time()))
             scheduler.register(trial)
             processed: list[int] = []
@@ -348,7 +320,8 @@ class SnapshotCollectorTest(unittest.TestCase):
                 if len(processed) >= 2:
                     processed_event.set()
 
-            with patch.object(scheduler, '_process_tick', side_effect=_capture_tick):
+            with patch.object(scheduler, '_process_tick', side_effect=_capture_tick), \
+                 patch.object(scheduler._resource_telemetry, 'collect'):
                 worker = threading.Thread(target=scheduler.run_loop)
                 worker.start()
                 try:
@@ -376,199 +349,29 @@ class SnapshotCollectorTest(unittest.TestCase):
                 every_seconds=60,
                 docker_runtime=None,
             )
-            scheduler.started_ts = 100
+            scheduler.start_ts = 100
             trial = _active_trial(root, started_ts=100)
-            trial_late = _active_trial(root, started_ts=130)
-            trial_late = ActiveTrial(
-                **{
-                    **trial_late.__dict__,
-                    'trial_row_id': 2,
-                    'trial_id': 'aflplusplus__target__rep1',
-                }
-            )
+            trial_late = _active_trial(root, started_ts=130, db_id=2, rep_idx=1)
             scheduler.register(trial)
             scheduler.register(trial_late)
-            due = scheduler._due_periodic_snapshots(now_ts=280)
+            due, _ = scheduler._due_periodic_snapshots(now_ts=280)
             self.assertEqual(
                 [(160, (trial,)), (190, (trial_late,)), (220, (trial,)), (250, (trial_late,)), (280, (trial,))],
                 due,
             )
-            self.assertEqual([], scheduler._due_periodic_snapshots(now_ts=280))
-            scheduler._schedule_periodic_tick(tick_idx=2, ts=160, trials=(trial, trial_late))
-            scheduler.unregister(trial.trial_id)
+            self.assertEqual(([], 310), scheduler._due_periodic_snapshots(now_ts=280))
+            db = DB.open(db_path)
+            try:
+                with patch.object(scheduler._resource_telemetry, 'collect'):
+                    scheduler._schedule_periodic_tick(db=db, tick_idx=2, ts=160, trials=(trial, trial_late))
+            finally:
+                db.close()
+            scheduler.unregister(trial.config.trial_key)
 
             item = scheduler._tick_queue.get_nowait()
             self.assertEqual(2, item.tick_idx)
-            self.assertEqual(160, item.ts)
+            self.assertEqual(160, item.end_ts)
             self.assertEqual((trial, trial_late), item.trials)
-
-    def test_coverage_does_not_run_without_new_corpus_after_prior_corpus_snapshot(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            db_path = root / 'state.db'
-            db = DB.open(db_path)
-            ensure_schema(db)
-            trial = _active_trial(root)
-            db.exec(
-                'INSERT INTO snapshots(trial_id, idx, ts, corpus_files) VALUES(?,?,?,?)',
-                (trial.trial_row_id, 1, 100, 1),
-            )
-            try:
-                with patch.object(SnapshotCollector, '_seed_baseline_exists', return_value=False):
-                    self.assertFalse(
-                        SnapshotCollector._should_run_coverage(
-                            db=db,
-                            trial=trial,
-                            copied_corpus=0
-                        )
-                    )
-            finally:
-                db.close()
-
-    def test_seed_baseline_coverage_runs_for_late_first_trial_snapshot(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            db_path = root / 'state.db'
-            db = DB.open(db_path)
-            ensure_schema(db)
-            trial = _active_trial(root)
-            run_dir = trial.trial_root.parent.parent
-            base_root = seed_coverage_root(run_dir, trial.fuzzer, trial.benchmark, trial.fuzz_target)
-            (base_root / '_state').mkdir(parents=True, exist_ok=True)
-            (base_root / 'summary.json').write_text('{}', encoding='utf-8')
-            (base_root / '_state' / 'merged.profdata').write_bytes(b'profdata')
-            try:
-                self.assertTrue(
-                    SnapshotCollector._should_run_coverage(
-                        db=db,
-                        trial=trial,
-                        copied_corpus=0
-                    )
-                )
-
-                db.exec(
-                    'INSERT INTO snapshots(trial_id, idx, ts, corpus_files, cov_branches_covered) VALUES(?,?,?,?,?)',
-                    (trial.trial_row_id, 29, 1234, 0, 1),
-                )
-                self.assertFalse(
-                    SnapshotCollector._should_run_coverage(
-                        db=db,
-                        trial=trial,
-                        copied_corpus=0
-                    )
-                )
-            finally:
-                db.close()
-
-    def test_late_first_trial_coverage_bootstraps_seed_state(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            db_path = root / 'state.db'
-            db = DB.open(db_path)
-            ensure_schema(db)
-            trial = _active_trial(root)
-            run_dir = trial.trial_root.parent.parent
-            snap_dir = trial.snapshots_root / 'snap_000029'
-            (snap_dir / 'corpus').mkdir(parents=True)
-            (snap_dir / 'corpus' / 'input').write_text('x', encoding='utf-8')
-            base_root = seed_coverage_root(run_dir, trial.fuzzer, trial.benchmark, trial.fuzz_target)
-            (base_root / '_state').mkdir(parents=True, exist_ok=True)
-            (base_root / 'summary.json').write_text('{}', encoding='utf-8')
-            (base_root / '_state' / 'merged.profdata').write_bytes(b'profdata')
-            snapshot_id = db_snapshot.ensure_snapshot_row(
-                db,
-                trial_row_id=trial.trial_row_id,
-                idx=29,
-                ts=1234,
-                corpus_files=1,
-                execs_done=None,
-                stats={},
-                crashes=0,
-                hangs=0,
-            )
-
-            try:
-                prepared = SnapshotCoverageRunner(docker_runtime=None)._prepare_one_task(
-                    db=db,
-                    run_dir=run_dir,
-                    task=CoverageTask(
-                        trial=trial,
-                        snap_dir=snap_dir,
-                        snapshot_id=snapshot_id,
-                        tick_idx=29,
-                        render_heavy=False,
-                    ),
-                )
-                self.assertIsNotNone(prepared)
-                assert prepared is not None
-                self.assertTrue((prepared.state_dir / 'merged.profdata').is_file())
-                self.assertTrue((prepared.latest_root / 'summary.json').is_file())
-            finally:
-                db.close()
-
-    def test_coverage_runner_prepares_batch_when_snapshot_has_inputs(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            db_path = root / 'state.db'
-            db = DB.open(db_path)
-            try:
-                ensure_schema(db)
-                trial = _active_trial(root)
-                snap_dir = trial.snapshots_root / 'snap_000001'
-                corpus_dir = snap_dir / 'corpus'
-                corpus_dir.mkdir(parents=True)
-                data = b'seed input'
-                (corpus_dir / 'id:000001').write_bytes(data)
-                snapshot_id = db_snapshot.ensure_snapshot_row(
-                    db,
-                    trial_row_id=trial.trial_row_id,
-                    idx=1,
-                    ts=1234,
-                    corpus_files=1,
-                    execs_done=None,
-                    stats={},
-                    crashes=0,
-                    hangs=0,
-                )
-                latest_root = root / 'coverage' / trial.fuzzer / trial.benchmark / trial.fuzz_target / trial.trial_id
-                latest_root.mkdir(parents=True)
-                (latest_root / 'summary.json').write_text(
-                    json.dumps(
-                        {
-                            'cov_lines_covered': 10,
-                            'cov_lines_total': 20,
-                            'cov_branches_covered': 3,
-                            'cov_branches_total': 8,
-                        }
-                    ),
-                    encoding='utf-8',
-                )
-                (trial.trial_root / 'coverage_state').mkdir(parents=True)
-                (trial.trial_root / 'coverage_state' / 'merged.profdata').write_bytes(b'profdata')
-
-                runner = SnapshotCoverageRunner(docker_runtime=None)
-                prepared = runner._prepare_one_task(
-                    db=db,
-                    run_dir=root,
-                    task=CoverageTask(
-                        trial=trial,
-                        snap_dir=snap_dir,
-                        snapshot_id=snapshot_id,
-                        tick_idx=1,
-                        render_heavy=False,
-                    ),
-                )
-
-                self.assertIsNotNone(prepared)
-                assert prepared is not None
-                self.assertEqual([corpus_dir / 'id:000001'], prepared.inputs)
-                self.assertEqual(
-                    [trial.trial_root / 'coverage_state' / f'_batches_{snapshot_id}' / 'batch_000000.profdata'],
-                    prepared.batch_profdata_paths,
-                )
-                self.assertTrue((trial.trial_root / 'coverage_state' / f'_batches_{snapshot_id}').is_dir())
-            finally:
-                db.close()
 
     def test_libfuzzer_stats_respect_snapshot_elapsed_cutoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

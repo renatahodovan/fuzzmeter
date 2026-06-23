@@ -98,4 +98,10 @@ class TrialInstance:
     container_name: str
     repo_root: Path
     start_ts: int
-    end_ts: int | None = None
+
+
+@dataclass(frozen=True)
+class ReplayTrialInstance(TrialInstance):
+    '''Extend a trial instance with the fixed replay end timestamp.'''
+
+    end_ts: int

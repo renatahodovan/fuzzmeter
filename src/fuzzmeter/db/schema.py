@@ -153,8 +153,6 @@ _SCHEMA = [
       memory_limit_bytes INTEGER,
       memory_percent REAL,
       corpus_disk_usage_bytes INTEGER,
-      corpus_disk_usage_human TEXT,
-      stats_json TEXT,
       PRIMARY KEY(trial_id, idx)
     )
     """,

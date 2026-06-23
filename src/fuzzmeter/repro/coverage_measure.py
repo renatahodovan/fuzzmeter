@@ -22,7 +22,7 @@ from .coverage_state import load_coverage_summary
 LOG = logging.getLogger(__name__)
 
 
-def run_coverage_batch(
+def replay_coverage_batch(
     *,
     docker_runtime: DockerRuntime,
     image: str,
@@ -34,7 +34,7 @@ def run_coverage_batch(
     timeout_s: float = 2.0,
     input_jobs: int | None = None,
 ) -> None:
-    '''Replay one batch of coverage inputs in one coverage container.'''
+    '''Replay coverage inputs in one container and write their batch profile.'''
     if not inputs:
         return
 
@@ -77,21 +77,21 @@ def run_coverage_batch(
     )
 
 
-def finalize_coverage(
+def merge_coverage_outputs(
     *,
     docker_runtime: DockerRuntime,
     run_dir: Path,
     image: str,
+    out_root: Path,
     benchmark: str,
     fuzz_target: str,
     state_dir: Path,
     work_dir: Path,
-    out_root: Path,
     profile_inputs: list[Path],
     render_html: bool = True,
     write_coverage_sets: bool = True,
 ) -> dict:
-    '''Merge batch profiles into the trial state and refresh coverage artifacts.'''
+    '''Merge batch profiles into one coverage output root and refresh its artifacts.'''
     docker = DockerClient(docker_runtime)
     state_dir.mkdir(parents=True, exist_ok=True)
     profdata_path = state_dir / 'merged.profdata'

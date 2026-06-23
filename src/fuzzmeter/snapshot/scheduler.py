@@ -11,65 +11,33 @@ from __future__ import annotations
 
 import logging
 import queue
-import sys
 import threading
 import time
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-
-from tqdm import tqdm
 
 from ..db import DB
 from ..db import snapshot as db_snapshot
 from ..docker import DockerRuntime
-from ..trial.models import TrialInstance
-from .aggregate import SnapshotAggregateUpdater
-from .collector import SnapshotCollector
-from .coverage import SnapshotCoverageRunner
-from .crashes import SnapshotCrashRunner
+from ..trial.models import ReplayTrialInstance, TrialInstance
+from .collector import collect_snapshots
+from .coverage import process_snapshot_coverage
+from .crashes import process_snapshot_crashes
+from .progress import SnapshotProgress
 from .resource_telemetry import ResourceTelemetryCollector
 
 LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class _ScheduledSnapshot:
+class SnapshotData:
     tick_idx: int
-    ts: int
+    end_ts: int
     render_heavy: bool
-    trials: tuple[TrialInstance, ...] | None = None
-
-
-def _open_progress_bar(total_seconds: int):
-    return tqdm(
-        total=max(int(total_seconds), 1),
-        desc='Run',
-        unit='s',
-        position=0,
-        leave=True,
-        dynamic_ncols=True,
-        disable=not sys.stderr.isatty(),
-    )
-
-
-def _update_progress(bar, *, total_seconds: int, elapsed_seconds: int, tick_idx: int, active_trials: int) -> None:
-    target = max(0, min(int(elapsed_seconds), max(int(total_seconds), 1)))
-    delta = target - int(bar.n)
-    if delta > 0:
-        bar.update(delta)
-    bar.set_postfix(tick=tick_idx, active=active_trials, refresh=False)
-    bar.refresh()
-
-
-def _close_progress(bar) -> None:
-    if bar is not None:
-        bar.close()
-
-
-def _logger_level() -> int:
-    level = getattr(LOG, 'level', 0)
-    return int(level) if isinstance(level, (int, float)) else 0
+    trials: tuple[TrialInstance, ...]
+    campaign_trials: tuple[TrialInstance, ...]
 
 
 class SnapshotScheduler:
@@ -84,57 +52,56 @@ class SnapshotScheduler:
         campaign_seconds: int,
         every_seconds: int,
         docker_runtime: DockerRuntime,
-        coverage_export_every_ticks: int = 1,
+        coverage_export_every: int = 1,
         jobs: int = 4,
     ) -> None:
         self.db_path = Path(db_path)
         self.run_dir = Path(run_dir)
-        self.run_id = str(run_id)
-        self.campaign_seconds = int(campaign_seconds)
-        self.every_seconds = int(every_seconds)
-        self.coverage_export_every_ticks = int(coverage_export_every_ticks)
-        self.jobs = int(jobs)
+        self.run_id = run_id
+        self.campaign_seconds = campaign_seconds
+        self.every_seconds = every_seconds
+        self.coverage_export_every = coverage_export_every
+        self.jobs = jobs
         self.docker_runtime = docker_runtime
         self.start_ts = int(time.time())
 
         self._active: dict[str, TrialInstance] = {}
-        self._periodic_ordinals: dict[str, int] = {}
+        self._campaign_trials: dict[str, TrialInstance] = {}
+        self._next_periodic_ts: dict[str, int] = {}
         self._stop = False
 
         self._lock = threading.Lock()
         self._tick_lock = threading.Lock()
         self._tick_seq_lock = threading.Lock()
-        self._tick_queue: queue.Queue[_ScheduledSnapshot | None] = queue.Queue()
+        self._tick_queue: queue.Queue[SnapshotData | None] = queue.Queue()
         self._next_tick_idx: int | None = None
+        self._scheduled_ticks = 0
+        self._processed_ticks = 0
+        self._progress = SnapshotProgress(
+            total_seconds=self.campaign_seconds,
+            enabled=LOG.isEnabledFor(logging.INFO),
+        )
 
-        self._collector = SnapshotCollector(
-            db_path=self.db_path,
-            run_id=self.run_id,
-            docker_runtime=self.docker_runtime,
-        )
-        self._coverage_runner = SnapshotCoverageRunner(
-            docker_runtime=self.docker_runtime,
-            export_every_ticks=self.coverage_export_every_ticks,
-        )
-        self._crash_runner = SnapshotCrashRunner(docker_runtime=self.docker_runtime)
-        self._aggregate_updater = SnapshotAggregateUpdater(
-            docker_runtime=self.docker_runtime,
-            export_every_ticks=self.coverage_export_every_ticks,
-        )
         self._resource_telemetry = ResourceTelemetryCollector()
-        self._run_progress = _open_progress_bar(self.campaign_seconds) if _logger_level() >= 20 else None
 
     def register(self, trial: TrialInstance) -> None:
         '''Register an active trial for future snapshots.'''
+        trial_key = trial.config.trial_key
+        next_due_ts = trial.start_ts + self.every_seconds
+        campaign_end_ts = trial.start_ts + self.campaign_seconds
         with self._lock:
-            self._active[trial.config.trial_key] = trial
-            self._periodic_ordinals.setdefault(trial.config.trial_key, 0)
+            self._active[trial_key] = trial
+            self._campaign_trials[trial_key] = trial
+            if next_due_ts < campaign_end_ts:
+                self._next_periodic_ts[trial_key] = next_due_ts
+            else:
+                self._next_periodic_ts.pop(trial_key, None)
 
     def unregister(self, trial_id: str) -> None:
         '''Remove a trial from future snapshots.'''
         with self._lock:
             self._active.pop(trial_id, None)
-            self._periodic_ordinals.pop(trial_id, None)
+            self._next_periodic_ts.pop(trial_id, None)
 
     def stop(self) -> None:
         '''Request the scheduler loop to stop after pending work.'''
@@ -145,21 +112,23 @@ class SnapshotScheduler:
         db = DB.open(self.db_path)
         try:
             tick_idx = self._allocate_tick_idx(db)
-            self._tick_queue.put(
-                _ScheduledSnapshot(
-                    tick_idx=tick_idx,
-                    ts=int(time.time()),
-                    render_heavy=render_heavy,
-                    trials=(trial,),
-                )
+            ts = int(time.time())
+            db_snapshot.insert_tick(db, run_id=self.run_id, idx=tick_idx, ts=ts)
+            db.commit()
+            self._schedule_tick(
+                tick_idx=tick_idx,
+                ts=ts,
+                render_heavy=render_heavy,
+                trials=(trial,),
+                campaign_trials=self._campaign_trial_snapshots(),
             )
         finally:
             db.close()
 
     def run_loop(self) -> None:
         '''Run the snapshot scheduler until the campaign ends or stop is requested.'''
-        if self.every_seconds <= 0:
-            _close_progress(self._run_progress)
+        if self.every_seconds <= 0 or self.every_seconds > self.campaign_seconds:
+            self._progress.close()
             return
 
         db = DB.open(self.db_path)
@@ -173,161 +142,171 @@ class SnapshotScheduler:
                 self.campaign_seconds,
                 self.every_seconds,
             )
-            periodic_enabled = self.every_seconds < self.campaign_seconds
             while True:
                 now = time.time()
-                if periodic_enabled:
-                    for ts, trials in self._due_periodic_snapshots(now_ts=int(now)):
-                        tick_idx = self._allocate_tick_idx(db)
-                        self._schedule_periodic_tick(tick_idx=tick_idx, ts=ts, trials=trials)
+                self._progress.update_run(
+                    elapsed_seconds=max(0, int(now) - self.start_ts),
+                    total_seconds=self.campaign_seconds,
+                    tick_idx=self._scheduled_ticks,
+                    active_trials=self._active_trials_count(),
+                )
+                due_snapshots, next_due_ts = self._due_periodic_snapshots(now_ts=int(now))
+                for ts, trials in due_snapshots:
+                    self._schedule_periodic_tick(
+                        db=db,
+                        tick_idx=self._allocate_tick_idx(db),
+                        ts=ts,
+                        trials=trials,
+                    )
 
                 if self._stop:
                     break
-                time.sleep(0.5)
+                if next_due_ts is None:
+                    time.sleep(1.0)
+                    continue
+                time.sleep(max(0.0, float(next_due_ts) - now))
         finally:
             self._tick_queue.put(None)
             worker.join()
             db.close()
-            _close_progress(self._run_progress)
+            self._progress.close()
 
-    def _snapshot_active(self) -> list[TrialInstance]:
+    def _active_trials(self) -> list[TrialInstance]:
         with self._lock:
             return list(self._active.values())
 
-    def _active_for_ts(self, ts: int) -> list[TrialInstance]:
-        active_trials = self._snapshot_active()
-        return self._filter_trials_for_ts(active_trials, ts)
+    def _campaign_trial_snapshots(self) -> tuple[TrialInstance, ...]:
+        with self._lock:
+            return tuple(self._campaign_trials.values())
 
-    def _due_periodic_snapshots(self, *, now_ts: int) -> list[tuple[int, tuple[TrialInstance, ...]]]:
+    def _replay_trials(self) -> list[ReplayTrialInstance]:
+        with self._lock:
+            return [trial for trial in self._active.values() if isinstance(trial, ReplayTrialInstance)]
+
+    def _active_trials_count(self) -> int:
+        with self._lock:
+            return len(self._active)
+
+    def _due_periodic_snapshots(self, *, now_ts: int) -> tuple[list[tuple[int, tuple[TrialInstance, ...]]], int | None]:
         due_by_ts: dict[int, list[TrialInstance]] = {}
         with self._lock:
-            for trial in self._active.values():
-                next_ordinal = int(self._periodic_ordinals.get(trial.config.trial_key, 0)) + 1
-                last_due_ordinal = int(self._periodic_ordinals.get(trial.config.trial_key, 0))
-                while True:
-                    due_ts = int(trial.start_ts) + next_ordinal * self.every_seconds
-                    if due_ts >= int(trial.start_ts) + self.campaign_seconds:
-                        break
-                    if due_ts > int(now_ts):
-                        break
+            for trial_key, due_ts in list(self._next_periodic_ts.items()):
+                trial = self._active.get(trial_key)
+                if trial is None:
+                    self._next_periodic_ts.pop(trial_key, None)
+                    continue
+                campaign_end_ts = trial.start_ts + self.campaign_seconds
+                while due_ts <= now_ts and due_ts < campaign_end_ts:
                     due_by_ts.setdefault(due_ts, []).append(trial)
-                    last_due_ordinal = next_ordinal
-                    next_ordinal += 1
-                self._periodic_ordinals[trial.config.trial_key] = last_due_ordinal
+                    due_ts += self.every_seconds
+                if due_ts < campaign_end_ts:
+                    self._next_periodic_ts[trial_key] = due_ts
+                else:
+                    self._next_periodic_ts.pop(trial_key, None)
+            next_due_ts = min(self._next_periodic_ts.values()) if self._next_periodic_ts else None
 
         return [
             (ts, tuple(trials))
             for ts, trials in sorted(due_by_ts.items(), key=lambda item: item[0])
-        ]
+        ], next_due_ts
 
     def _schedule_periodic_tick(
         self,
         *,
+        db: DB,
         tick_idx: int,
         ts: int,
         trials: tuple[TrialInstance, ...],
     ) -> None:
-        self._tick_queue.put(
-            _ScheduledSnapshot(
-                tick_idx=tick_idx,
-                ts=ts,
-                render_heavy=False,
-                trials=trials,
-            )
+        db_snapshot.insert_tick(db, run_id=self.run_id, idx=tick_idx, ts=ts)
+        self._resource_telemetry.collect(db=db, tick_idx=tick_idx, ts=ts, active_trials=list(trials))
+        db.commit()
+        self._schedule_tick(
+            tick_idx=tick_idx,
+            ts=ts,
+            render_heavy=False,
+            trials=trials,
+            campaign_trials=self._campaign_trial_snapshots(),
         )
-        LOG.info(
+        LOG.debug(
             'Scheduled snapshot tick %s at %s with %s active trials',
             tick_idx,
             time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())),
             len(trials),
         )
 
-    @staticmethod
-    def _filter_trials_for_ts(trials: list[TrialInstance] | tuple[TrialInstance, ...], ts: int) -> list[TrialInstance]:
-        filtered: list[TrialInstance] = []
-        for trial in trials:
-            if ts < int(trial.start_ts):
-                continue
-            if trial.end_ts is not None and ts > int(trial.end_ts):
-                continue
-            filtered.append(trial)
-        return filtered
-
     def _process_tick(
         self,
         *,
         db: DB,
         tick_idx: int,
-        ts: int,
+        end_ts: int,
+        selected_trials: Sequence[TrialInstance],
+        campaign_trials: Sequence[TrialInstance],
+        replay_mode: bool = False,
         render_heavy: bool = False,
-        selected_trials: tuple[TrialInstance, ...] | None = None,
     ) -> None:
-        active_trials = (
-            self._filter_trials_for_ts(selected_trials, ts)
-            if selected_trials is not None
-            else self._active_for_ts(ts)
-        )
-        if self._run_progress:
-            _update_progress(
-                self._run_progress,
-                total_seconds=self.campaign_seconds,
-                elapsed_seconds=ts - self.start_ts,
-                tick_idx=tick_idx,
-                active_trials=len(active_trials),
-            )
-
-        db_snapshot.insert_tick(db, run_id=self.run_id, idx=tick_idx, ts=ts)
-        self._resource_telemetry.collect(db=db, tick_idx=tick_idx, ts=ts, active_trials=active_trials)
-        db.commit()
-
-        plan = self._collector.collect(
+        active_trials = list(selected_trials)
+        write_export = render_heavy or self.coverage_export_every > 0 and tick_idx % self.coverage_export_every == 0
+        self._progress.update_run(
+            elapsed_seconds=max(0, end_ts - self.start_ts),
+            total_seconds=self.campaign_seconds,
             tick_idx=tick_idx,
-            ts=ts,
+            active_trials=len(active_trials),
+        )
+
+        coverage_snapshots, crash_snapshots = collect_snapshots(
+            db_path=self.db_path,
+            run_id=self.run_id,
+            docker_runtime=self.docker_runtime,
+            tick_idx=tick_idx,
+            end_ts=end_ts,
             active_trials=active_trials,
+            replay_mode=replay_mode,
             jobs=self.jobs,
-            render_heavy=render_heavy,
         )
 
-        db.commit()
+        if coverage_snapshots:
+            cur_time = time.time()
+            process_snapshot_coverage(
+                db=db,
+                db_path=self.db_path,
+                run_dir=self.run_dir,
+                run_id=self.run_id,
+                tick_idx=tick_idx,
+                ts=end_ts,
+                jobs=self.jobs,
+                snapshots=coverage_snapshots,
+                campaign_trials=campaign_trials,
+                docker_runtime=self.docker_runtime,
+                write_export=write_export,
+                progress=self._progress,
+            )
+            db.commit()
+            LOG.debug('Coverage processing of %s tick finished in %.1f seconds', tick_idx, time.time() - cur_time)
 
-        cur_time = time.time()
-        self._coverage_runner.process(
-            db=db,
-            db_path=self.db_path,
-            run_dir=self.run_dir,
-            tick_idx=tick_idx,
-            jobs=self.jobs,
-            plan=plan,
-        )
-        LOG.info('Coverage processing of %s tick finished in %.1f seconds', tick_idx, time.time() - cur_time)
+        if crash_snapshots:
+            cur_time = time.time()
+            process_snapshot_crashes(
+                db_path=self.db_path,
+                run_dir=self.run_dir,
+                run_id=self.run_id,
+                tick_idx=tick_idx,
+                jobs=self.jobs,
+                snapshots=crash_snapshots,
+                docker_runtime=self.docker_runtime,
+                progress=self._progress,
+            )
+            LOG.debug('Crash processing of %s tick finished in %.1f seconds', tick_idx, time.time() - cur_time)
 
-        cur_time = time.time()
-        self._crash_runner.process(
-            db=db,
-            db_path=self.db_path,
-            run_id=self.run_id,
-            repro_logs_dir=self.run_dir / 'repro_logs',
-            tick_idx=tick_idx,
-            jobs=self.jobs,
-            plan=plan,
-        )
-        LOG.info('Crash processing of %s tick finished in %.1f seconds', tick_idx, time.time() - cur_time)
-
-        self._aggregate_updater.update(
-            db=db,
-            run_dir=self.run_dir,
-            run_id=self.run_id,
-            tick_idx=tick_idx,
-            ts=ts,
-            coverage_tasks=plan.coverage_tasks,
-        )
-        db.commit()
+        self._processed_ticks += 1
+        self._update_scheduler_progress(ts=end_ts)
 
     def _allocate_tick_idx(self, db: DB) -> int:
         with self._tick_seq_lock:
             if self._next_tick_idx is None:
                 self._next_tick_idx = db_snapshot.get_next_tick_idx(db, run_id=self.run_id)
-            tick_idx = int(self._next_tick_idx)
+            tick_idx = self._next_tick_idx
             self._next_tick_idx += 1
             return tick_idx
 
@@ -335,28 +314,58 @@ class SnapshotScheduler:
         db = DB.open(self.db_path)
         try:
             while True:
-                item = self._tick_queue.get()
-                if item is None:
+                snapshot_item = self._tick_queue.get()
+                if snapshot_item is None:
                     break
                 try:
                     with self._tick_lock:
-                        LOG.info(
-                            'Starting %s. snapshot processing after %s seconds',
-                            item.tick_idx,
-                            max(0, item.ts - self.start_ts),
+                        LOG.debug(
+                            'Starting snapshot processing for tick %s after %s seconds',
+                            snapshot_item.tick_idx,
+                            max(0, snapshot_item.end_ts - self.start_ts),
                         )
                         self._process_tick(
                             db=db,
-                            tick_idx=item.tick_idx,
-                            ts=item.ts,
-                            render_heavy=item.render_heavy,
-                            selected_trials=item.trials,
+                            tick_idx=snapshot_item.tick_idx,
+                            end_ts=snapshot_item.end_ts,
+                            selected_trials=snapshot_item.trials,
+                            campaign_trials=snapshot_item.campaign_trials,
+                            replay_mode=False,
+                            render_heavy=snapshot_item.render_heavy,
                         )
-                        LOG.info('Finished %s. snapshot processing', item.tick_idx)
+                        LOG.debug('Finished snapshot processing for tick %s', snapshot_item.tick_idx)
                 except Exception:
-                    LOG.exception('Error during snapshot tick %s', item.tick_idx)
+                    LOG.exception('Error during snapshot tick %s', snapshot_item.tick_idx)
         finally:
             db.close()
+
+    def _schedule_tick(
+        self,
+        *,
+        tick_idx: int,
+        ts: int,
+        render_heavy: bool,
+        trials: tuple[TrialInstance, ...],
+        campaign_trials: tuple[TrialInstance, ...],
+    ) -> None:
+        self._tick_queue.put(
+            SnapshotData(
+                tick_idx=tick_idx,
+                end_ts=ts,
+                render_heavy=render_heavy,
+                trials=trials,
+                campaign_trials=campaign_trials,
+            )
+        )
+        self._scheduled_ticks += 1
+        self._update_scheduler_progress(ts=ts)
+
+    def _update_scheduler_progress(self, *, ts: int) -> None:
+        self._progress.update_scheduler(
+            scheduled_ticks=self._scheduled_ticks,
+            processed_ticks=self._processed_ticks,
+            lag_seconds=max(0, int(time.time()) - ts),
+        )
 
 
 class ReplaySnapshotScheduler(SnapshotScheduler):
@@ -364,10 +373,7 @@ class ReplaySnapshotScheduler(SnapshotScheduler):
 
     def run_loop(self) -> None:
         '''Run replay snapshot collection.'''
-        active_trials = self._snapshot_active()
-        if not active_trials:
-            _close_progress(self._run_progress)
-            return
+        active_trials = self._replay_trials()
 
         db = DB.open(self.db_path)
         try:
@@ -376,19 +382,33 @@ class ReplaySnapshotScheduler(SnapshotScheduler):
                 LOG.warning('Replay run has no snapshot ticks to process')
                 return
 
-            self.start_ts = min(int(trial.start_ts) for trial in active_trials)
+            self.start_ts = min(trial.start_ts for trial in active_trials)
             LOG.debug('Start replay snapshot loop with %s ticks', len(tick_schedule))
             for ts in tick_schedule:
                 if self._stop:
                     break
+                selected_trials = [trial for trial in active_trials if trial.start_ts <= ts <= trial.end_ts]
+                campaign_trials = [trial for trial in active_trials if trial.start_ts <= ts]
                 with self._tick_lock:
                     tick_idx = self._allocate_tick_idx(db)
-                    self._process_tick(db=db, tick_idx=tick_idx, ts=ts, render_heavy=True)
+                    db_snapshot.insert_tick(db, run_id=self.run_id, idx=tick_idx, ts=ts)
+                    db.commit()
+                    self._scheduled_ticks += 1
+                    self._update_scheduler_progress(ts=ts)
+                    self._process_tick(
+                        db=db,
+                        tick_idx=tick_idx,
+                        end_ts=ts,
+                        selected_trials=selected_trials,
+                        campaign_trials=campaign_trials,
+                        replay_mode=True,
+                        render_heavy=True,
+                    )
         finally:
             db.close()
-            _close_progress(self._run_progress)
+            self._progress.close()
 
-    def _build_tick_schedule(self, active_trials: list[TrialInstance]) -> list[int]:
+    def _build_tick_schedule(self, active_trials: Sequence[ReplayTrialInstance]) -> list[int]:
         tick_ts: set[int] = set()
         for trial in active_trials:
             start_ts = trial.start_ts
@@ -396,10 +416,10 @@ class ReplaySnapshotScheduler(SnapshotScheduler):
             if end_ts < start_ts:
                 end_ts = start_ts
 
-            next_ts = int(start_ts) + self.every_seconds
+            next_ts = start_ts + self.every_seconds
             if self.every_seconds > 0:
-                while next_ts < int(end_ts):
+                while next_ts < end_ts:
                     tick_ts.add(next_ts)
                     next_ts += self.every_seconds
-            tick_ts.add(int(end_ts))
+            tick_ts.add(end_ts)
         return sorted(tick_ts)
