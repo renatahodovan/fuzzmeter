@@ -5,13 +5,15 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Build bug-centric report sections and derived comparison data.'''
+
 from __future__ import annotations
 
 import json
-
 from typing import Any
 
 from ..metrics import dt, safe_int
+
 
 def _median(values: list[int]) -> float | None:
     '''Return the median of integer values.'''

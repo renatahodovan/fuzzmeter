@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Define the public API for reporting plugins.'''
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Define shared reporting metric and field names.'''
+
 from __future__ import annotations
 
 COV_METRICS = ('lines', 'branches', 'functions', 'regions')

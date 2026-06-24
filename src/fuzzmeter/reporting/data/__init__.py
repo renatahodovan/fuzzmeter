@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Provide data loaders used by report generation.'''
+
 from __future__ import annotations
 
 __all__ = []

@@ -5,14 +5,17 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Persist top-level run rows in the database.'''
+
 from __future__ import annotations
 
 from .base import DB
 
 
 def upsert_run(db: DB, *, run_id: str, created_ts: int, config_src: str) -> None:
+    '''Insert or replace one run row.'''
+
     db.exec(
-        "INSERT OR REPLACE INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)",
+        'INSERT OR REPLACE INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)',
         (str(run_id), int(created_ts), str(config_src)),
     )
-    

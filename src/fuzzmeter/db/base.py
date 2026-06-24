@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Provide a small SQLite wrapper with retry support for worker contention.'''
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -28,6 +30,8 @@ def _is_locked_error(e: Exception) -> bool:
 
 @dataclass
 class DB:
+    '''Wrap a SQLite connection with retrying query helpers.'''
+
     con: sqlite3.Connection
 
     # default: allow short bursts of contention from parallel workers
@@ -36,6 +40,8 @@ class DB:
 
     @staticmethod
     def open(path: Path, *, busy_timeout_ms: int | None = None) -> 'DB':
+        '''Open a SQLite database configured for concurrent fuzzmeter workers.'''
+
         # Use autocommit mode so concurrent workers hold the SQLite write lock
         # only for the duration of individual statements instead of an entire
         # snapshot collection/replay phase.
@@ -60,6 +66,8 @@ class DB:
         self.close()
 
     def close(self) -> None:
+        '''Close the underlying SQLite connection.'''
+
         try:
             self.con.close()
         except Exception:
@@ -88,11 +96,15 @@ class DB:
     # --- helpers ---
 
     def exec(self, sql: str, params: Sequence[Any] = ()) -> None:
+        '''Execute one statement without returning rows.'''
+
         def _do():
             self.con.execute(sql, params)
         self._retry(_do)
 
     def q(self, sql: str, params: Sequence[Any] = ()) -> list[dict]:
+        '''Execute one query and return all rows.'''
+
         # Reads usually don't need retry, but safe in WAL contention
         def _do():
             cur = self.con.execute(sql, params)
@@ -100,6 +112,8 @@ class DB:
         return self._retry(_do)
 
     def q1(self, sql: str, params: Sequence[Any] = ()) -> dict | None:
+        '''Execute one query and return the first row if present.'''
+
         def _do():
             cur = self.con.execute(sql, params)
             row = cur.fetchone()
@@ -107,15 +121,21 @@ class DB:
         return self._retry(_do)
 
     def scalar(self, sql: str, params: Sequence[Any] = ()) -> Any:
+        '''Execute one query and return the first column of the first row.'''
+
         r = self.q1(sql, params)
         if r is None:
             return None
         return next(iter(r.values()))
 
     def commit(self) -> None:
+        '''Commit the current transaction state.'''
+
         self._retry(self.con.commit)
 
     def rollback(self) -> None:
+        '''Rollback the current transaction state when possible.'''
+
         try:
             self.con.rollback()
         except Exception:

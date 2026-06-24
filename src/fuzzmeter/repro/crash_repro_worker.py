@@ -6,13 +6,14 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Replay crashing inputs inside the sanitizer container worker.'''
+
 from __future__ import annotations
 
 import json
 import logging
 import os
 import subprocess
-
 from pathlib import Path
 
 level = getattr(logging, os.environ.get('FM_LOG_LEVEL', 'WARNING'))

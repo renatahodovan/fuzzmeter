@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Manage coverage output locations and apply coverage summaries to snapshots.'''
+
 from __future__ import annotations
 
 import json

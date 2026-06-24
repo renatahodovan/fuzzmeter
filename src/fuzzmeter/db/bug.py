@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Persist deduplicated bugs and their per-snapshot hit counts.'''
+
 from __future__ import annotations
 
 import json
@@ -21,6 +23,8 @@ def get_bug_id(
     fuzz_target: str,
     bug_key: str,
 ) -> int | None:
+    '''Return the database id of a known bug, if any.'''
+
     row = db.q1(
         """
         SELECT bug_id
@@ -47,6 +51,8 @@ def ensure_bug(
     first_seen_ts: int,
     first_seen_snapshot_id: int,
 ) -> int:
+    '''Insert one bug row when missing and return its database id.'''
+
     db.exec(
         """
         INSERT OR IGNORE INTO bugs(
@@ -83,7 +89,9 @@ def ensure_bug(
 
 
 def upsert_bug_hits(db: DB, *, bug_id: int, snapshot_id: int, hits: int) -> None:
+    '''Store the hit count of one bug for one snapshot.'''
+
     db.exec(
-        "INSERT OR REPLACE INTO bug_hits(bug_id, snapshot_id, hits) VALUES(?,?,?)",
+        'INSERT OR REPLACE INTO bug_hits(bug_id, snapshot_id, hits) VALUES(?,?,?)',
         (int(bug_id), int(snapshot_id), int(hits)),
     )

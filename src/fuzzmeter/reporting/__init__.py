@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Expose the reporting payload builder API.'''
+
 from __future__ import annotations
 
 from .api import build_payload

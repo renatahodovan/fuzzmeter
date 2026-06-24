@@ -5,11 +5,12 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Load reporting plugin modules from fuzzer directories.'''
+
 from __future__ import annotations
 
 import importlib.util
 import sys
-
 from pathlib import Path
 from types import ModuleType
 from typing import Callable, Sequence

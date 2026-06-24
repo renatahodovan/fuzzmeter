@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Validate and serialize reporting payload fragments for the web UI.'''
+
 from __future__ import annotations
 
 from typing import Any, Sequence

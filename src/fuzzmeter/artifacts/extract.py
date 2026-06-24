@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Extract built fuzzing binaries from campaign images.'''
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -38,9 +40,7 @@ def extract_fuzz_binaries(*, campaign_config: CampaignConfig, run_dir: Path) -> 
             dst_dir=fuzz_root / entry.fuzzer_name / entry.target_id,
         )
 
-    cases_by_target: dict[str, CampaignCase] = {}
-    for case in campaign_config.cases:
-        cases_by_target[case.target_id] = case
+    cases_by_target: dict[str, CampaignCase] = {case.target_id: case for case in campaign_config.cases}
 
     for target_id, owner_entry in cases_by_target.items():
         images = TrialImages(fuzzer_name=owner_entry.fuzzer_name, target_id=target_id)

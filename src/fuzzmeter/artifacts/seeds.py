@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Prepare and measure seed corpora used by campaigns.'''
+
 from __future__ import annotations
 
 import logging
@@ -91,8 +93,8 @@ def _collect_seed_baseline_jobs(
 ) -> list[SeedBaselineJob]:
     jobs: list[SeedBaselineJob] = []
     for entry in campaign_config.cases:
-        seed_key = _seed_key(entry.fuzzer_name, entry.benchmark, entry.fuzz_target)
-        seed_root = Path(run_dir) / 'seed_corpora' / seed_key / 'corpus'
+        seed_dir_name = f'{entry.fuzzer_name}__{entry.benchmark}__{entry.fuzz_target}'
+        seed_root = Path(run_dir) / 'seed_corpora' / seed_dir_name / 'corpus'
         if not seed_root.exists() or not any(seed_root.iterdir()):
             continue
         images = TrialImages(fuzzer_name=entry.fuzzer_name, target_id=entry.target_id)
@@ -109,7 +111,3 @@ def _collect_seed_baseline_jobs(
             )
         )
     return jobs
-
-
-def _seed_key(fuzzer: str, benchmark: str, fuzz_target: str) -> str:
-    return f'{fuzzer}__{benchmark}__{fuzz_target}'

@@ -18,6 +18,8 @@ from .snapshot import SEED_BASELINE_IDX
 
 
 class ReportingDB:
+    '''Expose read-only report queries over the run database.'''
+
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
         self.con: sqlite3.Connection | None = None
@@ -36,15 +38,21 @@ class ReportingDB:
             self.con = None
 
     def rows(self, sql: str, params: Sequence[Any] = ()) -> list[dict[str, Any]]:
+        '''Execute a query and return all rows as dictionaries.'''
+
         assert self.con is not None
         return [dict(row) for row in self.con.execute(sql, tuple(params)).fetchall()]
 
     def scalar(self, sql: str, params: Sequence[Any] = ()) -> Any:
+        '''Execute a query and return the first scalar value.'''
+
         assert self.con is not None
         row = self.con.execute(sql, tuple(params)).fetchone()
         return None if row is None else row[0]
 
     def table_exists(self, table_name: str) -> bool:
+        '''Return whether the database contains the named table.'''
+
         assert self.con is not None
         return bool(self.scalar(
             'SELECT 1 FROM sqlite_master WHERE type=\'table\' AND name=? LIMIT 1',
@@ -52,15 +60,21 @@ class ReportingDB:
         ))
 
     def col_exists(self, table_name: str, col_name: str) -> bool:
+        '''Return whether the named table contains the named column.'''
+
         assert self.con is not None
         rows = self.rows(f'PRAGMA table_info({table_name})')
         return any(str(row.get('name') or '') == str(col_name) for row in rows)
 
     def infer_run_id(self, fallback: str) -> str:
+        '''Return the newest run id or the provided fallback.'''
+
         run_id = self.scalar('SELECT run_id FROM runs ORDER BY created_ts DESC LIMIT 1')
         return str(run_id or fallback)
 
     def run_overview(self, run_id: str) -> dict[str, Any]:
+        '''Return aggregate run counters and basic metadata.'''
+
         overview: dict[str, Any] = {'run_id': run_id}
         overview['created_ts'] = self.scalar('SELECT created_ts FROM runs WHERE run_id=? LIMIT 1', (run_id,))
         overview['config_src'] = self.scalar('SELECT config_src FROM runs WHERE run_id=? LIMIT 1', (run_id,))
@@ -73,6 +87,8 @@ class ReportingDB:
         return overview
 
     def trial_rows(self, run_id: str) -> list[dict[str, Any]]:
+        '''Return all trial rows that belong to a run.'''
+
         metadata_select = ', '.join(TRIAL_METADATA_FIELDS)
         return self.rows(
             f"""
@@ -86,6 +102,8 @@ class ReportingDB:
         )
 
     def latest_snapshots_by_trial(self, trial_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
+        '''Return the newest snapshot row for each requested trial.'''
+
         if not trial_ids:
             return {}
         placeholders = ','.join('?' for _ in trial_ids)
@@ -106,6 +124,8 @@ class ReportingDB:
         return {int(row['trial_id']): row for row in rows}
 
     def snapshot_rows(self, trial_ids: Sequence[int]) -> list[dict[str, Any]]:
+        '''Return all snapshot rows for the requested trials.'''
+
         if not trial_ids:
             return []
         placeholders = ','.join('?' for _ in trial_ids)
@@ -184,11 +204,15 @@ class ReportingDB:
         }
 
     def bug_hits_by_snapshot(self) -> dict[int, int]:
+        '''Return total bug hit counts keyed by snapshot id.'''
+
         return {int(row['snapshot_id']): int(row['hits'] or 0) for row in self.rows(
             'SELECT snapshot_id, SUM(hits) AS hits FROM bug_hits GROUP BY snapshot_id'
         )}
 
     def unique_bug_delta_by_snapshot(self) -> dict[int, int]:
+        '''Return newly discovered bug counts keyed by first-seen snapshot id.'''
+
         return {int(row['snapshot_id']): int(row['c'] or 0) for row in self.rows(
             '''
             SELECT first_seen_snapshot_id AS snapshot_id, COUNT(*) AS c
@@ -199,6 +223,8 @@ class ReportingDB:
         )}
 
     def bug_stats_by_trial(self, run_id: str) -> dict[int, tuple[int, int]]:
+        '''Return total hits and unique bug counts keyed by trial id.'''
+
         rows = self.rows(
             '''
             SELECT s.trial_id AS trial_id,
@@ -215,6 +241,8 @@ class ReportingDB:
         return {int(row['trial_id']): (int(row['hits'] or 0), int(row['uniq'] or 0)) for row in rows}
 
     def bug_rows(self, run_id: str) -> list[dict[str, Any]]:
+        '''Return all stored bug rows for a run.'''
+
         return self.rows(
             '''
             SELECT bug_id, run_id, fuzzer, benchmark, fuzz_target, bug_key,
@@ -227,11 +255,15 @@ class ReportingDB:
         )
 
     def bug_hits_by_bug(self) -> dict[int, int]:
+        '''Return total hit counts keyed by bug id.'''
+
         return {int(row['bug_id']): int(row['hits'] or 0) for row in self.rows(
             'SELECT bug_id, SUM(hits) AS hits FROM bug_hits GROUP BY bug_id'
         )}
 
     def bug_trials_by_bug(self) -> dict[int, list[int]]:
+        '''Return distinct trial ids keyed by bug id.'''
+
         rows = self.rows(
             '''
             SELECT bh.bug_id AS bug_id, s.trial_id AS trial_id

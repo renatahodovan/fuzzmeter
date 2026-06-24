@@ -20,6 +20,8 @@ SEED_BASELINE_IDX = 0
 
 
 def insert_tick(db: DB, *, run_id: str, idx: int, ts: int) -> None:
+    '''Insert one snapshot tick for a run when missing.'''
+
     db.exec(
         'INSERT OR IGNORE INTO snapshot_ticks(run_id, idx, ts) VALUES(?,?,?)',
         (str(run_id), int(idx), int(ts)),
@@ -27,10 +29,14 @@ def insert_tick(db: DB, *, run_id: str, idx: int, ts: int) -> None:
 
 
 def get_latest_tick_idx(db: DB, *, run_id: str) -> int:
+    '''Return the latest recorded snapshot tick index for a run.'''
+
     return int(db.scalar('SELECT COALESCE(MAX(idx), 0) FROM snapshot_ticks WHERE run_id=?', (str(run_id),)) or 0)
 
 
 def get_next_tick_idx(db: DB, *, run_id: str) -> int:
+    '''Return the next snapshot tick index for a run.'''
+
     return get_latest_tick_idx(db, run_id=run_id) + 1
 
 
@@ -72,6 +78,8 @@ def save_snapshot_data(
     crashes: int | None,
     hangs: int | None,
 ) -> int:
+    '''Insert one snapshot row and return its database id.'''
+
     stats_json = None
     if isinstance(stats, dict) and stats:
         stats_json = json.dumps(stats, sort_keys=True, separators=(',', ':'), default=str)
@@ -96,6 +104,8 @@ def save_snapshot_data(
 
 
 def latest_trial_snapshot(db: DB, *, trial_row_id: int) -> dict[str, Any] | None:
+    '''Return the newest snapshot row of a trial, if any.'''
+
     rows = db.q(
         """
         SELECT *
@@ -110,6 +120,8 @@ def latest_trial_snapshot(db: DB, *, trial_row_id: int) -> dict[str, Any] | None
 
 
 def copy_previous_coverage_fields(db: DB, *, trial_row_id: int, snapshot_id: int) -> None:
+    '''Copy the latest known coverage fields into a newer snapshot row.'''
+
     previous = db.q(
         """
         SELECT coverage_html_dir,
@@ -153,15 +165,15 @@ def copy_previous_coverage_fields(db: DB, *, trial_row_id: int, snapshot_id: int
          WHERE snapshot_id=?
         """,
         (
-            row.get("coverage_html_dir"),
-            row.get("cov_lines_covered"),
-            row.get("cov_lines_total"),
-            row.get("cov_branches_covered"),
-            row.get("cov_branches_total"),
-            row.get("cov_regions_covered"),
-            row.get("cov_regions_total"),
-            row.get("cov_functions_covered"),
-            row.get("cov_functions_total"),
+            row.get('coverage_html_dir'),
+            row.get('cov_lines_covered'),
+            row.get('cov_lines_total'),
+            row.get('cov_branches_covered'),
+            row.get('cov_branches_total'),
+            row.get('cov_regions_covered'),
+            row.get('cov_regions_total'),
+            row.get('cov_functions_covered'),
+            row.get('cov_functions_total'),
             int(snapshot_id),
         ),
     )
@@ -245,6 +257,8 @@ def set_snapshot_coverage_fields(
     cov_functions_covered: int | None,
     cov_functions_total: int | None,
 ) -> None:
+    '''Store coverage summary fields on one snapshot row.'''
+
     if any(v is None for v in [cov_lines_covered, cov_lines_total, cov_branches_covered, cov_branches_total]):
         LOG.warning(
             'Coverage summary missing fields for snapshot_id=%d: lines %s/%s branches %s/%s',
@@ -294,6 +308,8 @@ def upsert_agg_snapshot(
     idx: int,
     ts: int,
 ) -> int:
+    '''Insert or update one aggregated snapshot row and return its id.'''
+
     db.exec(
         """
         INSERT OR IGNORE INTO agg_snapshots(run_id, fuzzer, benchmark, fuzz_target, idx, ts)
@@ -328,6 +344,8 @@ def update_agg_snapshot_coverage(
     summary: dict[str, Any],
     coverage_sets_json_rel: str | None = None,
 ) -> None:
+    '''Store aggregated coverage outputs on one aggregated snapshot row.'''
+
     db.exec(
         """
         UPDATE agg_snapshots
@@ -345,14 +363,14 @@ def update_agg_snapshot_coverage(
         """,
         (
             coverage_html_dir,
-            summary.get("cov_lines_covered"),
-            summary.get("cov_lines_total"),
-            summary.get("cov_branches_covered"),
-            summary.get("cov_branches_total"),
-            summary.get("cov_regions_covered"),
-            summary.get("cov_regions_total"),
-            summary.get("cov_functions_covered"),
-            summary.get("cov_functions_total"),
+            summary.get('cov_lines_covered'),
+            summary.get('cov_lines_total'),
+            summary.get('cov_branches_covered'),
+            summary.get('cov_branches_total'),
+            summary.get('cov_regions_covered'),
+            summary.get('cov_regions_total'),
+            summary.get('cov_functions_covered'),
+            summary.get('cov_functions_total'),
             coverage_sets_json_rel,
             int(agg_snapshot_id),
         ),

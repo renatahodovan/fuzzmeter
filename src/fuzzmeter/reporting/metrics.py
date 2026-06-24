@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Provide small statistical and formatting helpers for reporting.'''
+
 from __future__ import annotations
 
 import datetime
