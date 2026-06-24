@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from ..reporting.keys import TRIAL_METADATA_FIELDS
+from .snapshot import SEED_BASELINE_IDX
 
 
 class ReportingDB:
@@ -134,7 +135,7 @@ class ReportingDB:
             f'''
             SELECT trial_id, idx, ts, container_name,
                    cpu_percent, memory_usage_bytes, memory_limit_bytes, memory_percent,
-                   corpus_disk_usage_bytes, corpus_disk_usage_human, stats_json
+                   corpus_disk_usage_bytes
             FROM resource_telemetry
             WHERE trial_id IN ({placeholders})
             ORDER BY trial_id, idx
@@ -151,7 +152,7 @@ class ReportingDB:
             JOIN (
                 SELECT fuzzer, benchmark, fuzz_target, MAX(idx) AS max_idx
                 FROM agg_snapshots
-                WHERE run_id=?
+                WHERE run_id=? AND idx>?
                 GROUP BY fuzzer, benchmark, fuzz_target
             ) AS latest
               ON latest.fuzzer = a.fuzzer
@@ -160,7 +161,22 @@ class ReportingDB:
              AND latest.max_idx = a.idx
             WHERE a.run_id=?
             ''',
-            (run_id, run_id),
+            (run_id, SEED_BASELINE_IDX, run_id),
+        )
+        return {
+            (str(row['fuzzer']), str(row['benchmark']), str(row['fuzz_target'])): row
+            for row in rows
+        }
+
+    def seed_baselines_by_fuzzer_target(self, run_id: str) -> dict[tuple[str, str, str], dict[str, Any]]:
+        '''Return seed baseline coverage rows keyed by fuzzer and target.'''
+        rows = self.rows(
+            '''
+            SELECT *
+            FROM agg_snapshots
+            WHERE run_id=? AND idx=?
+            ''',
+            (run_id, SEED_BASELINE_IDX),
         )
         return {
             (str(row['fuzzer']), str(row['benchmark']), str(row['fuzz_target'])): row

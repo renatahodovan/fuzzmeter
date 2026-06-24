@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -84,14 +83,3 @@ class CoverageData:
             if coverage_path is not None:
                 out[fuzzer] = self.covered_elements(coverage_path, metric)
         return out
-
-    def seed_baseline_for(self, *, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, Any] | None:
-        '''Load seed baseline coverage for one fuzzer-target pair.'''
-
-        summary_path = self.run_dir / 'coverage_seed' / fuzzer / benchmark / fuzz_target / 'summary.json'
-        if not summary_path.is_file():
-            return None
-        try:
-            return json.loads(summary_path.read_text(encoding='utf-8', errors='replace') or '{}')
-        except Exception:
-            return None

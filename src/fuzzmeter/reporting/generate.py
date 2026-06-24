@@ -71,6 +71,7 @@ class ReportBuilder:
         self._trial_rows = loaded.trial_rows
         self._latest_snapshots = loaded.latest_snapshots
         self._latest_agg_snapshots = loaded.latest_agg_snapshots
+        self._seed_baselines = loaded.seed_baselines
         self._snapshot_rows = loaded.snapshot_rows
         self._resource_telemetry_rows = loaded.resource_telemetry_rows
         self._bug_hits_by_snapshot = loaded.bug_hits_by_snapshot
@@ -235,11 +236,7 @@ class ReportBuilder:
         for fuzzer, benchmark, fuzz_target in self._coverage_keys_from_trials(trials):
             key = (fuzzer, benchmark, fuzz_target)
             aggregated_coverage_by_fuzzer[key] = self._aggregated_coverage_for_fuzzer(fuzzer, benchmark, fuzz_target)
-            seed_baseline_by_fuzzer[key] = self._coverage_data.seed_baseline_for(
-                fuzzer=fuzzer,
-                benchmark=benchmark,
-                fuzz_target=fuzz_target,
-            )
+            seed_baseline_by_fuzzer[key] = self._seed_baselines.get(key)
         return aggregated_coverage_by_fuzzer, seed_baseline_by_fuzzer
 
     def _coverage_sets_by_metric(
@@ -316,6 +313,8 @@ class ReportBuilder:
         return targets
 
     def create_matrices(self, targets, trials):
+        '''Attach pairwise coverage and bug comparison matrices to each target.'''
+
         empty_metric_group = {'by_metric': {}, 'has_data': False, 'available_metrics': []}
         empty_matrix = {'fuzzers': [], 'matrix': [], 'max_value': 0, 'has_data': False}
         empty_bug_table = {'fuzzers': [], 'rows': [], 'has_data': False}

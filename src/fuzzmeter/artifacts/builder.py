@@ -119,7 +119,9 @@ def _copy_fuzzer_phase(*, repo_root: Path, out_root: Path, fuzzer: str, phase: s
 def prepare_artifacts(
     *,
     campaign_config: CampaignConfig,
+    db_path: Path,
     run_dir: Path,
+    run_id: str,
     repo_root: Path,
     docker_runtime: DockerRuntime,
 ) -> dict[tuple[str, str], Path]:
@@ -129,7 +131,9 @@ def prepare_artifacts(
     prepare_seed_corpora(campaign_config=campaign_config, run_dir=run_dir)
     measure_seed_baselines(
         campaign_config=campaign_config,
+        db_path=db_path,
         run_dir=run_dir,
+        run_id=run_id,
         repo_root=repo_root,
         docker_runtime=docker_runtime,
     )

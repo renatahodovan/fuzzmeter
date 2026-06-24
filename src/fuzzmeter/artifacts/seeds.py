@@ -53,7 +53,9 @@ def prepare_seed_corpora(*, campaign_config: CampaignConfig, run_dir: Path) -> N
 def measure_seed_baselines(
     *,
     campaign_config: CampaignConfig,
+    db_path: Path,
     run_dir: Path,
+    run_id: str,
     repo_root: Path,
     docker_runtime: DockerRuntime,
 ) -> None:
@@ -69,8 +71,10 @@ def measure_seed_baselines(
         for future in as_completed([
             executor.submit(
                 measure_seed_baseline,
+                db_path=db_path,
                 job=job,
                 run_dir=run_dir,
+                run_id=run_id,
                 repo_root=repo_root,
                 docker_runtime=docker_runtime,
             )

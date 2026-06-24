@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Load all database-backed inputs required by reporting.'''
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,6 +25,7 @@ class RunDataSnapshot:
     trial_rows: list[dict[str, Any]]
     latest_snapshots: dict[int, dict[str, Any]]
     latest_agg_snapshots: dict[tuple[str, str, str], dict[str, Any]]
+    seed_baselines: dict[tuple[str, str, str], dict[str, Any]]
     snapshot_rows: list[dict[str, Any]]
     resource_telemetry_rows: list[dict[str, Any]]
     bug_hits_by_snapshot: dict[int, int]
@@ -54,6 +57,7 @@ class RunData:
             trial_ids = [int(row['trial_id']) for row in trial_rows]
             latest_snapshots = db.latest_snapshots_by_trial(trial_ids)
             latest_agg_snapshots = db.latest_agg_snapshots_by_fuzzer_target(resolved_run_id)
+            seed_baselines = db.seed_baselines_by_fuzzer_target(resolved_run_id)
             snapshot_rows = db.snapshot_rows(trial_ids)
             resource_telemetry_rows = db.resource_telemetry_rows(trial_ids)
             bug_hits_by_snapshot = db.bug_hits_by_snapshot()
@@ -68,6 +72,7 @@ class RunData:
             trial_rows=trial_rows,
             latest_snapshots=latest_snapshots,
             latest_agg_snapshots=latest_agg_snapshots,
+            seed_baselines=seed_baselines,
             snapshot_rows=snapshot_rows,
             resource_telemetry_rows=resource_telemetry_rows,
             bug_hits_by_snapshot=bug_hits_by_snapshot,
