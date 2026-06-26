@@ -9,17 +9,100 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import os
 import shutil
 import uuid
 
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from ..docker import DockerClient, DockerRuntime
 from .coverage_state import load_coverage_summary
 
 LOG = logging.getLogger(__name__)
+DEFAULT_COVERAGE_BATCH_SIZE = 256
+
+
+@dataclass(frozen=True)
+class CoverageBatch:
+    '''Describe one coverage replay batch.'''
+
+    image: str
+    fuzz_target: str
+    input_mode: str
+    inputs: list[Path]
+    profdata_path: Path
+    diagnostics_dir: Path
+    timeout_s: float
+
+
+def build_coverage_replay_batches(
+    *,
+    image: str,
+    fuzz_target: str,
+    input_mode: str,
+    inputs: list[Path],
+    state_dir: Path,
+    batch_tag: str | int,
+    timeout_s: float,
+) -> tuple[list[Path], list[CoverageBatch]]:
+    '''Create host-side coverage replay batches for one input set.'''
+
+    if not inputs:
+        return [], []
+
+    input_batches = [
+        inputs[index:index + DEFAULT_COVERAGE_BATCH_SIZE]
+        for index in range(0, len(inputs), DEFAULT_COVERAGE_BATCH_SIZE)
+    ]
+    batch_root = state_dir / f'_batches_{batch_tag}'
+    batch_root.mkdir(parents=True, exist_ok=True)
+    diagnostics_root = state_dir / f'_batch_diag_{batch_tag}'
+    batch_profdata_paths = [batch_root / f'batch_{index:06d}.profdata' for index in range(len(input_batches))]
+    return batch_profdata_paths, [
+        CoverageBatch(
+            image=image,
+            fuzz_target=fuzz_target,
+            input_mode=input_mode,
+            inputs=input_batch,
+            profdata_path=batch_profdata_paths[index],
+            diagnostics_dir=diagnostics_root / f'{index:06d}',
+            timeout_s=timeout_s,
+        )
+        for index, input_batch in enumerate(input_batches)
+    ]
+
+
+def replay_coverage_batches(
+    *,
+    docker_runtime: DockerRuntime,
+    batches: list[CoverageBatch],
+    jobs: int,
+    on_batch_done: Callable[[], None] | None = None,
+) -> None:
+    '''Replay planned coverage batches in parallel on the host.'''
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(batches), jobs)) as executor:
+        futures = [
+            executor.submit(
+                replay_coverage_batch,
+                docker_runtime=docker_runtime,
+                image=batch.image,
+                fuzz_target=batch.fuzz_target,
+                input_mode=batch.input_mode,
+                inputs=batch.inputs,
+                batch_profdata_path=batch.profdata_path,
+                diagnostics_dir=batch.diagnostics_dir,
+                timeout_s=batch.timeout_s,
+            )
+            for batch in batches
+        ]
+        for future in concurrent.futures.as_completed(futures):
+            future.result()
+            if on_batch_done is not None:
+                on_batch_done()
 
 
 def replay_coverage_batch(
@@ -32,7 +115,6 @@ def replay_coverage_batch(
     batch_profdata_path: Path,
     diagnostics_dir: Path,
     timeout_s: float = 2.0,
-    input_jobs: int | None = None,
 ) -> None:
     '''Replay coverage inputs in one container and write their batch profile.'''
     if not inputs:
@@ -64,7 +146,6 @@ def replay_coverage_batch(
         'FM_BATCH_PROFDATA_PATH': docker.container_path(batch_profdata_path),
         'FM_TIMEOUT_S': str(timeout_s),
         'FM_WORK_DIR': docker.container_path(work_dir),
-        'FM_INPUT_JOBS': str(max(1, int(input_jobs or 1))),
         'FM_LOG_LEVEL': str(os.environ.get('FM_LOG_LEVEL', 'INFO')).upper(),
     }
 

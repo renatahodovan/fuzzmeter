@@ -18,7 +18,11 @@ from pathlib import Path
 from ..db import DB, open_db
 from ..db import snapshot as db_snapshot
 from ..docker import DockerRuntime
-from ..repro.coverage_measure import merge_coverage_outputs, replay_coverage_batch
+from ..repro.coverage_measure import (
+    build_coverage_replay_batches,
+    merge_coverage_outputs,
+    replay_coverage_batches,
+)
 from ..repro.coverage_state import (
     apply_snapshot_summary,
     collect_inputs,
@@ -30,9 +34,6 @@ from ..trial.models import TrialInstance
 from .parallel import run_parallel_jobs
 from .progress import SnapshotProgress
 from .trial_snapshot import TrialCoverageSnapshot
-
-
-DEFAULT_COVERAGE_BATCH_SIZE = 256
 
 
 @dataclass(frozen=True)
@@ -61,7 +62,7 @@ def process_snapshot_coverage(
 ) -> None:
     '''Process every coverage snapshot scheduled for a tick.'''
     coverage_states: list[TrialCoverageSnapshotState] = []
-    coverage_batches: list[tuple[TrialCoverageSnapshotState, int, list[Path]]] = []
+    coverage_batches = []
     for snapshot in snapshots:
         trial = snapshot.trial
         corpus_dir = snapshot.snapshot_dir / 'corpus'
@@ -88,44 +89,33 @@ def process_snapshot_coverage(
             db.commit()
             continue
 
-        input_batches = [
-            inputs[index:index + DEFAULT_COVERAGE_BATCH_SIZE]
-            for index in range(0, len(inputs), DEFAULT_COVERAGE_BATCH_SIZE)
-        ]
-        batch_root = state_dir / f'_batches_{snapshot.snapshot_id}'
-        batch_root.mkdir(parents=True, exist_ok=True)
+        batch_profdata_paths, batches = build_coverage_replay_batches(
+            image=trial.config.images.coverage,
+            fuzz_target=trial.config.fuzz_target,
+            input_mode=trial.config.fuzz_target_input_mode,
+            inputs=inputs,
+            state_dir=state_dir,
+            batch_tag=snapshot.snapshot_id,
+            timeout_s=trial.config.fuzz_target_timeout * 2,
+        )
         coverage_state = TrialCoverageSnapshotState(
             snapshot=snapshot,
             state_dir=state_dir,
-            batch_profdata_paths=[batch_root / f'batch_{index:06d}.profdata' for index in range(len(input_batches))],
+            batch_profdata_paths=batch_profdata_paths,
         )
         coverage_states.append(coverage_state)
-        coverage_batches.extend((coverage_state, index, input_batch) for index, input_batch in enumerate(input_batches))
+        coverage_batches.extend(batches)
 
     if progress is not None:
         progress.start_coverage(tick_idx=tick_idx, total=len(coverage_batches), phase='Batch')
 
-    run_parallel_jobs(
-        jobs=jobs,
-        total=len(coverage_batches),
-        desc=f'#{tick_idx} snapshot coverage',
-        position=1,
-        leave=False,
-        submit_jobs=lambda executor: [
-            executor.submit(
-                replay_coverage_batch,
-                docker_runtime=docker_runtime,
-                image=coverage_state.snapshot.trial.config.images.coverage,
-                fuzz_target=coverage_state.snapshot.trial.config.fuzz_target,
-                input_mode=coverage_state.snapshot.trial.config.fuzz_target_input_mode,
-                inputs=input_batch,
-                batch_profdata_path=coverage_state.batch_profdata_paths[index],
-                diagnostics_dir=coverage_state.state_dir / f'_batch_diag_{coverage_state.snapshot.snapshot_id}' / f'{index:06d}',
-            )
-            for coverage_state, index, input_batch in coverage_batches
-        ],
-        progress_step=progress.step_coverage if progress is not None else None,
-    )
+    if coverage_batches:
+        replay_coverage_batches(
+            docker_runtime=docker_runtime,
+            batches=coverage_batches,
+            jobs=jobs,
+            on_batch_done=progress.step_coverage if progress is not None else None,
+        )
 
     if progress is not None:
         progress.start_coverage(tick_idx=tick_idx, total=len(coverage_states), phase='Merge')
