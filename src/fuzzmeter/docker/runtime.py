@@ -77,9 +77,7 @@ class DockerRuntime:
         env = os.environ.copy()
         env['FM_REPO'] = str(self.repo_root)
         env['FM_OUT_SRC'] = self.out_src
-        if os.environ.get('FM_LOG_LEVEL'):
-            env['FM_LOG_LEVEL'] = str(os.environ['FM_LOG_LEVEL'])
-            env['FUZZMETER_LOG_LEVEL'] = str(os.environ['FM_LOG_LEVEL'])
+        env['FM_LOG_LEVEL'] = os.environ['FM_LOG_LEVEL']
         python_path = env.get('PYTHONPATH', '')
         env['PYTHONPATH'] = f'{self.repo_root}:{python_path}'.rstrip(':')
         if extra:

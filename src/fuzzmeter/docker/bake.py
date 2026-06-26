@@ -217,7 +217,7 @@ def _entry_args(
         f'  BENCHMARK     = "{benchmark}"',
         f'  BENCHMARK_WORKDIR = "{benchmark_workdir}"',
         f'  TARGET_NAME   = "{target_name}"',
-        f'  FM_LOG_LEVEL  = "{_escape(os.environ.get("FM_LOG_LEVEL", os.environ.get("FUZZMETER_LOG_LEVEL", "INFO")))}"',
+        f'  FM_LOG_LEVEL  = "{_escape(os.environ.get("FM_LOG_LEVEL", "INFO"))}"',
     ]
     if runner_base_image:
         lines.append(f'  RUNNER_BASE_IMAGE = "{runner_base_image}"')
