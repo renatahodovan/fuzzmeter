@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 import os
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from ..config import CampaignConfig
@@ -63,26 +62,26 @@ def measure_seed_baselines(
 ) -> None:
     '''Measure coverage for all prepared seed corpora.'''
     fuzzer_loader = FuzzerLoader(Path(repo_root))
-    jobs = _collect_seed_baseline_jobs(campaign_config=campaign_config, run_dir=run_dir, fuzzer_loader=fuzzer_loader)
-    if not jobs:
+    baseline_jobs = _collect_seed_baseline_jobs(
+        campaign_config=campaign_config,
+        run_dir=run_dir,
+        fuzzer_loader=fuzzer_loader,
+    )
+    if not baseline_jobs:
         return
 
-    max_workers = min(os.cpu_count() or 1, len(jobs))
-    LOG.info('Measuring %d seed baselines with %d workers', len(jobs), max_workers)
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for future in as_completed([
-            executor.submit(
-                measure_seed_baseline,
-                db_path=db_path,
-                job=job,
-                run_dir=run_dir,
-                run_id=run_id,
-                repo_root=repo_root,
-                docker_runtime=docker_runtime,
-            )
-            for job in jobs
-        ]):
-            future.result()
+    max_workers = min(os.cpu_count() or 1, len(baseline_jobs))
+    LOG.info('Measuring %d seed baselines with %d workers', len(baseline_jobs), max_workers)
+    for job in baseline_jobs:
+        measure_seed_baseline(
+            db_path=db_path,
+            job=job,
+            run_dir=run_dir,
+            run_id=run_id,
+            repo_root=repo_root,
+            docker_runtime=docker_runtime,
+            jobs=max_workers,
+        )
 
 
 def _collect_seed_baseline_jobs(
@@ -104,6 +103,7 @@ def _collect_seed_baseline_jobs(
                 benchmark=entry.benchmark,
                 fuzz_target=entry.fuzz_target,
                 input_mode=entry.input_mode,
+                timeout_s=entry.target_timeout_s,
                 runner_image=images.runner,
                 coverage_image=images.coverage,
                 snapshot_preprocess_script=fuzzer_loader.load(entry.fuzzer_base).snapshot_preprocess_script(),

@@ -18,7 +18,7 @@ from pathlib import Path
 from ..db import open_db
 from ..db.snapshot import SEED_BASELINE_IDX, update_agg_snapshot_coverage, upsert_agg_snapshot
 from ..docker import DockerRuntime
-from .coverage_measure import replay_coverage_batch, merge_coverage_outputs
+from .coverage_measure import build_coverage_replay_batches, merge_coverage_outputs, replay_coverage_batches
 from .coverage_state import collect_inputs, seed_coverage_root
 from .ingest import DetectedFile, prepare_snapshot_inputs
 
@@ -33,6 +33,7 @@ class SeedBaselineJob:
     benchmark: str
     fuzz_target: str
     input_mode: str
+    timeout_s: float
     runner_image: str
     coverage_image: str
     snapshot_preprocess_script: Path | None
@@ -47,27 +48,26 @@ def measure_seed_baseline(
     run_id: str,
     repo_root: Path,
     docker_runtime: DockerRuntime,
+    jobs: int,
 ) -> None:
     '''Measure baseline coverage for one prepared seed corpus.'''
-    if not job.seed_root.exists():
-        return
-
     base_root = seed_coverage_root(run_dir, job.fuzzer, job.benchmark, job.fuzz_target)
     snapshot_dir = base_root / '_snapshot'
     corpus_dir = snapshot_dir / 'corpus'
     shutil.rmtree(snapshot_dir, ignore_errors=True)
+    seed_input_files = [
+        DetectedFile(
+            rel_path=str(src.relative_to(job.seed_root)).replace('\\', '/'),
+            abs_src=src,
+            mtime_ns=src.stat().st_mtime_ns,
+        )
+        for src in sorted(path for path in job.seed_root.rglob('*') if path.is_file())
+    ]
     prepare_snapshot_inputs(
         docker_runtime=docker_runtime,
         snapshot_dir=snapshot_dir,
         input_dir=corpus_dir,
-        input_files=[
-            DetectedFile(
-                rel_path=str(src.relative_to(job.seed_root)).replace('\\', '/'),
-                abs_src=src,
-                mtime_ns=src.stat().st_mtime_ns,
-            )
-            for src in sorted(path for path in job.seed_root.rglob('*') if path.is_file())
-        ],
+        input_files=seed_input_files,
         snapshot_preprocess=job.snapshot_preprocess_script,
         benchmark=job.benchmark,
         fuzz_target=job.fuzz_target,
@@ -82,15 +82,19 @@ def measure_seed_baseline(
     if not inputs:
         return
 
-    batch_profdata_path = state_dir / 'batch.profdata'
-    replay_coverage_batch(
-        docker_runtime=docker_runtime,
+    batch_profdata_paths, coverage_batches = build_coverage_replay_batches(
         image=job.coverage_image,
         fuzz_target=job.fuzz_target,
         input_mode=job.input_mode,
         inputs=inputs,
-        batch_profdata_path=batch_profdata_path,
-        diagnostics_dir=state_dir / '_batch_diag',
+        state_dir=state_dir,
+        batch_tag='seed',
+        timeout_s=job.timeout_s * 2,
+    )
+    replay_coverage_batches(
+        docker_runtime=docker_runtime,
+        batches=coverage_batches,
+        jobs=jobs,
     )
     summary = merge_coverage_outputs(
         docker_runtime=docker_runtime,
@@ -101,7 +105,7 @@ def measure_seed_baseline(
         fuzz_target=job.fuzz_target,
         state_dir=state_dir,
         work_dir=state_dir / '_tmp_seed',
-        profile_inputs=[batch_profdata_path],
+        profile_inputs=batch_profdata_paths,
     )
     with open_db(db_path) as db:
         baseline_id = upsert_agg_snapshot(
@@ -118,12 +122,16 @@ def measure_seed_baseline(
         update_agg_snapshot_coverage(
             db,
             agg_snapshot_id=baseline_id,
-            coverage_html_dir=_rel_if_exists(base_root / 'html' / 'index.html', run_dir),
-            coverage_sets_json_rel=_rel_if_exists(base_root / 'coverage-sets.json', run_dir),
+            coverage_html_dir=(
+                str((base_root / 'html' / 'index.html').relative_to(run_dir))
+                if (base_root / 'html' / 'index.html').exists()
+                else None
+            ),
+            coverage_sets_json_rel=(
+                str((base_root / 'coverage-sets.json').relative_to(run_dir))
+                if (base_root / 'coverage-sets.json').exists()
+                else None
+            ),
             summary=summary,
         )
     LOG.debug('Seed coverage summary for %s/%s/%s: %s', job.fuzzer, job.benchmark, job.fuzz_target, summary)
-
-
-def _rel_if_exists(path: Path, root: Path) -> str | None:
-    return str(path.relative_to(root)) if path.exists() else None

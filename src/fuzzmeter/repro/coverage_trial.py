@@ -25,10 +25,9 @@ def bootstrap_from_seed_baseline(
 ) -> None:
     '''Copy seed baseline coverage state into an empty trial coverage state.'''
     base_root = seed_coverage_root(run_dir, trial.config.fuzzer, trial.config.benchmark, trial.config.fuzz_target)
-    baseline_summary = base_root / 'summary.json'
     baseline_profdata = base_root / '_state' / 'merged.profdata'
 
-    if not baseline_summary.exists():
+    if not (base_root / 'summary.json').exists():
         return
 
     if not (state_dir / 'merged.profdata').exists() and baseline_profdata.exists():
