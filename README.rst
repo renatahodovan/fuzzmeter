@@ -205,10 +205,12 @@ For a live campaign, FuzzMeter performs the following steps:
 6. Stores raw and derived data in database.
 7. Generates a report from the database and associated coverage artifacts.
 
-Coverage replax containers (a.k.a. workers) re-execute corpus elements with
-coverage-instrumented target binaries. Crash reproduction workers re-execute
-candidate failures with sanitizer-enabled target binaries. This separation keeps
-fuzzer execution and measurement independent.
+Coverage replay containers (a.k.a. workers) re-execute corpus elements with
+coverage-instrumented target binaries, while crash reproduction workers
+re-execute candidate failures with sanitizer-enabled target binaries. Both use
+``2 * fuzz_target_timeout`` as the per-input timeout to leave room for the
+slower measurement execution. This separation keeps fuzzer execution and
+measurement independent.
 
 
 Replay Mode
