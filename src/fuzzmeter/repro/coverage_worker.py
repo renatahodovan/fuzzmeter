@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import concurrent.futures
 import glob
 import json
 import logging
@@ -52,7 +51,6 @@ class WorkerConfig:
     profdata: Path
     batch_profdata: Path | None
     coverage_sets: Path | None
-    input_jobs: int
     timeout_s: float
 
     @classmethod
@@ -73,7 +71,6 @@ class WorkerConfig:
             profdata=Path(profdata_env) if profdata_env else out_dir / 'merged.profdata',
             batch_profdata=Path(batch_profdata_env) if batch_profdata_env else None,
             coverage_sets=Path(coverage_sets_env) if coverage_sets_env else None,
-            input_jobs=max(1, int(os.environ.get('FM_INPUT_JOBS', '1'))),
             timeout_s=float(os.environ.get('FM_TIMEOUT_S', '2.0')),
         )
 
@@ -101,11 +98,9 @@ def _run_batch_mode(cfg: WorkerConfig) -> None:
     start_time = time.time()
 
     if inputs and cfg.input_mode == 'in_process':
-        jobs = 1
         results = [_execute_inprocess_batch(cfg, inputs, profraws_dir)]
     else:
-        jobs = max(1, min(cfg.input_jobs, max(1, attempted)))
-        results = _execute_inputs(cfg, inputs, profraws_dir, jobs)
+        results = [_execute_one_input(cfg, input_path, index, profraws_dir) for index, input_path in enumerate(inputs)]
 
     LOG.debug('Finished coverage batch with %d inputs in %.1f seconds', attempted, time.time() - start_time)
     new_profraws = sorted(glob.glob(str(profraws_dir / '*.tmp')))
@@ -114,7 +109,6 @@ def _run_batch_mode(cfg: WorkerConfig) -> None:
             out_dir=cfg.out_dir,
             attempted=attempted,
             timeout_s=cfg.timeout_s,
-            jobs=jobs,
             results=results,
         )
     if new_profraws and cfg.batch_profdata is not None:
@@ -147,22 +141,6 @@ def _run_finalize_mode(cfg: WorkerConfig) -> None:
         return
 
     _write_coverage_outputs(cfg)
-
-
-def _execute_inputs(cfg: WorkerConfig, inputs: list[str], profraws_dir: Path, jobs: int) -> list[dict[str, Any]]:
-    results: list[dict[str, Any] | None] = [None] * len(inputs)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
-        futures = {
-            executor.submit(_execute_one_input, cfg, input_path, index, profraws_dir): index
-            for index, input_path in enumerate(inputs)
-        }
-        for future in concurrent.futures.as_completed(futures):
-            index = futures[future]
-            try:
-                results[index] = future.result()
-            except Exception as exc:
-                results[index] = _worker_error_result(index=index, input_path=inputs[index], exc=exc)
-    return [result for result in results if result is not None]
 
 
 def _execute_one_input(cfg: WorkerConfig, input_path: str, index: int, profraws_dir: Path) -> dict[str, Any]:
@@ -409,7 +387,6 @@ def _write_input_exec_diagnostics(
     out_dir: Path,
     attempted: int,
     timeout_s: float,
-    jobs: int,
     results: list[dict[str, Any]],
 ) -> None:
     status_counts: dict[str, int] = {}
@@ -434,24 +411,11 @@ def _write_input_exec_diagnostics(
     payload = {
         'attempted': attempted,
         'timeout_s': timeout_s,
-        'jobs': jobs,
         'status_counts': status_counts,
         'produced_profraws': produced_profraws,
         'problematic_inputs': problematic,
     }
     _write_text(out_dir / 'input_exec_diagnostics.json', json.dumps(payload, indent=2))
-
-
-def _worker_error_result(*, index: int, input_path: str, exc: Exception) -> dict[str, Any]:
-    return {
-        'index': index,
-        'input': input_path,
-        'status': 'worker_error',
-        'returncode': None,
-        'profraws': [],
-        'stdout': '',
-        'stderr': repr(exc),
-    }
 
 
 def _token_int(value: str) -> int | None:
