@@ -128,11 +128,7 @@ def _collect_file_hashes(hashes: set[int], file_item: Any, metric: str) -> None:
                     )
                 )
         return
-    entries = (
-        file_item.get('branches')
-        if metric == 'branches'
-        else file_item.get('functions') if metric == 'functions' else []
-    )
+    entries = {'branches': file_item.get('branches'), 'functions': file_item.get('functions')}.get(metric, [])
     for ordinal, entry in enumerate(entries or []):
         if metric == 'branches' and _covered_tuple(entry, 4, 6):
             hashes.add(_stable_hash(_safe_text(filename, *list(entry)[:4], ordinal)))
@@ -206,21 +202,20 @@ def _decode_compact_metric(metric_data: dict[str, Any]) -> list[int] | None:
     offset = 0
     while offset < len(raw):
         delta, offset = _decode_uvarint(raw, offset)
-        current = int(delta) if not values else current + int(delta)
+        current = delta if not values else current + delta
         values.append(current)
     return values
 
 
 def _decode_uvarint(data: bytes, offset: int) -> tuple[int, int]:
     value, shift = 0, 0
-    index = int(offset)
 
-    while index < len(data):
-        byte = data[index]
-        index += 1
+    while offset < len(data):
+        byte = data[offset]
+        offset += 1
         value |= (byte & 0x7F) << shift
         if byte < 0x80:
-            return value, index
+            return value, offset
         shift += 7
 
     raise ValueError('Truncated uvarint payload')
@@ -228,22 +223,17 @@ def _decode_uvarint(data: bytes, offset: int) -> tuple[int, int]:
 
 def _encode_uvarint(value: int) -> bytes:
     out = bytearray()
-    current = int(value)
-    while current >= 0x80:
-        out.append((current & 0x7F) | 0x80)
-        current >>= 7
-    out.append(current)
+    while value >= 0x80:
+        out.append((value & 0x7F) | 0x80)
+        value >>= 7
+    out.append(value)
     return bytes(out)
 
 
 def _encode_delta_varints(values: Iterable[int]) -> bytes:
     payload = bytearray()
-    prev = 0
-    first = True
+    prev = None
     for value in values:
-        current = int(value)
-        delta = current if first else (current - prev)
-        payload.extend(_encode_uvarint(delta))
-        prev = current
-        first = False
+        payload.extend(_encode_uvarint(value if prev is None else value - prev))
+        prev = value
     return bytes(payload)

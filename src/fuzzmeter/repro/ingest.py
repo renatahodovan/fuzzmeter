@@ -45,8 +45,8 @@ def detect_new_files(
     if not src_root.exists():
         return []
     detected: list[DetectedFile] = []
-    start_mtime_ns = int(start_ts) * 1_000_000_000
-    end_mtime_ns = int(end_ts) * 1_000_000_000
+    start_mtime_ns = start_ts * 1_000_000_000
+    end_mtime_ns = end_ts * 1_000_000_000
 
     for path, rel_path, mtime_ns in iter_visible_files_in_time_range(
         src_root,
@@ -156,7 +156,7 @@ def iter_visible_files_in_time_range(
 
 
 def _file_update_time_ns(stat_result: os.stat_result) -> int:
-    mtime_ns = int(stat_result.st_mtime_ns)
+    mtime_ns = stat_result.st_mtime_ns
     birthtime = getattr(stat_result, 'st_birthtime', None)
     if birthtime is None:
         return mtime_ns
@@ -177,9 +177,8 @@ def _materialize_snapshot_file(src: Path, dst: Path) -> None:
 
     if _clone_file(src, dst):
         os.chmod(dst, dst.stat().st_mode | 0o444)
-        return
-
-    shutil.copy2(src, dst)
+    else:
+        shutil.copy2(src, dst)
     os.chmod(dst, dst.stat().st_mode | 0o444)
 
 

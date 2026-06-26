@@ -18,16 +18,16 @@ from ..db.snapshot import set_snapshot_coverage_fields
 
 def trial_coverage_root(run_dir: Path, fuzzer: str, benchmark: str, fuzz_target: str) -> Path:
     '''Return the latest trial coverage output root for a target.'''
-    return Path(run_dir) / 'coverage' / fuzzer / benchmark / fuzz_target
+    return run_dir / 'coverage' / fuzzer / benchmark / fuzz_target
 
 
 def seed_coverage_root(run_dir: Path, fuzzer: str, benchmark: str, fuzz_target: str) -> Path:
     '''Return the seed baseline coverage output root for a target.'''
-    return Path(run_dir) / 'coverage_seed' / fuzzer / benchmark / fuzz_target
+    return run_dir / 'coverage_seed' / fuzzer / benchmark / fuzz_target
 
 
 def collect_inputs(corpus_dir: Path) -> list[Path]:
-    '''Collect corpus files whose content hash is not in the seen set.'''
+    '''Collect all regular files under corpus_dir, sorted by path.'''
     return sorted(path for path in corpus_dir.rglob('*') if path.is_file())
 
 
@@ -48,7 +48,7 @@ def apply_snapshot_summary(*, db: DB, run_dir: Path, snapshot_id: int, out_root:
     rel_html = str(idx_path.relative_to(run_dir)) if idx_path.exists() else None
     set_snapshot_coverage_fields(
         db=db,
-        snapshot_id=int(snapshot_id),
+        snapshot_id=snapshot_id,
         coverage_html_dir=rel_html,
         cov_lines_covered=summary.get('cov_lines_covered'),
         cov_lines_total=summary.get('cov_lines_total'),
