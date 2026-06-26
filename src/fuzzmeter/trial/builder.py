@@ -27,6 +27,7 @@ def plan_trials(
     trial_configs: list[TrialConfig] = []
     seen_trial_keys: set[str] = set()
     rep_count = int(campaign_config.settings.repetitions)
+    configs_by_rep: dict[int, list[TrialConfig]] = {}
 
     for campaign_case in campaign_config.cases:
         fuzzer_module = fuzzer_loader.load(campaign_case.fuzzer_base)
@@ -59,6 +60,9 @@ def plan_trials(
             if config.trial_key in seen_trial_keys:
                 raise RuntimeError(f'Duplicate trial key: {config.trial_key}')
             seen_trial_keys.add(config.trial_key)
-            trial_configs.append(config)
+            configs_by_rep.setdefault(rep_idx, []).append(config)
+
+    for rep_idx in sorted(configs_by_rep):
+        trial_configs.extend(configs_by_rep[rep_idx])
 
     return trial_configs

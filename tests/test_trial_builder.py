@@ -57,7 +57,7 @@ class _TrialBuilderTest(unittest.TestCase):
             )
 
         self.assertEqual(
-            [plan.config.trial_key for plan in plans],
+            [plan.trial_key for plan in plans],
             [
                 'fuzzer_a__bench-target_a__rep0',
                 'fuzzer_b__bench-target_b__rep0',
