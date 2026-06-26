@@ -225,11 +225,21 @@ class DockerClient:
 
     def rm(self, container_id_or_name: str) -> bool:
         '''Remove a docker container if it exists.'''
-        return subprocess.run(['docker', 'rm', '-f', container_id_or_name], check=False).returncode == 0
+        return subprocess.run(
+            ['docker', 'rm', '-f', container_id_or_name],
+            check=False,
+            capture_output=True,
+            text=True,
+        ).returncode == 0
 
     def kill(self, container_id_or_name: str) -> bool:
         '''Kill a docker container if it is running.'''
-        return subprocess.run(['docker', 'kill', container_id_or_name], check=False).returncode == 0
+        return subprocess.run(
+            ['docker', 'kill', container_id_or_name],
+            check=False,
+            capture_output=True,
+            text=True,
+        ).returncode == 0
 
     def logs(self, container_id_or_name: str, tail: int = 200) -> str:
         '''Return docker logs for a container.'''
