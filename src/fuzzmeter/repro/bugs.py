@@ -16,9 +16,10 @@ import re
 
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 from ..db import open_db
-from ..db.bug import ensure_bug, get_bug_id, upsert_bug_hits
+from ..db.bug import ensure_bug, upsert_bug_hits
 from ..docker import DockerClient, DockerRuntime
 from ..trial.models import TrialInstance
 from .ingest import DetectedFile
@@ -40,58 +41,47 @@ def repro_crash_batch(
     trial: TrialInstance,
     snapshot_id: int,
     snapshot_crashes_dir: Path,
-    crash_files: list[DetectedFile],
+    crash_tests: list[DetectedFile],
     batch_index: int,
     repro_logs_dir: Path,
 ) -> None:
     '''Reproduce new crashes in the sanitizer image and persist bug hits.'''
-    if not crash_files:
-        return
-
     repro_logs_dir.mkdir(parents=True, exist_ok=True)
 
+    config = trial.config
     hits: Counter = Counter()
-    metadata: dict[str, dict] = {}
-    first_seen_by_bug: dict[str, int] = {}
+    bug_data_by_key: dict[str, dict[str, Any]] = {}
     for bug_key, bug_metadata, first_seen_ts in _reproduce_crash_batch(
         docker_runtime=docker_runtime,
         trial=trial,
         snapshot_crashes_dir=snapshot_crashes_dir,
-        crash_tests=crash_files,
+        crash_tests=crash_tests,
         repro_logs_dir=repro_logs_dir,
         batch_index=batch_index,
     ):
         hits[bug_key] += 1
-        previous_first_seen_ts = first_seen_by_bug.get(bug_key)
-        if previous_first_seen_ts is None or int(first_seen_ts) < previous_first_seen_ts:
-            metadata[bug_key] = bug_metadata
-            first_seen_by_bug[bug_key] = int(first_seen_ts)
+        bug_data = bug_data_by_key.get(bug_key)
+        if bug_data is None or first_seen_ts < bug_data['first_seen_ts']:
+            bug_data_by_key[bug_key] = {'metadata': bug_metadata, 'first_seen_ts': first_seen_ts}
 
     with open_db(db_path) as db:
         for bug_key, count in hits.items():
-            bug_id = get_bug_id(
+            bug_data = bug_data_by_key[bug_key]
+            metadata = bug_data['metadata']
+            bug_id = ensure_bug(
                 db,
                 run_id=run_id,
-                fuzzer=trial.config.fuzzer,
-                benchmark=trial.config.benchmark,
-                fuzz_target=trial.config.fuzz_target,
+                fuzzer=config.fuzzer,
+                benchmark=config.benchmark,
+                fuzz_target=config.fuzz_target,
                 bug_key=bug_key,
+                issue_type=metadata['issue_type'],
+                top_func=metadata['top_func'],
+                frames=metadata['frames'],
+                output=metadata['output'],
+                first_seen_ts=bug_data['first_seen_ts'],
+                first_seen_snapshot_id=snapshot_id,
             )
-            if bug_id is None:
-                bug_id = ensure_bug(
-                    db,
-                    run_id=run_id,
-                    fuzzer=trial.config.fuzzer,
-                    benchmark=trial.config.benchmark,
-                    fuzz_target=trial.config.fuzz_target,
-                    bug_key=bug_key,
-                    issue_type=metadata[bug_key].get('issue_type'),
-                    top_func=metadata[bug_key].get('top_func'),
-                    frames=metadata[bug_key].get('frames') or [],
-                    output=metadata[bug_key].get('output'),
-                    first_seen_ts=first_seen_by_bug[bug_key],
-                    first_seen_snapshot_id=snapshot_id,
-                )
             upsert_bug_hits(db, bug_id=bug_id, snapshot_id=snapshot_id, hits=count)
 
 
@@ -103,22 +93,18 @@ def _reproduce_crash_batch(
     crash_tests: list[DetectedFile],
     repro_logs_dir: Path,
     batch_index: int,
-) -> list[tuple[str, dict, int]]:
+) -> list[tuple[str, dict[str, Any], int]]:
     docker = DockerClient(docker_runtime)
     batch_root = snapshot_crashes_dir.parent / '.crash_repro_batches' / f'{batch_index:06d}'
     batch_root.mkdir(parents=True, exist_ok=True)
     input_list = batch_root / 'inputs.txt'
     output_json = batch_root / 'results.json'
-    input_list.write_text(
-        '\n'.join(
-            docker.container_path(
-                crash_input if crash_input.is_file() else new_file.abs_src
-            )
-            for new_file in crash_tests
-            for crash_input in [snapshot_crashes_dir / new_file.rel_path]
-        ) + '\n',
-        encoding='utf-8',
-    )
+
+    crash_inputs = []
+    for new_file in crash_tests:
+        crash_input = snapshot_crashes_dir / new_file.rel_path
+        crash_inputs.append(docker.container_path(crash_input if crash_input.is_file() else new_file.abs_src))
+    input_list.write_text('\n'.join(crash_inputs) + '\n', encoding='utf-8')
 
     docker.run(
         image=trial.config.images.asan,
@@ -143,9 +129,9 @@ def _reproduce_crash_batch(
             output_json,
         )
 
-    results: list[tuple[str, dict, int]] = []
+    results: list[tuple[str, dict[str, Any], int]] = []
     for new_file, output in zip(crash_tests, outputs):
-        output = output.get('stdout') + output.get('stderr')
+        output = (output.get('stdout') or '') + (output.get('stderr') or '')
         results.append(_classify_crash_output(
             trial=trial,
             new_file=new_file,
@@ -162,7 +148,7 @@ def _classify_crash_output(
     new_file: DetectedFile,
     output: str,
     repro_logs_dir: Path,
-) -> tuple[str, dict, int]:
+) -> tuple[str, dict[str, Any], int]:
     issue = 'crash'
     for regex in (_ISSUE_ASAN, _ISSUE_MSAN, _ISSUE_UBSAN):
         match = regex.search(output)
@@ -194,7 +180,7 @@ def _classify_crash_output(
         {
             'issue_type': issue,
             'top_func': top_func,
-            'frames': frames[:5],
+            'frames': frames,
             'output': output,
         },
         first_seen_ts,
