@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import subprocess
+
 from pathlib import Path
 
 level = getattr(logging, os.environ.get('FM_LOG_LEVEL', 'WARNING'))
@@ -28,34 +29,25 @@ LOG = logging.getLogger(__name__)
 def main() -> None:
     '''Run crash inputs against the sanitizer binary and write JSON results.'''
     target_name = os.environ['FM_TARGET_NAME']
-    crash_input_list_env = os.environ.get('FM_CRASH_INPUT_LIST', '')
-    output_json_env = os.environ.get('FM_CRASH_OUTPUT_JSON', '')
-    timeout_s = float(os.environ.get('FM_TIMEOUT_S', '10.0'))
-    input_mode = os.environ.get('FM_INPUT_MODE', '')
-
-    asan_bin = Path(f'/out/{target_name}')
-    if not asan_bin.exists():
-        LOG.error('ASAN binary not found: %s', asan_bin)
-        raise SystemExit(2)
+    input_mode = os.environ['FM_INPUT_MODE']
+    timeout_s = float(os.environ['FM_TIMEOUT_S'])
+    input_list_fn = os.environ['FM_CRASH_INPUT_LIST']
+    output_json_fn = os.environ['FM_CRASH_OUTPUT_JSON']
 
     env = os.environ.copy()
-    env.setdefault('ASAN_OPTIONS', 'symbolize=1:abort_on_error=1:disable_coredump=1:detect_leaks=0:handle_abort=1')
-    env.setdefault('UBSAN_OPTIONS', 'print_stacktrace=1:halt_on_error=1')
+    env['ASAN_OPTIONS'] = 'symbolize=1:abort_on_error=1:disable_coredump=1:detect_leaks=0:handle_abort=1'
+    env['UBSAN_OPTIONS'] = 'print_stacktrace=1:halt_on_error=1'
 
-    if not crash_input_list_env or not output_json_env:
-        LOG.error('FM_CRASH_INPUT_LIST and FM_CRASH_OUTPUT_JSON are required')
-        raise SystemExit(2)
-
-    output_json = Path(output_json_env)
+    output_json = Path(output_json_fn)
     output_json.parent.mkdir(parents=True, exist_ok=True)
     crash_inputs = [
         Path(line.strip())
-        for line in Path(crash_input_list_env).read_text(encoding='utf-8', errors='replace').splitlines()
+        for line in Path(input_list_fn).read_text(encoding='utf-8', errors='replace').splitlines()
     ]
 
     results = [
         _run_one(
-            asan_bin=asan_bin,
+            asan_bin=Path(f'/out/{target_name}'),
             crash_input=crash_input,
             input_mode=input_mode,
             timeout_s=timeout_s,
@@ -65,8 +57,6 @@ def main() -> None:
     ]
 
     output_json.write_text(json.dumps(results), encoding='utf-8')
-
-    raise SystemExit(0)
 
 
 def _run_one(
@@ -82,7 +72,7 @@ def _run_one(
         stdin_data = None
     else:
         cmd = [str(asan_bin)]
-        stdin_data = Path(crash_input).read_text(encoding='utf-8', errors='replace')
+        stdin_data = crash_input.read_text(encoding='utf-8', errors='replace')
 
     LOG.debug('Running crash repro command: %s', ' '.join(str(item) for item in cmd))
     try:
