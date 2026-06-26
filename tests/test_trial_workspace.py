@@ -39,7 +39,7 @@ class TrialWorkspaceTest(unittest.TestCase):
         docker = _SeedDocker()
         with tempfile.TemporaryDirectory() as tmp_dir:
             with patch('fuzzmeter.trial.workspace.DockerClient', return_value=docker):
-                seed_root = workspace.TrialWorkspacePreparer.extract_seed_corpus_from_image(
+                seed_root = workspace.extract_seed_corpus_from_image(
                     image='runner',
                     fuzzer='grafl',
                     benchmark='sqlite3',

@@ -78,13 +78,14 @@ def extract_seed_corpus_from_image(
         raise
 
     with zipfile.ZipFile(tmp_root / zip_name, 'r') as archive:
+        resolved_extract_dir = tmp_extract_dir.resolve()
         for info in archive.infolist():
             if info.is_dir():
                 continue
 
-            out_path = (tmp_extract_dir / info.filename).resolve()
+            out_path = (resolved_extract_dir / info.filename).resolve()
             try:
-                out_path.relative_to(tmp_extract_dir)
+                out_path.relative_to(resolved_extract_dir)
             except ValueError:
                 LOG.warning('Skipping unsafe path: %s', info.filename)
                 continue
