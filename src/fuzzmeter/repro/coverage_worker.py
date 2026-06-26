@@ -28,9 +28,9 @@ from coverage_sets import (
     write_coverage_sets,
 )
 
-LOG_LEVEL = getattr(logging, os.environ.get('FM_LOG_LEVEL', 'WARNING'))
+level = getattr(logging, os.environ.get('FM_LOG_LEVEL', 'WARNING'))
 logging.basicConfig(
-    level=LOG_LEVEL,
+    level=level,
     format='%(asctime)s - %(levelname)-7s - %(name)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
 )
@@ -43,46 +43,51 @@ class WorkerConfig:
     '''Hold coverage worker environment values.'''
 
     cov_bin: Path
-    input_mode: str
     out_dir: Path
     work_dir: Path
     input_list: Path
-    prof_list: Path
     profdata: Path
-    batch_profdata: Path | None
     coverage_sets: Path | None
-    timeout_s: float
+    input_mode: str = ''
+    prof_list: Path = Path()
+    batch_profdata: Path | None = None
+    timeout_s: float = 0.0
 
     @classmethod
-    def from_env(cls) -> 'WorkerConfig':
+    def from_env(cls) -> WorkerConfig:
         '''Build a worker config from environment variables.'''
         out_dir = Path(os.environ['FM_OUT_DIR'])
         work_dir_env = os.environ.get('FM_WORK_DIR', '').strip()
         profdata_env = os.environ.get('FM_PROFDATA_PATH', '').strip()
-        batch_profdata_env = os.environ.get('FM_BATCH_PROFDATA_PATH', '').strip()
         coverage_sets_env = os.environ.get('FM_COVERAGE_SETS_JSON', '').strip()
+        batch_profdata_env = os.environ.get('FM_BATCH_PROFDATA_PATH', '').strip()
+        common = {
+            'cov_bin': Path(f'/out/{os.environ["FM_TARGET_NAME"]}'),
+            'out_dir': out_dir,
+            'work_dir': Path(work_dir_env) if work_dir_env else out_dir / '_work',
+            'profdata': Path(profdata_env) if profdata_env else out_dir / 'merged.profdata',
+            'coverage_sets': Path(coverage_sets_env) if coverage_sets_env else None,
+        }
+        if batch_profdata_env:
+            return cls(
+                **common,
+                input_mode=os.environ['FM_INPUT_MODE'].strip(),
+                input_list=Path(os.environ['FM_INPUT_LIST']),
+                batch_profdata=Path(batch_profdata_env),
+                timeout_s=float(os.environ['FM_TIMEOUT_S']),
+            )
         return cls(
-            cov_bin=Path(f'/out/{os.environ["FM_TARGET_NAME"]}'),
-            input_mode=os.environ.get('FM_INPUT_MODE', '').strip(),
-            out_dir=out_dir,
-            work_dir=Path(work_dir_env) if work_dir_env else out_dir / '_work',
-            input_list=Path(os.environ.get('FM_INPUT_LIST', '')),
-            prof_list=Path(os.environ.get('FM_PROF_LIST', '')),
-            profdata=Path(profdata_env) if profdata_env else out_dir / 'merged.profdata',
-            batch_profdata=Path(batch_profdata_env) if batch_profdata_env else None,
-            coverage_sets=Path(coverage_sets_env) if coverage_sets_env else None,
-            timeout_s=float(os.environ.get('FM_TIMEOUT_S', '2.0')),
+            **common,
+            prof_list=Path(os.environ['FM_PROF_LIST']),
         )
 
 
 def main() -> None:
     '''Run the coverage worker command.'''
     cfg = WorkerConfig.from_env()
-    if not cfg.cov_bin.is_file():
-        raise SystemExit(f'Coverage bin not found in image: {cfg.cov_bin}')
-    _ensure_dir(cfg.out_dir)
-    _ensure_dir(cfg.work_dir)
-    _ensure_dir(cfg.profdata.parent)
+    cfg.out_dir.mkdir(parents=True, exist_ok=True)
+    cfg.work_dir.mkdir(parents=True, exist_ok=True)
+    cfg.profdata.parent.mkdir(parents=True, exist_ok=True)
 
     if cfg.batch_profdata is not None:
         _run_batch_mode(cfg)
@@ -91,12 +96,13 @@ def main() -> None:
 
 
 def _run_batch_mode(cfg: WorkerConfig) -> None:
-    inputs = _read_list_file(cfg.input_list)
+    inputs = [line.strip() for line in cfg.input_list.read_text(encoding='utf-8', errors='replace').splitlines() if line.strip()]
     profraws_dir = cfg.work_dir / 'worker_tmp'
-    _ensure_dir(profraws_dir)
+    profraws_dir.mkdir(parents=True, exist_ok=True)
     attempted = len(inputs)
     start_time = time.time()
 
+    (profraws_dir.parent / 'artifacts').mkdir(parents=True, exist_ok=True)
     if inputs and cfg.input_mode == 'in_process':
         results = [_execute_inprocess_batch(cfg, inputs, profraws_dir)]
     else:
@@ -123,7 +129,9 @@ def _run_batch_mode(cfg: WorkerConfig) -> None:
 
 
 def _run_finalize_mode(cfg: WorkerConfig) -> None:
-    merge_inputs = [path for path in _read_list_file(cfg.prof_list) if Path(path).is_file()]
+    lines = cfg.prof_list.read_text(encoding='utf-8', errors='replace').splitlines()
+    merge_inputs = [path for path in lines if path and Path(path).is_file()]
+
     if merge_inputs:
         tmp_profdata = cfg.profdata.with_suffix('.tmp')
         _merge_profiles(
@@ -137,44 +145,25 @@ def _run_finalize_mode(cfg: WorkerConfig) -> None:
     shutil.rmtree(cfg.work_dir, ignore_errors=True)
 
     if not cfg.profdata.is_file():
-        _write_text(cfg.out_dir / 'summary.json', '{}')
+        (cfg.out_dir / 'summary.json').write_text('{}', encoding='utf-8', errors='replace')
         return
 
     _write_coverage_outputs(cfg)
 
 
-def _execute_one_input(cfg: WorkerConfig, input_path: str, index: int, profraws_dir: Path) -> dict[str, Any]:
-    env = os.environ.copy()
-    env['LLVM_PROFILE_FILE'] = str(profraws_dir / f'i{index:08d}.%p.%m.tmp')
-    _ensure_dir(profraws_dir.parent / 'artifacts')
-    cmd, stdin_data = _target_command(cfg, input_path)
-    try:
-        cp = subprocess.run(
-            cmd,
-            input=stdin_data,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            errors='ignore',
-            env=env,
-            cwd=str(cfg.cov_bin.parent),
-            timeout=cfg.timeout_s,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        return {
-            'index': index,
-            'input': input_path,
-            'status': 'timeout',
-            'returncode': None,
-            'profraws': _profraws_for_input(profraws_dir, index),
-            'stdout': _truncate_text(exc.stdout or ''),
-            'stderr': _truncate_text(exc.stderr or ''),
-        }
-
-    profraws = _profraws_for_input(profraws_dir, index)
+def _result_payload(
+    *,
+    index: int,
+    input_path: str,
+    returncode: int | None,
+    profraws: list[str],
+    stdout: str,
+    stderr: str,
+) -> dict[str, Any]:
     status = 'ok'
-    if cp.returncode != 0:
+    if returncode is None:
+        status = 'timeout'
+    elif returncode != 0:
         status = 'failed'
     elif not profraws:
         status = 'missing_profraw'
@@ -182,21 +171,60 @@ def _execute_one_input(cfg: WorkerConfig, input_path: str, index: int, profraws_
         'index': index,
         'input': input_path,
         'status': status,
-        'returncode': int(cp.returncode),
+        'returncode': returncode,
         'profraws': profraws,
-        'stdout': _truncate_text(cp.stdout or ''),
-        'stderr': _truncate_text(cp.stderr or ''),
+        'stdout': _truncate_text(stdout),
+        'stderr': _truncate_text(stderr),
     }
+
+
+def _execute_one_input(cfg: WorkerConfig, input_path: str, index: int, profraws_dir: Path) -> dict[str, Any]:
+    env = os.environ.copy()
+    env['LLVM_PROFILE_FILE'] = str(profraws_dir / f'i{index:08d}.%p.%m.tmp')
+    cmd, stdin_data = _target_command(cfg, input_path)
+    try:
+        cp = subprocess.run(
+            cmd,
+            input=stdin_data,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            env=env,
+            cwd=str(cfg.cov_bin.parent),
+            timeout=cfg.timeout_s,
+        )
+    except subprocess.TimeoutExpired as exc:
+        profraws = _profraws_for_input(profraws_dir, index)
+        stdout = exc.stdout.decode('utf-8', errors='replace') if isinstance(exc.stdout, bytes) else (exc.stdout or '')
+        stderr = exc.stderr.decode('utf-8', errors='replace') if isinstance(exc.stderr, bytes) else (exc.stderr or '')
+        return _result_payload(
+            index=index,
+            input_path=input_path,
+            returncode=None,
+            profraws=profraws,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    profraws = _profraws_for_input(profraws_dir, index)
+    return _result_payload(
+        index=index,
+        input_path=input_path,
+        returncode=int(cp.returncode),
+        profraws=profraws,
+        stdout=cp.stdout or '',
+        stderr=cp.stderr or '',
+    )
 
 
 def _execute_inprocess_batch(cfg: WorkerConfig, inputs: list[str], profraws_dir: Path) -> dict[str, Any]:
     env = os.environ.copy()
     env['LLVM_PROFILE_FILE'] = str(profraws_dir / 'batch000000.%p.%m.tmp')
-    _ensure_dir(profraws_dir.parent / 'artifacts')
     batch_input_dir = _link_batch_inputs(inputs=inputs, work_dir=cfg.work_dir)
     merge_output_dir = cfg.work_dir / 'merge_output'
     shutil.rmtree(merge_output_dir, ignore_errors=True)
-    _ensure_dir(merge_output_dir)
+    merge_output_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         str(cfg.cov_bin),
         '-merge=1',
@@ -205,29 +233,33 @@ def _execute_inprocess_batch(cfg: WorkerConfig, inputs: list[str], profraws_dir:
         str(merge_output_dir),
         str(batch_input_dir),
     ]
-    cp = _target_run(cmd, env=env, cwd=cfg.cov_bin.parent)
+    cp = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+        env=env,
+        cwd=str(cfg.cov_bin.parent),
+    )
     profraws = sorted(glob.glob(str(profraws_dir / 'batch*.tmp')))
-    status = 'ok'
-    if cp.returncode != 0:
-        status = 'failed'
-    elif not profraws:
-        status = 'missing_profraw'
-    return {
-        'index': 0,
-        'input': f'<batch:{len(inputs)}>',
-        'status': status,
-        'returncode': int(cp.returncode),
-        'profraws': profraws,
-        'stdout': _truncate_text(cp.stdout or ''),
-        'stderr': _truncate_text(cp.stderr or ''),
-    }
+    return _result_payload(
+        index=0,
+        input_path=f'<batch:{len(inputs)}>',
+        returncode=int(cp.returncode),
+        profraws=profraws,
+        stdout=cp.stdout or '',
+        stderr=cp.stderr or '',
+    )
 
 
 def _write_coverage_outputs(cfg: WorkerConfig) -> None:
-    pe_args = _path_equivalence_args()
-    if not _env_flag('FM_SKIP_HTML'):
+    path_eq_from = os.environ.get('FM_PATH_EQ_FROM', '').strip()
+    path_eq_to = os.environ.get('FM_PATH_EQ_TO', '').strip()
+    pe_args = [f'--path-equivalence={path_eq_from},{path_eq_to}'] if path_eq_from and path_eq_to else []
+    if 'FM_SKIP_HTML' not in os.environ:
         html_dir = cfg.out_dir / 'html'
-        _ensure_dir(html_dir)
+        html_dir.mkdir(parents=True, exist_ok=True)
         _run(
             [
                 'llvm-cov',
@@ -251,9 +283,9 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
     )
     summary = _coverage_summary_from_report(report.stdout or '')
 
-    export_obj: dict[str, Any] = {}
-    metrics: dict[str, list[int]] = {}
     if cfg.coverage_sets is not None:
+        export_obj: dict[str, Any] = {}
+        metrics: dict[str, list[int]] = {}
         export = _run(
             [
                 'llvm-cov',
@@ -273,15 +305,13 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
             if not summary:
                 summary = coverage_summary_from_export(export_obj, metrics=metrics)
         except Exception as exc:
-            _write_text(cfg.out_dir / 'export_parse_error.txt', repr(exc))
-
-    if cfg.coverage_sets is not None:
+            (cfg.out_dir / 'export_parse_error.txt').write_text(repr(exc), encoding='utf-8', errors='replace')
         try:
             write_coverage_sets(cfg.coverage_sets, summary, metrics)
         except Exception as exc:
-            _write_text(cfg.out_dir / 'coverage_sets_error.txt', repr(exc))
+            (cfg.out_dir / 'coverage_sets_error.txt').write_text(repr(exc), encoding='utf-8', errors='replace')
 
-    _write_text(cfg.out_dir / 'summary.json', json.dumps(summary, indent=2))
+    (cfg.out_dir / 'summary.json').write_text(json.dumps(summary, indent=2), encoding='utf-8', errors='replace')
 
 
 def _coverage_summary_from_report(report: str) -> dict[str, int | None]:
@@ -307,79 +337,56 @@ def _coverage_summary_from_report(report: str) -> dict[str, int | None]:
 
 
 def _coverage_report_counts(metric: str, group: list[str]) -> dict[str, int | None]:
-    total = _token_int(group[0])
-    missed = _token_int(group[1])
+    try:
+        total = int(group[0].replace(',', ''))
+    except ValueError:
+        total = None
+    try:
+        missed = int(group[1].replace(',', ''))
+    except ValueError:
+        missed = None
     covered = None if total is None or missed is None else max(0, total - missed)
     return {f'cov_{metric}_total': total, f'cov_{metric}_covered': covered}
 
 
-def _merge_profiles(*, inputs: list[str], output: Path, work_dir: Path, out_dir: Path, label: str) -> bool:
-    merge_inputs = [item for item in inputs if item]
-    if not merge_inputs:
-        return False
+def _merge_profiles(*, inputs: list[str], output: Path, work_dir: Path, out_dir: Path, label: str) -> None:
     round_idx = 0
-    while len(merge_inputs) > PROFDATA_MERGE_CHUNK_SIZE:
+    while len(inputs) > PROFDATA_MERGE_CHUNK_SIZE:
         round_idx += 1
         chunk_dir = work_dir / f'{label}_chunks_{round_idx:02d}'
         shutil.rmtree(chunk_dir, ignore_errors=True)
         chunk_dir.mkdir(parents=True, exist_ok=True)
-        merge_inputs = [
-            str(
-                _merge_chunk(
-                    chunk,
-                    chunk_dir / f'chunk_{index:06d}.profdata',
-                    out_dir,
-                    f'{label}_{round_idx:02d}_{index:06d}',
-                )
+        chunk_outputs = []
+        for index, start in enumerate(range(0, len(inputs), PROFDATA_MERGE_CHUNK_SIZE)):
+            chunk = inputs[start:start + PROFDATA_MERGE_CHUNK_SIZE]
+            chunk_output = chunk_dir / f'chunk_{index:06d}.profdata'
+            _run(
+                ['llvm-profdata', 'merge', '-sparse', *chunk, '-o', str(chunk_output)],
+                out_dir=out_dir,
+                label=f'llvm_profdata_merge_{label}_{round_idx:02d}_{index:06d}',
             )
-            for index, chunk in enumerate(_chunks(merge_inputs, PROFDATA_MERGE_CHUNK_SIZE))
-        ]
-    _run(
-        ['llvm-profdata', 'merge', '-sparse', *merge_inputs, '-o', str(output)],
-        out_dir=out_dir,
-        label=f'llvm_profdata_merge_{label}',
-    )
-    return True
-
-
-def _merge_chunk(inputs: list[str], output: Path, out_dir: Path, label: str) -> Path:
+            chunk_outputs.append(str(chunk_output))
+        inputs = chunk_outputs
     _run(
         ['llvm-profdata', 'merge', '-sparse', *inputs, '-o', str(output)],
         out_dir=out_dir,
         label=f'llvm_profdata_merge_{label}',
     )
-    return output
 
 
 def _run(cmd: list[str], *, out_dir: Path, label: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    cp = subprocess.run(cmd, text=True, capture_output=True, timeout=600.0, check=False)
+    cp = subprocess.run(cmd, text=True, encoding='utf-8', errors='replace', capture_output=True, timeout=600.0)
     if cp.returncode == 0 or not check:
-        if cp.returncode != 0:
-            _write_text(out_dir / f'{label}.stdout.txt', cp.stdout or '')
-            _write_text(out_dir / f'{label}.stderr.txt', cp.stderr or '')
         return cp
-    _write_text(out_dir / f'{label}.stdout.txt', cp.stdout or '')
-    _write_text(out_dir / f'{label}.stderr.txt', cp.stderr or '')
-    raise SystemExit(f'{label} failed rc={cp.returncode}')
+    (out_dir / f'{label}.stdout.txt').write_text(cp.stdout or '', encoding='utf-8', errors='replace')
+    (out_dir / f'{label}.stderr.txt').write_text(cp.stderr or '', encoding='utf-8', errors='replace')
+    raise RuntimeError(f'{label} failed rc={cp.returncode}')
 
 
 def _target_command(cfg: WorkerConfig, input_path: str) -> tuple[list[str], str | None]:
     if cfg.input_mode in {'in_process', 'file'}:
         return [str(cfg.cov_bin), input_path], None
     return [str(cfg.cov_bin)], Path(input_path).read_text(encoding='utf-8', errors='replace')
-
-
-def _target_run(cmd: list[str], *, env: dict[str, str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        errors='ignore',
-        env=env,
-        cwd=str(cwd),
-        check=False,
-    )
 
 
 def _write_input_exec_diagnostics(
@@ -395,19 +402,7 @@ def _write_input_exec_diagnostics(
         status_counts[status] = status_counts.get(status, 0) + 1
 
     produced_profraws = sum(len(result.get('profraws') or []) for result in results)
-    problematic = [
-        {
-            'index': result.get('index'),
-            'input': result.get('input'),
-            'status': result.get('status'),
-            'returncode': result.get('returncode'),
-            'profraws': result.get('profraws'),
-            'stdout': result.get('stdout'),
-            'stderr': result.get('stderr'),
-        }
-        for result in results
-        if result.get('status') != 'ok'
-    ]
+    problematic = [result for result in results if result.get('status') != 'ok']
     payload = {
         'attempted': attempted,
         'timeout_s': timeout_s,
@@ -415,14 +410,7 @@ def _write_input_exec_diagnostics(
         'produced_profraws': produced_profraws,
         'problematic_inputs': problematic,
     }
-    _write_text(out_dir / 'input_exec_diagnostics.json', json.dumps(payload, indent=2))
-
-
-def _token_int(value: str) -> int | None:
-    try:
-        return int(str(value).replace(',', ''))
-    except Exception:
-        return None
+    (out_dir / 'input_exec_diagnostics.json').write_text(json.dumps(payload, indent=2), encoding='utf-8', errors='replace')
 
 
 def _profraws_for_input(profraws_dir: Path, index: int) -> list[str]:
@@ -436,44 +424,13 @@ def _link_batch_inputs(*, inputs: list[str], work_dir: Path) -> Path:
     for index, input_path in enumerate(inputs):
         dst = batch_dir / f'input_{index:08d}'
         try:
-            os.symlink(Path(input_path), dst)
+            os.symlink(input_path, dst)
         except OSError:
             shutil.copy2(input_path, dst)
     return batch_dir
 
 
-def _read_list_file(path: Path) -> list[str]:
-    if not path.is_file():
-        return []
-    return [line.strip() for line in path.read_text(encoding='utf-8', errors='replace').splitlines() if line.strip()]
-
-
-def _path_equivalence_args() -> list[str]:
-    path_eq_from = os.environ.get('FM_PATH_EQ_FROM', '').strip()
-    path_eq_to = os.environ.get('FM_PATH_EQ_TO', '').strip()
-    return [f'--path-equivalence={path_eq_from},{path_eq_to}'] if path_eq_from and path_eq_to else []
-
-
-def _chunks(items: list[str], size: int) -> list[list[str]]:
-    return [items[index:index + size] for index in range(0, len(items), size)]
-
-
-def _ensure_dir(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True)
-
-
-def _write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding='utf-8', errors='replace')
-
-
-def _env_flag(name: str) -> bool:
-    return os.environ.get(name, '').strip().lower() in {'1', 'true', 'yes', 'on'}
-
-
-def _truncate_text(text: str | bytes, *, limit: int = 2000) -> str:
-    if isinstance(text, bytes):
-        text = text.decode('utf-8', errors='ignore')
+def _truncate_text(text: str, *, limit: int = 2000) -> str:
     if len(text) <= limit:
         return text
     return f'{text[:limit]}\n...[truncated {len(text) - limit} chars]...'
