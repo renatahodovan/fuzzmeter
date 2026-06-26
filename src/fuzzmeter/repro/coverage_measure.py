@@ -13,7 +13,6 @@ import concurrent.futures
 import logging
 import os
 import shutil
-import uuid
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -185,8 +184,8 @@ def merge_coverage_outputs(
         *[path for path in profile_inputs if path.is_file() and path.stat().st_size > 64],
     ]
 
-    src_root = Path(run_dir) / 'coverage_src' / f'{benchmark}/{fuzz_target}'
-    tmp_root = Path(out_root).parent / f'.{Path(out_root).name}.tmp'
+    src_root = run_dir / 'coverage_src' / f'{benchmark}/{fuzz_target}'
+    tmp_root = out_root.parent / f'.{out_root.name}.tmp'
     shutil.rmtree(tmp_root, ignore_errors=True)
     tmp_root.mkdir(parents=True, exist_ok=True)
 
@@ -222,17 +221,17 @@ def merge_coverage_outputs(
     )
 
     if not write_coverage_sets:
-        _preserve_previous_artifacts(out_root=Path(out_root), tmp_root=tmp_root, names=('coverage-sets.json',))
-    _replace_out_root(out_root=Path(out_root), tmp_root=tmp_root, protected_dir=state_dir)
-    return load_coverage_summary(Path(out_root) / 'summary.json')
+        _preserve_previous_artifacts(out_root=out_root, tmp_root=tmp_root, names=('coverage-sets.json',))
+    _replace_out_root(out_root=out_root, tmp_root=tmp_root, protected_dir=state_dir)
+    return load_coverage_summary(out_root / 'summary.json')
 
 
 def _preserve_previous_artifacts(*, out_root: Path, tmp_root: Path, names: tuple[str, ...]) -> None:
     for name in names:
-        src = Path(out_root) / name
+        src = out_root / name
         if not src.is_file():
             continue
-        dst = Path(tmp_root) / name
+        dst = tmp_root / name
         dst.parent.mkdir(parents=True, exist_ok=True)
         try:
             shutil.copy2(src, dst)
@@ -245,8 +244,8 @@ def _replace_out_root(*, out_root: Path, tmp_root: Path, protected_dir: Path | N
     final_state = None
     if protected_dir is not None:
         try:
-            protected_dir = Path(protected_dir).resolve()
-            out_root_resolved = Path(out_root).resolve()
+            protected_dir = protected_dir.resolve()
+            out_root_resolved = out_root.resolve()
             protected_dir.relative_to(out_root_resolved)
             final_state = protected_dir
             saved_state = out_root_resolved.parent / f'.{out_root_resolved.name}.{protected_dir.name}.preserved'
@@ -254,12 +253,13 @@ def _replace_out_root(*, out_root: Path, tmp_root: Path, protected_dir: Path | N
             if protected_dir.exists():
                 protected_dir.rename(saved_state)
         except Exception:
+            LOG.debug('Could not preserve protected dir %s under %s', protected_dir, out_root)
             saved_state = None
             final_state = None
 
-    if Path(out_root).exists():
+    if out_root.exists():
         shutil.rmtree(out_root, ignore_errors=True)
-    _promote_dir(tmp_root, Path(out_root))
+    _promote_dir(tmp_root, out_root)
 
     if saved_state is not None and final_state is not None:
         final_state.parent.mkdir(parents=True, exist_ok=True)
@@ -268,10 +268,8 @@ def _replace_out_root(*, out_root: Path, tmp_root: Path, protected_dir: Path | N
 
 
 def _promote_dir(src: Path, dst: Path) -> None:
-    src = Path(src)
-    dst = Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
-    backup = dst.parent / f'.{dst.name}.old.{uuid.uuid4().hex}'
+    backup = dst.parent / f'.{dst.name}.old.{os.urandom(8).hex()}'
     if src.resolve() == dst.resolve():
         return
     try:
