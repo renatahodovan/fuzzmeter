@@ -131,7 +131,7 @@ def _reproduce_crash_batch(
             'FM_CRASH_OUTPUT_JSON': docker.container_path(output_json),
         },
         check=False,
-        cmd=['python3', '/opt/fuzzmeter/crash_repro_worker.py'],
+        cmd=['python3', '/opt/fuzzmeter/crash_worker.py'],
     )
 
     outputs = json.loads(output_json.read_text(encoding='utf-8', errors='replace'))

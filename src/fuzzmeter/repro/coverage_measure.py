@@ -73,7 +73,7 @@ def replay_coverage_batch(
         env=env,
         volumes=[docker.out_volume()],
         check=True,
-        cmd=['python3', '/opt/fuzzmeter/coverage_repro_worker.py'],
+        cmd=['python3', '/opt/fuzzmeter/coverage_worker.py'],
     )
 
 
@@ -137,7 +137,7 @@ def merge_coverage_outputs(
         env=env,
         volumes=[docker.out_volume()],
         check=True,
-        cmd=['python3', '/opt/fuzzmeter/coverage_repro_worker.py'],
+        cmd=['python3', '/opt/fuzzmeter/coverage_worker.py'],
     )
 
     if not write_coverage_sets:
