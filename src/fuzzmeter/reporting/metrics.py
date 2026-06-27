@@ -97,10 +97,10 @@ def trapezoid_auc(points: Sequence[tuple[float, float]], *, duration_s: float | 
 
     cleaned: list[tuple[float, float]] = []
     for x, y in points:
-        if not math.isfinite(float(x)) or not math.isfinite(float(y)):
-            continue
         xf = float(x)
         yf = float(y)
+        if not math.isfinite(xf) or not math.isfinite(yf):
+            continue
         if xf < 0:
             continue
         cleaned.append((xf, yf))

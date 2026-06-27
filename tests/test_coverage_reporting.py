@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import math
 import tempfile
 import unittest
 
@@ -19,7 +20,21 @@ from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.db.snapshot import upsert_agg_snapshot, update_agg_snapshot_coverage
 from fuzzmeter.reporting.analyzers.coverage_analysis import CoverageAnalysis
 from fuzzmeter.reporting.generate import ReportBuilder
-from fuzzmeter.reporting.metrics import mann_whitney_u_pvalue
+from fuzzmeter.reporting.metrics import (
+    cliffs_delta,
+    clean_floats,
+    dt,
+    mann_whitney_u_pvalue,
+    maximum,
+    mean,
+    median,
+    minimum,
+    pct,
+    rankdata_desc,
+    safe_int,
+    trapezoid_auc,
+    vargha_delaney_a12,
+)
 
 
 def _coverage_export(branch_line: int) -> dict:
@@ -45,6 +60,74 @@ def _coverage_export(branch_line: int) -> dict:
             }
         ],
     }
+
+
+class ReportingMetricsTest(unittest.TestCase):
+    '''Characterize reporting metric helper behavior.'''
+
+    def test_basic_conversion_helpers_keep_current_error_handling(self) -> None:
+        self.assertEqual('1970-01-01 00:00:00 UTC', dt(0))
+        self.assertIsNone(dt(None))
+        self.assertIsNone(dt('not-a-timestamp'))
+
+        self.assertEqual(7, safe_int('7'))
+        self.assertEqual(3, safe_int(3.9))
+        self.assertIsNone(safe_int(None))
+        self.assertIsNone(safe_int('3.5'))
+
+        self.assertEqual(25.0, pct(1, 4))
+        self.assertIsNone(pct(None, 4))
+        self.assertIsNone(pct(1, None))
+        self.assertIsNone(pct(1, 0))
+
+    def test_collection_stats_ignore_none_non_numbers_and_nan(self) -> None:
+        values = [None, '4', 1, 3.0, math.nan, True, math.inf]
+
+        cleaned = clean_floats(values)
+
+        self.assertEqual([1.0, 3.0, 1.0, math.inf], cleaned)
+        self.assertEqual(math.inf, mean(values))
+        self.assertEqual(2.0, median(values))
+        self.assertEqual(1.0, minimum(values))
+        self.assertEqual(math.inf, maximum(values))
+        self.assertIsNone(mean([None, '4', math.nan]))
+        self.assertIsNone(median([None, '4', math.nan]))
+        self.assertIsNone(minimum([None, '4', math.nan]))
+        self.assertIsNone(maximum([None, '4', math.nan]))
+
+    def test_trapezoid_auc_sorts_collapses_and_extends_points(self) -> None:
+        self.assertEqual(
+            115.0,
+            trapezoid_auc(
+                [
+                    (10, 2),
+                    (5, 4),
+                    (5, 8),
+                    (-1, 100),
+                    (20, math.nan),
+                    (15, 6),
+                ],
+                duration_s=20,
+            ),
+        )
+        self.assertEqual(30.0, trapezoid_auc([(5, 3)], duration_s=10))
+        self.assertEqual(15.0, trapezoid_auc([(5, 3)]))
+        self.assertEqual(0.0, trapezoid_auc([(0, 7)]))
+        self.assertIsNone(trapezoid_auc([]))
+
+    def test_rank_and_pairwise_statistics_preserve_tie_behavior(self) -> None:
+        self.assertEqual([4.0, None, 1.5, 1.5, 3.0], rankdata_desc([10, None, 30, 30, 20]))
+        self.assertEqual([None, None], rankdata_desc([None, '4']))
+
+        self.assertAlmostEqual(0.12118327283746333, mann_whitney_u_pvalue([1, 2, 3], [3, 4, 5]))
+        self.assertAlmostEqual(0.6192567541768622, mann_whitney_u_pvalue([1, 1, 2], [1, 2, 2]))
+        self.assertIsNone(mann_whitney_u_pvalue([1], [2, 3]))
+        self.assertIsNone(mann_whitney_u_pvalue([1, 1], [1, 1]))
+
+        self.assertEqual(0.5, vargha_delaney_a12([1, 2, 3], [2, 2]))
+        self.assertIsNone(vargha_delaney_a12([], [2]))
+        self.assertEqual(0.0, cliffs_delta([1, 2, 3], [2, 2]))
+        self.assertIsNone(cliffs_delta([1], []))
 
 
 class CoverageReportingTest(unittest.TestCase):
