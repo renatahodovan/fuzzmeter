@@ -19,11 +19,11 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader
 
 
-def write_assets(report_dir: Path, template_dir: Path | None, payload: dict[str, Any]) -> None:
+def write_assets(report_dir: Path, payload: dict[str, Any]) -> None:
     '''Write static HTML, CSS, and JavaScript report assets.'''
 
     report_dir.mkdir(parents=True, exist_ok=True)
-    candidates = _asset_roots(template_dir)
+    candidates = _asset_roots()
     for name in ('report.css',):
         source = _find_asset(candidates, name)
         if source is None:
@@ -59,16 +59,9 @@ def write_assets(report_dir: Path, template_dir: Path | None, payload: dict[str,
     (report_dir / 'report.js').write_text(_bundle_report_modules(module_dir), encoding='utf-8')
 
 
-def _asset_roots(template_dir: Path | None) -> list[Path]:
-    candidates: list[Path] = []
-    if template_dir:
-        candidate = template_dir.resolve()
-        if not candidate.is_dir():
-            raise FileNotFoundError(f'--templates is not a directory: {candidate}')
-        candidates.append(candidate)
+def _asset_roots() -> list[Path]:
     pkg_root = Path(__file__).resolve().parents[1]
-    candidates.extend([pkg_root / 'web', pkg_root / 'reporting'])
-    return candidates
+    return [pkg_root / 'web', pkg_root / 'reporting']
 
 
 def _find_asset(candidates: list[Path], name: str) -> Path | None:

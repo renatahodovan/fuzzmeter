@@ -25,5 +25,5 @@ def write_report(run_dir: Path, *, out_dir: Path | None = None) -> Path:
     payload = build_payload(run_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
     (report_dir / 'data.json').write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding='utf-8')
-    write_assets(report_dir, None, payload)
+    write_assets(report_dir, payload)
     return report_dir
