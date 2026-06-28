@@ -85,6 +85,7 @@ class ReportingMetricsTest(unittest.TestCase):
 
         cleaned = clean_floats(values)
 
+        self.assertEqual([math.inf, 1.0], clean_floats([math.inf, math.nan, None, 1.0]))
         self.assertEqual([1.0, 3.0, 1.0, math.inf], cleaned)
         self.assertEqual(math.inf, mean(values))
         self.assertEqual(2.0, median(values))

@@ -15,23 +15,26 @@ from typing import Any
 
 def unique_matrix(labels: list[str], sets: Mapping[str, set[str]], *, note: str | None = None) -> dict[str, Any]:
     '''Return pairwise row-minus-column set sizes and per-row unique counts.'''
-    matrix = [
-        [
-            len(row_set - sets[col_label]) if row_set is not None and col_label in sets else 0
-            for col_label in labels
-        ]
-        for row_label in labels
-        for row_set in [sets.get(row_label)]
-    ]
+
+    matrix: list[list[int]] = []
+    unique_counts: list[int] = []
+    has_all_labels = len(sets) == len(labels)
+    for row_label in labels:
+        row_set = sets.get(row_label)
+        row: list[int] = []
+        for col_label in labels:
+            if row_set is None or col_label not in sets:
+                row.append(0)
+            else:
+                row.append(len(row_set - sets[col_label]))
+        matrix.append(row)
+        unique_counts.append(_exclusive_count(row_label, row_set, sets) if has_all_labels else 0)
+
     return {
         'fuzzers': labels,
         'matrix': matrix,
         'covered_counts': [len(sets.get(label, set())) for label in labels],
-        'unique_counts': [
-            _exclusive_count(row_label, row_set, sets) if len(sets) == len(labels) else 0
-            for row_label in labels
-            for row_set in [sets.get(row_label)]
-        ],
+        'unique_counts': unique_counts,
         'has_data': any(bool(values) for values in sets.values()),
         'note': note,
         'max_value': max((max(row, default=0) for row in matrix), default=0),
@@ -54,19 +57,17 @@ def pairwise_matrix(
 ) -> dict[str, Any]:
     '''Return a pairwise matrix derived from per-label numeric distributions.'''
 
-    matrix = [
-        [
-            float(cell) if cell is not None else float(missing_value)
-            for col_label in labels
-            for cell in [
-                compare(
-                    values_by_label.get(row_label, []),
-                    values_by_label.get(col_label, []),
-                )
-            ]
-        ]
-        for row_label in labels
-    ]
+    matrix: list[list[float]] = []
+    for row_label in labels:
+        row: list[float] = []
+        for col_label in labels:
+            cell = compare(
+                values_by_label.get(row_label, []),
+                values_by_label.get(col_label, []),
+            )
+            row.append(float(cell) if cell is not None else float(missing_value))
+        matrix.append(row)
+
     return {
         'fuzzers': labels,
         'matrix': matrix,

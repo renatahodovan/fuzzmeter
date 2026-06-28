@@ -95,25 +95,9 @@ def maximum(values: Iterable[Any]) -> float | None:
 def trapezoid_auc(points: Sequence[tuple[float, float]], *, duration_s: float | None = None) -> float | None:
     '''Return trapezoidal area under a time series curve.'''
 
-    cleaned: list[tuple[float, float]] = []
-    for x, y in points:
-        xf = float(x)
-        yf = float(y)
-        if not math.isfinite(xf) or not math.isfinite(yf):
-            continue
-        if xf < 0:
-            continue
-        cleaned.append((xf, yf))
-    if not cleaned:
+    collapsed = _collapse_auc_points(_clean_auc_points(points))
+    if not collapsed:
         return None
-
-    cleaned.sort(key=lambda item: item[0])
-    collapsed: list[tuple[float, float]] = []
-    for x, y in cleaned:
-        if collapsed and x == collapsed[-1][0]:
-            collapsed[-1] = (x, y)
-        else:
-            collapsed.append((x, y))
 
     if collapsed[0][0] > 0:
         collapsed.insert(0, (0.0, collapsed[0][1]))
@@ -136,6 +120,34 @@ def trapezoid_auc(points: Sequence[tuple[float, float]], *, duration_s: float | 
             area += dx * (prev_y + y) / 2.0
         prev_x, prev_y = x, y
     return float(area)
+
+
+def _clean_auc_points(points: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
+    '''Return finite non-negative AUC points as floats sorted by x value.'''
+
+    cleaned: list[tuple[float, float]] = []
+    for x, y in points:
+        xf = float(x)
+        yf = float(y)
+        if not math.isfinite(xf) or not math.isfinite(yf):
+            continue
+        if xf < 0:
+            continue
+        cleaned.append((xf, yf))
+    cleaned.sort(key=lambda item: item[0])
+    return cleaned
+
+
+def _collapse_auc_points(points: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
+    '''Return sorted AUC points with duplicate x values collapsed to the last y.'''
+
+    collapsed: list[tuple[float, float]] = []
+    for x, y in points:
+        if collapsed and x == collapsed[-1][0]:
+            collapsed[-1] = (x, y)
+        else:
+            collapsed.append((x, y))
+    return collapsed
 
 
 def rankdata_desc(values: Sequence[float | None]) -> list[float | None]:
