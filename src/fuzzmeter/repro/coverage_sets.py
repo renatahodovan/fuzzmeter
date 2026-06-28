@@ -34,14 +34,18 @@ def coverage_summary_from_export(
     '''Return fuzzmeter coverage counters from an llvm-cov export object.'''
 
     def nested_int(data: dict[str, Any], metric: str, key: str) -> int | None:
+        metric_data = data.get(metric)
+        if not isinstance(metric_data, dict):
+            return None
         try:
-            return int((data.get(metric) or {}).get(key))
+            return int(metric_data.get(key))
         except Exception:
             return None
 
-    if isinstance(export_obj.get('data'), list):
-        totals = (((export_obj.get('data') or [{}])[0] or {}).get('totals') or {})
-    else:
+    data_items = export_obj.get('data')
+    first_data = data_items[0] if isinstance(data_items, list) and data_items else {}
+    totals = first_data.get('totals') if isinstance(first_data, dict) else {}
+    if not isinstance(totals, dict):
         totals = {}
 
     summary = {
@@ -89,13 +93,18 @@ def write_coverage_sets(path: Path, summary: dict[str, Any], metrics: dict[str, 
 def _metric_values(doc: dict[str, Any], metric: str) -> list[int]:
     metrics = doc.get('metrics')
     values = metrics.get(metric) if isinstance(metrics, dict) else None
+
     if isinstance(values, list):
         return [int(value) for value in values]
+
     if isinstance(values, dict):
         decoded_values = _decode_compact_metric(values)
         if decoded_values is not None:
             return decoded_values
+
     export_obj = doc.get('export') if isinstance(doc.get('export'), dict) else doc
+    if not isinstance(export_obj, dict):
+        return []
     return _covered_hashes(export_obj, metric)
 
 
@@ -116,9 +125,11 @@ def _covered_hashes(export_obj: dict[str, Any], metric: str) -> list[int]:
 def _collect_file_hashes(hashes: set[int], file_item: Any, metric: str) -> None:
     if not isinstance(file_item, dict):
         return
+
     filename = str(file_item.get('filename') or '')
     if not filename:
         return
+
     if metric in {'lines', 'regions'}:
         for segment in file_item.get('segments') or []:
             if _covered_tuple(segment, 2):
@@ -163,15 +174,20 @@ def _function_key(default_filename: str, function: Any, ordinal: int) -> str:
 
 
 def _safe_text(*parts: Any) -> str:
-    return ':'.join(str(part).strip() for part in parts if part is not None and str(part).strip())
+    out = []
+    for part in parts:
+        if part is None:
+            continue
+        text = str(part).strip()
+        if text:
+            out.append(text)
+    return ':'.join(out)
 
 
 def _covered_tuple(values: Any, start: int, end: int | None = None) -> bool:
-    return (
-        isinstance(values, (list, tuple))
-        and len(values) > start
-        and any(_positive(value) for value in list(values)[start:end])
-    )
+    if not isinstance(values, (list, tuple)) or len(values) <= start:
+        return False
+    return any(_positive(value) for value in values[start:end])
 
 
 def _positive(value: Any) -> bool:
