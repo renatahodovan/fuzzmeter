@@ -11,12 +11,24 @@ from __future__ import annotations
 
 import unittest
 
+from fuzzmeter.reporting.analyzers import coverage_curves
 from fuzzmeter.reporting.analyzers.bug_analysis import BugAnalysis
-from fuzzmeter.reporting.analyzers.coverage_analysis import CoverageAnalysis
 from fuzzmeter.reporting.analyzers.trial_analysis import TrialAnalysis
 from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.keys import SNAPSHOT_COVERAGE_FIELDS
 from fuzzmeter.reporting.metrics import median
+
+COV_METRICS = ('branches',)
+FINAL_DIST_KEYS = (
+    'branches_cov',
+    'branches_total',
+    'branches_pct',
+    'execs_done',
+    'execs_per_sec',
+    'unique_bugs_total',
+    'resource_memory_mib',
+)
+CURVE_MAX_POINTS = 100
 
 
 class TrialAnalysisTest(unittest.TestCase):
@@ -189,9 +201,7 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
     '''Verify coverage analyzer aggregation and target view behavior.'''
 
     def test_aggregate_finals_collects_coverage_and_last_point_metrics(self) -> None:
-        analysis = _coverage_analysis()
-
-        finals = analysis.aggregate_finals(
+        finals = coverage_curves.aggregate_finals(
             reps=[
                 {
                     'trial_id': 1,
@@ -205,6 +215,8 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
                     {'idx': 2, 'execs_done': 30, 'unique_bugs_total': 2, 'resource_memory_mib': 4},
                 ]
             },
+            cov_metrics=COV_METRICS,
+            final_output_dist_keys=FINAL_DIST_KEYS,
         )
 
         self.assertEqual([5.0], finals['branches_cov'])
@@ -215,9 +227,7 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         self.assertEqual([4.0], finals['resource_memory_mib'])
 
     def test_build_trial_rows_computes_auc_and_execution_rate(self) -> None:
-        analysis = _coverage_analysis()
-
-        rows = analysis.build_trial_rows(
+        rows = coverage_curves.build_trial_rows(
             reps=[
                 {
                     'trial_id': 1,
@@ -243,9 +253,10 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         self.assertEqual(70.0, rows[0]['convergence_pct'])
 
     def test_collect_target_view_groups_trials_bugs_versions_and_baselines(self) -> None:
-        analysis = _coverage_analysis()
-
-        targets = analysis.collect_target_view(
+        targets = coverage_curves.collect_target_view(
+            cov_metrics=COV_METRICS,
+            final_output_dist_keys=FINAL_DIST_KEYS,
+            curve_max_points=CURVE_MAX_POINTS,
             trials=[
                 {
                     'trial_id': 1,
@@ -285,11 +296,6 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
 
     def test_create_matrices_attaches_coverage_then_bug_stats_to_shared_target(self) -> None:
         builder = _PayloadBuilder.__new__(_PayloadBuilder)
-        builder._coverage_analysis = CoverageAnalysis(
-            cov_metrics=('branches',),
-            final_output_dist_keys=('branches_cov',),
-            curve_max_points=100,
-        )
         builder._bug_analysis = BugAnalysis()
         builder._coverage_sets_by_metric = lambda fuzzers, benchmark, fuzz_target: {
             'branches': {'alpha': {'a', 'b'}, 'beta': {'b'}}
@@ -347,22 +353,6 @@ def _trial_analysis() -> TrialAnalysis:
     return TrialAnalysis(
         snapshot_coverage_fields=SNAPSHOT_COVERAGE_FIELDS,
         trial_version_fields=('fuzzer_image',),
-    )
-
-
-def _coverage_analysis() -> CoverageAnalysis:
-    return CoverageAnalysis(
-        cov_metrics=('branches',),
-        final_output_dist_keys=(
-            'branches_cov',
-            'branches_total',
-            'branches_pct',
-            'execs_done',
-            'execs_per_sec',
-            'unique_bugs_total',
-            'resource_memory_mib',
-        ),
-        curve_max_points=100,
     )
 
 

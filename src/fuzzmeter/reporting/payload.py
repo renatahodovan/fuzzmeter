@@ -14,8 +14,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from .analyzers import coverage_curves, coverage_matrices
 from .analyzers.bug_analysis import BugAnalysis
-from .analyzers.coverage_analysis import CoverageAnalysis
 from .analyzers.trial_analysis import TrialAnalysis
 from .data.coverage_data import CoverageData
 from .data.run_data import RunData
@@ -79,11 +79,6 @@ class _PayloadBuilder:
             trial_version_fields=TRIAL_METADATA_FIELDS,
         )
         self._bug_analysis = BugAnalysis()
-        self._coverage_analysis = CoverageAnalysis(
-            cov_metrics=COV_METRICS,
-            final_output_dist_keys=FINAL_DIST_KEYS,
-            curve_max_points=CURVE_MAX_POINTS,
-        )
         self._repo_root = Path(__file__).resolve().parents[3]
 
     def build(self) -> dict[str, Any]:
@@ -275,7 +270,10 @@ class _PayloadBuilder:
         '''Collect target-level fuzzer comparison data.'''
 
         aggregated_coverage_by_fuzzer, seed_baseline_by_fuzzer = self._target_coverage_inputs(trials)
-        targets = self._coverage_analysis.collect_target_view(
+        targets = coverage_curves.collect_target_view(
+            cov_metrics=COV_METRICS,
+            final_output_dist_keys=FINAL_DIST_KEYS,
+            curve_max_points=CURVE_MAX_POINTS,
             trials=trials,
             timeseries=timeseries,
             bugs=bugs,
@@ -318,7 +316,7 @@ class _PayloadBuilder:
                     benchmark,
                     fuzz_target,
                 )
-                self._coverage_analysis.attach_exclusive_coverage_stats(target=target)
+                coverage_matrices.attach_exclusive_coverage_stats(target=target)
                 target['unique_bug_table'] = self._bug_analysis.compute_unique_bug_table(target)
                 target['unique_bug_matrix'] = self._bug_analysis.compute_unique_bug_matrix(target)
                 target['relbug_matrix'], target['relbug_score_by_fuzzer'] = self._bug_analysis.compute_rel_bug_matrix(
@@ -346,7 +344,8 @@ class _PayloadBuilder:
     ) -> dict[str, Any]:
         '''Compute per-fuzzer unique coverage matrices for a target.'''
 
-        return self._coverage_analysis.compute_unique_matrix(
+        return coverage_matrices.compute_unique_matrix(
+            cov_metrics=COV_METRICS,
             trials=trials,
             benchmark=benchmark,
             fuzz_target=fuzz_target,
@@ -362,7 +361,8 @@ class _PayloadBuilder:
     ) -> tuple[dict[str, Any], dict[str, float]]:
         '''Compute per-fuzzer relative coverage containment matrix and scores.'''
 
-        return self._coverage_analysis.compute_relcov_matrix(
+        return coverage_matrices.compute_relcov_matrix(
+            cov_metrics=COV_METRICS,
             trials=trials,
             benchmark=benchmark,
             fuzz_target=fuzz_target,
@@ -377,7 +377,7 @@ class _PayloadBuilder:
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         '''Compute pairwise branch-coverage significance and effect-size matrices.'''
 
-        return self._coverage_analysis.compute_branch_stat_matrices(
+        return coverage_matrices.compute_branch_stat_matrices(
             trials=trials,
             benchmark=benchmark,
             fuzz_target=fuzz_target,

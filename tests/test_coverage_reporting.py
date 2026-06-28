@@ -18,7 +18,7 @@ from pathlib import Path
 
 from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.db.snapshot import upsert_agg_snapshot, update_agg_snapshot_coverage
-from fuzzmeter.reporting.analyzers.coverage_analysis import CoverageAnalysis
+from fuzzmeter.reporting.analyzers import coverage_curves, coverage_matrices
 from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.metrics import (
     cliffs_delta,
@@ -135,12 +135,6 @@ class CoverageReportingTest(unittest.TestCase):
     '''Verify fuzzer-level campaign coverage artifacts are exposed in reports.'''
 
     def test_exclusive_coverage_stats_use_other_fuzzer_union(self) -> None:
-        analysis = CoverageAnalysis(
-            cov_metrics=('branches',),
-            final_output_dist_keys=('branches_cov',),
-            curve_max_points=100,
-        )
-
         target = {
             'fuzzers': [
                 {'fuzzer': 'left'},
@@ -158,7 +152,7 @@ class CoverageReportingTest(unittest.TestCase):
             },
         }
 
-        analysis.attach_exclusive_coverage_stats(target=target)
+        coverage_matrices.attach_exclusive_coverage_stats(target=target)
 
         self.assertEqual(
             {'metric': 'branches', 'total': 2, 'min': None, 'max': None, 'median': None, 'note': None},
@@ -170,13 +164,7 @@ class CoverageReportingTest(unittest.TestCase):
         )
 
     def test_report_curve_preserves_cumulative_metric_decreases(self) -> None:
-        analysis = CoverageAnalysis(
-            cov_metrics=('branches',),
-            final_output_dist_keys=('branches_cov', 'execs_done'),
-            curve_max_points=100,
-        )
-
-        curve = analysis.build_curve(
+        curve = coverage_curves.build_curve(
             [{'trial_id': 1}],
             {
                 1: [
@@ -184,6 +172,7 @@ class CoverageReportingTest(unittest.TestCase):
                     {'idx': 2, 'ordinal': 2, 'elapsed_s': 20, 'branches_cov': 4, 'execs_done': 90},
                 ]
             },
+            final_output_dist_keys=('branches_cov', 'execs_done'),
         )
 
         self.assertEqual(5, curve[0]['branches_cov_mean'])
@@ -192,13 +181,7 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertEqual(90, curve[1]['execs_done_mean'])
 
     def test_report_curve_aligns_repetitions_by_elapsed_time(self) -> None:
-        analysis = CoverageAnalysis(
-            cov_metrics=('branches',),
-            final_output_dist_keys=('branches_cov',),
-            curve_max_points=100,
-        )
-
-        curve = analysis.build_curve(
+        curve = coverage_curves.build_curve(
             [{'trial_id': 1}, {'trial_id': 2}],
             {
                 1: [
@@ -209,6 +192,7 @@ class CoverageReportingTest(unittest.TestCase):
                     {'idx': 29, 'ordinal': 1, 'elapsed_s': 300, 'branches_cov': 30},
                 ],
             },
+            final_output_dist_keys=('branches_cov',),
         )
 
         self.assertEqual(60, curve[0]['elapsed_s'])
@@ -217,12 +201,6 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertEqual(25, curve[1]['branches_cov_mean'])
 
     def test_branch_stat_matrices_use_final_trial_branch_coverage(self) -> None:
-        analysis = CoverageAnalysis(
-            cov_metrics=('branches',),
-            final_output_dist_keys=('branches_cov',),
-            curve_max_points=100,
-        )
-
         trials = [
             {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha', 'coverage': {'branches_covered': 100}},
             {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha', 'coverage': {'branches_covered': 101}},
@@ -230,7 +208,7 @@ class CoverageReportingTest(unittest.TestCase):
             {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta', 'coverage': {'branches_covered': 11}},
         ]
 
-        branch_mwu_matrix, branch_a12_matrix = analysis.compute_branch_stat_matrices(
+        branch_mwu_matrix, branch_a12_matrix = coverage_matrices.compute_branch_stat_matrices(
             trials=trials,
             benchmark='bench',
             fuzz_target='target',
