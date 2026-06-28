@@ -29,7 +29,7 @@ class CoverageData:
             return None
         try:
             raw_path = (self.run_dir / coverage_html_rel).resolve()
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             return None
         coverage_dir = raw_path.parent.parent if raw_path.name == 'index.html' else raw_path.parent
         candidate = coverage_dir / 'coverage-sets.json'

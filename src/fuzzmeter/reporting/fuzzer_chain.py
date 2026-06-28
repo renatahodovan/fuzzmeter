@@ -23,7 +23,7 @@ def load_fuzzer_plugin_candidates(run_dir: Path, repo_root: Path) -> tuple[dict[
         return {}, {}
     try:
         data = json.loads(path.read_text(encoding='utf-8'))
-    except Exception:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {}, {}
     if not isinstance(data, list):
         return {}, {}
@@ -88,7 +88,11 @@ def _load_fuzzer_yaml(repo_root: Path, fuzzer: str) -> dict[str, Any]:
     for path in (root / 'build' / 'build.yaml', root / 'run' / 'run.yaml'):
         if not path.is_file():
             continue
-        for line in path.read_text(encoding='utf-8').splitlines():
+        try:
+            lines = path.read_text(encoding='utf-8').splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for line in lines:
             stripped = line.strip()
             if not stripped or stripped.startswith('#') or ':' not in stripped:
                 continue

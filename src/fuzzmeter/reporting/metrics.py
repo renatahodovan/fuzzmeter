@@ -21,7 +21,7 @@ def dt(ts: int | None) -> str | None:
         return None
     try:
         return datetime.datetime.fromtimestamp(int(ts), datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
-    except Exception:
+    except (OSError, OverflowError, TypeError, ValueError):
         return None
 
 
@@ -30,7 +30,7 @@ def safe_int(value: Any) -> int | None:
 
     try:
         return None if value is None else int(value)
-    except Exception:
+    except (OverflowError, TypeError, ValueError):
         return None
 
 

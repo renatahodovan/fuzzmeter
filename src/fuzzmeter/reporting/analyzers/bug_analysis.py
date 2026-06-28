@@ -51,7 +51,7 @@ class BugAnalysis:
             return []
         try:
             parsed = json.loads(str(value))
-        except Exception:
+        except (TypeError, json.JSONDecodeError):
             return []
         if not isinstance(parsed, list):
             return []

@@ -21,7 +21,7 @@ def _parse_json_text(value: Any) -> dict | None:
         return None
     try:
         parsed = json.loads(str(value))
-    except Exception:
+    except (TypeError, json.JSONDecodeError):
         return None
     return parsed if isinstance(parsed, dict) else None
 

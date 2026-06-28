@@ -16,7 +16,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fuzzmeter.reporting.data.coverage_data import CoverageData
-from fuzzmeter.reporting.fuzzer_chain import expand_reporting_candidates
+from fuzzmeter.reporting.fuzzer_chain import expand_reporting_candidates, load_fuzzer_plugin_candidates
 from fuzzmeter.reporting.plugin_api import (
     ChartSeries,
     ChartSpec,
@@ -306,6 +306,23 @@ class ReportingPluginSectionsTest(unittest.TestCase):
                 ['child', 'parent', 'grand'],
                 expand_reporting_candidates(repo_root, ['child', 'parent']),
             )
+
+    def test_expand_reporting_candidates_ignores_unreadable_yaml(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            child_build = repo_root / 'fuzzers' / 'child' / 'build' / 'build.yaml'
+            child_build.parent.mkdir(parents=True)
+            child_build.write_text('reporting_parent: parent\n', encoding='utf-8')
+
+            with patch('pathlib.Path.read_text', side_effect=OSError('blocked')):
+                self.assertEqual(['child'], expand_reporting_candidates(repo_root, ['child']))
+
+    def test_load_fuzzer_plugin_candidates_ignores_invalid_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            (run_dir / 'benchmark_config.json').write_text('[not-json', encoding='utf-8')
+
+            self.assertEqual(({}, {}), load_fuzzer_plugin_candidates(run_dir, run_dir))
 
     def test_snapshot_dirs_use_fuzzer_base_and_candidate_fallbacks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
