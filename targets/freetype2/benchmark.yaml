@@ -1,0 +1,4 @@
+project: freetype2
+fuzz_target: ftfuzzer
+input_mode: in_process
+timeout_s: 1
