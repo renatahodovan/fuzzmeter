@@ -1,4 +1,6 @@
 parent: aflplusplus
+source_dependencies:
+  - grammarinator
 build:
   seed_cache:
     enabled: true

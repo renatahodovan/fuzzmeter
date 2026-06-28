@@ -7,11 +7,10 @@
 
 from __future__ import annotations
 
-import importlib
+import importlib.util
 import io
 import sys
 import threading
-import types
 
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -22,8 +21,8 @@ from .models import OutputPaths
 
 
 class FuzzerModule:
-    def __init__(self, *, repo_root: Path, fuzzer_name: str, module: ModuleType) -> None:
-        self.repo_root = Path(repo_root)
+    def __init__(self, *, fuzzers_root: Path, fuzzer_name: str, module: ModuleType) -> None:
+        self.fuzzers_root = Path(fuzzers_root)
         self.fuzzer_name = str(fuzzer_name)
         self._module = module
 
@@ -70,8 +69,8 @@ class FuzzerModule:
             configured_path = Path(configured)
             return configured_path if configured_path.is_absolute() else configured_path
 
-        script = self.repo_root / "fuzzers" / self.fuzzer_name / "run" / "snapshot_preprocess.py"
-        return script.relative_to(self.repo_root) if script.is_file() else None
+        script = self.fuzzers_root / self.fuzzer_name / "run" / "snapshot_preprocess.py"
+        return script if script.is_file() else None
 
     @staticmethod
     def _default_output_paths(live_out: Path) -> OutputPaths:
@@ -120,53 +119,47 @@ class FuzzerLoader:
     _module_cache: dict[str, ModuleType] = {}
     _module_lock = threading.RLock()
 
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = Path(repo_root)
+    def __init__(self, fuzzers_root: Path) -> None:
+        self.fuzzers_root = Path(fuzzers_root)
 
     def load(self, fuzzer_name: str) -> FuzzerModule:
-        path = self.repo_root / "fuzzers" / fuzzer_name / "run" / "fuzz.py"
+        path = self.fuzzers_root / fuzzer_name / "run" / "fuzz.py"
         if not path.exists():
             raise RuntimeError(f"fuzzer run entrypoint not found: {path}")
-        module = self._load_module(path=path, module_name=f"fuzzers.{fuzzer_name}.run.fuzz")
-        return FuzzerModule(repo_root=self.repo_root, fuzzer_name=fuzzer_name, module=module)
+        module = self._load_module(path=path, module_name=f"fuzzmeter_user_fuzzers.{fuzzer_name}.run.fuzz")
+        return FuzzerModule(fuzzers_root=self.fuzzers_root, fuzzer_name=fuzzer_name, module=module)
 
     def _load_module(self, *, path: Path, module_name: str) -> ModuleType:
         with self._module_lock:
-            cached = self._module_cache.get(module_name)
+            cache_key = f'{module_name}:{path.resolve()}'
+            cached = self._module_cache.get(cache_key)
             if cached is not None:
                 return cached
 
-            repo_root_str = str(self.repo_root)
-            if repo_root_str not in sys.path:
-                sys.path.insert(0, repo_root_str)
-            self._install_fuzzers_utils_stub()
+            spec = importlib.util.spec_from_file_location(module_name, path)
+            if spec is None or spec.loader is None:
+                raise RuntimeError(f"Cannot load module: {path}")
 
             try:
-                module = importlib.import_module(module_name)
+                self._install_fuzzer_namespace()
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
             except Exception as exc:
                 raise RuntimeError(f"Cannot load module: {path}") from exc
 
-            self._module_cache[module_name] = module
+            self._module_cache[cache_key] = module
             return module
 
-    def _install_fuzzers_utils_stub(self) -> None:
-        fuzzers_root = self.repo_root / "fuzzers"
-        fuzzers_pkg = sys.modules.get("fuzzers")
-        if fuzzers_pkg is None:
-            fuzzers_pkg = types.ModuleType("fuzzers")
-            sys.modules["fuzzers"] = fuzzers_pkg
-        if not hasattr(fuzzers_pkg, "__path__"):
-            setattr(fuzzers_pkg, "__path__", [str(fuzzers_root)])
+    def _install_fuzzer_namespace(self) -> None:
+        root = str(self.fuzzers_root)
+        package = sys.modules.get('fuzzers')
+        if package is None:
+            package = ModuleType('fuzzers')
+            package.__path__ = [root]  # type: ignore[attr-defined]
+            sys.modules['fuzzers'] = package
+            return
 
-        utils_mod = sys.modules.get("fuzzers.utils")
-        if utils_mod is None:
-            try:
-                utils_mod = importlib.import_module("fuzzers.utils")
-            except Exception:
-                utils_mod = types.ModuleType("fuzzers.utils")
-                utils_mod.append_flags = lambda *args, **kwargs: None
-                utils_mod.build_benchmark = lambda *args, **kwargs: None
-                utils_mod.initialize_env = lambda *args, **kwargs: None
-                utils_mod.get_stats = lambda *args, **kwargs: {}
-                sys.modules["fuzzers.utils"] = utils_mod
-            setattr(fuzzers_pkg, "utils", utils_mod)
+        paths = list(getattr(package, '__path__', []))
+        if root not in paths:
+            paths.insert(0, root)
+            package.__path__ = paths  # type: ignore[attr-defined]

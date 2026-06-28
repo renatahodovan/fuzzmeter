@@ -7,7 +7,7 @@
 
 import os
 
-from fuzzers import utils
+from fuzzmeter.resources.instrumentation import utils
 from fuzzers.grammarinator import common as grammarinator
 
 def build(*args: str) -> None:
@@ -33,4 +33,3 @@ def build(*args: str) -> None:
     os.environ['FUZZER_LIB'] = f'/opt/fuzzmeter/tools/lib/libFuzzer.a {grlf_lib}'
 
     utils.build_benchmark()
-

@@ -93,7 +93,6 @@ class CoverageBaselineTest(unittest.TestCase):
                     job=job,
                     run_dir=run_dir,
                     run_id='run-id',
-                    repo_root=repo_root,
                     docker_runtime=Mock(),
                     jobs=5,
                 )

@@ -33,7 +33,7 @@ class _StoppedDocker:
 
 @dataclass(frozen=True)
 class _DockerRuntimeStub:
-    repo_root: Path
+    fuzzers_root: Path
 
 
 def _trial_config(root: Path) -> TrialConfig:
@@ -72,7 +72,7 @@ class TrialRuntimeTest(unittest.TestCase):
             target_bin.write_text('', encoding='utf-8')
 
             container = TrialContainer(
-                docker_runtime=_DockerRuntimeStub(repo_root=run_dir),
+                docker_runtime=_DockerRuntimeStub(fuzzers_root=run_dir),
                 container_name='fm_20260519-133200_7_aflplusplus__sqlite3-sqlite__rep0',
                 config=_trial_config(run_dir),
                 run_dir=run_dir,
@@ -101,7 +101,7 @@ class TrialRuntimeTest(unittest.TestCase):
             target_bin = root / 'target'
             target_bin.write_text('', encoding='utf-8')
             runtime = TrialContainer(
-                docker_runtime=_DockerRuntimeStub(repo_root=root),
+                docker_runtime=_DockerRuntimeStub(fuzzers_root=root),
                 container_name='container',
                 config=_trial_config(root),
                 run_dir=root,

@@ -23,6 +23,7 @@ from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.db import snapshot as db_snapshot
 from fuzzmeter.db import trials as db_trials
 from fuzzmeter.fuzzers.models import OutputPaths
+from fuzzmeter.paths import ExternalRoots
 from fuzzmeter.repro.ingest import DetectedFile
 from fuzzmeter.run.runner import (
     _live_resource_plan,
@@ -74,7 +75,7 @@ def _bare_trial_instance(
         config=config,
         layout=layout,
         container_name=f'container-{db_id}',
-        repo_root=root,
+        fuzzers_root=root,
         start_ts=start_ts,
     )
     if end_ts is None:
@@ -84,7 +85,7 @@ def _bare_trial_instance(
         config=trial.config,
         layout=trial.layout,
         container_name=trial.container_name,
-        repo_root=trial.repo_root,
+        fuzzers_root=trial.fuzzers_root,
         start_ts=trial.start_ts,
         end_ts=end_ts,
     )
@@ -221,7 +222,7 @@ class RunnerLoopTest(unittest.TestCase):
                     run_experiment(
                         campaign_config=config,
                         out_root=root / 'out',
-                        repo_root=root,
+                        external_roots=ExternalRoots.from_checkout(root),
                         config_src='config',
                     )
 

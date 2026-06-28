@@ -1,4 +1,6 @@
 parent: libfuzzer
+source_dependencies:
+  - grammarinator
 allowed_benchmarks:
   - jerryscript:jerry
   - sqlite3:sqlite

@@ -16,7 +16,7 @@
 import os
 import shutil
 
-from fuzzers import utils
+from fuzzmeter.resources.instrumentation import utils
 
 
 def build():
@@ -32,5 +32,4 @@ def build():
     print('[post_build] Copying honggfuzz to $OUT directory')
     # Copy over honggfuzz's main fuzzing binary.
     shutil.copy('/honggfuzz/honggfuzz', os.environ['OUT'])
-
 

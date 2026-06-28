@@ -25,7 +25,7 @@ from fuzzmeter.trial.replay import prepare_replay_trial
 
 @dataclass(frozen=True)
 class _DockerRuntimeStub:
-    repo_root: Path
+    fuzzers_root: Path
 
 
 def _trial_config(root: Path, *, replay_dir: Path) -> TrialConfig:
@@ -78,7 +78,7 @@ class ReplayTrialRunnerTest(unittest.TestCase):
 
             prepared = prepare_replay_trial(
                 db_path=db_path,
-                docker_runtime=_DockerRuntimeStub(repo_root=root),
+                docker_runtime=_DockerRuntimeStub(fuzzers_root=root),
                 run_dir=root / 'out',
                 run_id='run-1',
                 cfg=cfg,
@@ -124,7 +124,7 @@ class ReplayTrialRunnerTest(unittest.TestCase):
 
             prepared = prepare_replay_trial(
                 db_path=db_path,
-                docker_runtime=_DockerRuntimeStub(repo_root=root),
+                docker_runtime=_DockerRuntimeStub(fuzzers_root=root),
                 run_dir=root / 'out',
                 run_id='run-1',
                 cfg=cfg,

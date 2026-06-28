@@ -41,10 +41,10 @@ class FunctionReportingPlugin:
 
 
 class ReportingPluginLoader:
-    '''Load fuzzer-specific reporting plugins from the repository.'''
+    '''Load fuzzer-specific reporting plugins from a fuzzer resource root.'''
 
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = Path(repo_root)
+    def __init__(self, fuzzers_root: Path) -> None:
+        self.fuzzers_root = Path(fuzzers_root)
 
     def load(self, fuzzer_name: str) -> ReportingPlugin:
         '''Load a reporting plugin for one fuzzer.'''
@@ -58,7 +58,7 @@ class ReportingPluginLoader:
         for fuzzer_name in fuzzer_names:
             if not _is_safe_fuzzer_name(fuzzer_name):
                 continue
-            path = self.repo_root / 'fuzzers' / fuzzer_name / 'run' / 'reporting.py'
+            path = self.fuzzers_root / fuzzer_name / 'run' / 'reporting.py'
             if not path.is_file():
                 continue
             module = self._load_module(path=path, module_name=f'fuzzers.{fuzzer_name}.run.reporting')

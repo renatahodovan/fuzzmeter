@@ -50,7 +50,7 @@ do
          -lFuzzingEngine .libs/libpng16.a -lz
 
     # Only libfuzzer can run the nalloc targets.
-    if test "x$FUZZING_ENGINE" == 'xlibfuzzer'
+    if test -n "${LIB_FUZZING_ENGINE:-}"
     then
 
         if grep -q "nalloc_init" $SRC/libpng/contrib/oss-fuzz/${f}.cc

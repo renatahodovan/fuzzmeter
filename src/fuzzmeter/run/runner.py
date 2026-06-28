@@ -22,6 +22,7 @@ from ..config import CampaignConfig
 from ..db import open_db
 from ..db import trials as db_trials
 from ..docker import DockerRuntime
+from ..paths import ExternalRoots
 from ..snapshot import ReplaySnapshotScheduler, SnapshotScheduler
 from ..trial.builder import plan_trials
 from ..trial.models import TrialConfig
@@ -55,9 +56,17 @@ def _live_resource_plan(*, total_jobs: int, snapshot_jobs: int | None = None) ->
     return trial_workers, snapshot_workers
 
 
-def run_experiment(campaign_config: CampaignConfig, out_root: Path, repo_root: Path, config_src: str) -> Path:
+def run_experiment(
+    campaign_config: CampaignConfig,
+    out_root: Path,
+    external_roots: ExternalRoots,
+    config_src: str,
+) -> Path:
     '''Run a fuzzing or replay experiment and return the run directory.'''
-    docker_runtime = DockerRuntime.from_paths(repo_root=repo_root, out_root=out_root).with_docker_limits(
+    docker_runtime = DockerRuntime.from_paths(
+        fuzzers_root=external_roots.fuzzers_root,
+        out_root=out_root,
+    ).with_docker_limits(
         memory=campaign_config.settings.memory,
         memory_swap=campaign_config.settings.memory_swap,
     )
@@ -78,12 +87,12 @@ def run_experiment(campaign_config: CampaignConfig, out_root: Path, repo_root: P
         db_path=db_path,
         run_dir=run_dir,
         run_id=run_id,
-        repo_root=repo_root,
+        external_roots=external_roots,
         docker_runtime=docker_runtime,
     )
     trial_configs = plan_trials(
         campaign_config=campaign_config,
-        repo_root=repo_root,
+        fuzzers_root=external_roots.fuzzers_root,
         fuzz_binaries=fuzz_binaries,
     )
     replay_trial_configs = [cfg for cfg in trial_configs if cfg.replay_dir is not None]

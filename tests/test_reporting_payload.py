@@ -20,7 +20,7 @@ from typing import Any
 from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.reporting import build_payload, write_report
 
-PAYLOAD_HASH = 'cc536754c31ab11d9952eca8add9c0523afef2526b600908aa9e9e71101fa02b'
+PAYLOAD_HASH = '043c5f6e6398d2db7df0d6510f3bc3872e38331a2b4b88d83f6b76cb45ca2707'
 
 
 class ReportingPayloadTest(unittest.TestCase):

@@ -1,13 +1,5 @@
 from __future__ import annotations
 
-import os
-
-from fuzzers import utils
-from fuzzers.aflplusplus.common import get_cmplog_build_directory
-
-# Optional benchmark metadata is exposed to fuzzer builds via FM_BENCHMARK_YAML.
-
-
 # Copyright 2020 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,7 +19,8 @@ from fuzzers.aflplusplus.common import get_cmplog_build_directory
 import os
 import shutil
 
-from fuzzers import utils
+from fuzzers.aflplusplus.common import get_cmplog_build_directory
+from fuzzmeter.resources.instrumentation import utils
 
 # Optional benchmark metadata is exposed to fuzzer builds via FM_BENCHMARK_YAML.
 

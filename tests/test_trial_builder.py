@@ -28,8 +28,8 @@ class _FuzzerModuleStub:
 
 
 class _FuzzerLoaderStub:
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = Path(repo_root)
+    def __init__(self, fuzzers_root: Path) -> None:
+        self.fuzzers_root = Path(fuzzers_root)
 
     def load(self, _fuzzer_name: str) -> _FuzzerModuleStub:
         return _FuzzerModuleStub()
@@ -49,7 +49,7 @@ class _TrialBuilderTest(unittest.TestCase):
         with patch('fuzzmeter.trial.builder.FuzzerLoader', _FuzzerLoaderStub):
             plans = plan_trials(
                 campaign_config=config,
-                repo_root=Path('/repo'),
+                fuzzers_root=Path('/fuzzers'),
                 fuzz_binaries={
                     ('fuzzer_a', 'bench-target_a'): Path('/tmp/fuzzer_a'),
                     ('fuzzer_b', 'bench-target_b'): Path('/tmp/fuzzer_b'),

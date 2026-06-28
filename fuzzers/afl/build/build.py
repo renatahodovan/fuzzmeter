@@ -16,7 +16,7 @@
 import os
 import shutil
 
-from fuzzers import utils
+from fuzzmeter.resources.instrumentation import utils
 
 
 def prepare_build_environment():
@@ -40,5 +40,4 @@ def build():
     print('[post_build] Copying afl-fuzz to $OUT directory')
     # Copy out the afl-fuzz binary as a build artifact.
     shutil.copy('/afl/afl-fuzz', os.environ['OUT'])
-
 

@@ -82,7 +82,7 @@ def _trial_instance(root: Path) -> TrialInstance:
         config=config,
         layout=layout,
         container_name='container',
-        repo_root=root,
+        fuzzers_root=root,
         start_ts=0,
     )
 

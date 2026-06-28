@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fuzzers import utils
+from fuzzmeter.resources.entrypoints import campaign_build
 
 
 class FuzzerUtilsTest(unittest.TestCase):
@@ -105,7 +106,7 @@ fuzz_targets:
         """Verify that FUZZ_TARGET is derived from the runtime target env, not benchmark YAML."""
         env = {'TARGET_NAME': 'chosen-target'}
 
-        utils.set_fuzz_target(env)
+        campaign_build.initialize_env(env)
 
         self.assertEqual('chosen-target', env['FUZZ_TARGET'])
 
@@ -113,7 +114,7 @@ fuzz_targets:
         """Verify that build initialization propagates TARGET_NAME into FUZZ_TARGET."""
         env = {'TARGET_NAME': 'chosen-target'}
 
-        utils.initialize_env(env)
+        campaign_build.initialize_env(env)
 
         self.assertEqual('chosen-target', env['FUZZ_TARGET'])
 

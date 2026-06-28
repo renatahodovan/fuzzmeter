@@ -96,7 +96,7 @@ class TrialInstance:
     config: TrialConfig
     layout: TrialLayout
     container_name: str
-    repo_root: Path
+    fuzzers_root: Path
     start_ts: int
 
 

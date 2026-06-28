@@ -199,7 +199,6 @@ def _prepare_trial_snapshot_inputs(
                 fuzz_target=trial.config.fuzz_target,
                 fuzzer=trial.config.fuzzer,
                 runner_image=trial.config.images.runner,
-                repo_root=trial.repo_root,
                 jobs=preprocess_jobs,
             )
             if trial.config.snapshot_preprocess:
@@ -333,7 +332,7 @@ def _replay_timeline_entries(*, trial: TrialInstance, kind: str) -> list[tuple[i
 def _read_stats(trial: TrialInstance, *, tick_ts: int) -> dict[str, Any]:
     try:
         stats = (
-            FuzzerLoader(trial.repo_root)
+            FuzzerLoader(trial.fuzzers_root)
             .load(trial.config.fuzzer_base)
             .stats(trial.layout.trial_dir, cutoff_elapsed_s=tick_ts - trial.start_ts)
             or {}

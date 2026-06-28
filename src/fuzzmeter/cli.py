@@ -15,16 +15,54 @@ import os
 import subprocess
 from pathlib import Path
 
+from .paths import ExternalRoots
+
 logging.basicConfig(format='%(asctime)s - %(levelname)-7s - %(name)s - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger('fuzzmeter')
 
 
-def _default_repo_root() -> Path:
+def _checkout_roots() -> ExternalRoots | None:
     cwd = Path.cwd().resolve()
-    if (cwd / 'fuzzers').is_dir() and (cwd / 'src').is_dir():
-        return cwd
-    return Path(__file__).resolve().parents[2]
+    if (cwd / 'fuzzers').is_dir() and (cwd / 'targets').is_dir():
+        return ExternalRoots.from_checkout(cwd)
+    return None
+
+
+def _resolve_required_dir(value: Path | str, *, label: str) -> Path:
+    path = Path(value).expanduser().resolve()
+    if not path.is_dir():
+        raise NotADirectoryError(f'{label} is not a directory: {path}')
+    return path
+
+
+def _resolve_external_roots(
+    *,
+    fuzzers_arg: Path | None,
+    targets_arg: Path | None,
+    require_targets: bool = True,
+) -> ExternalRoots | None:
+    fuzzers_raw = fuzzers_arg or os.environ.get('FM_FUZZERS_PATH')
+    targets_raw = targets_arg or os.environ.get('FM_TARGETS_PATH')
+    checkout_roots = _checkout_roots()
+    if fuzzers_raw is None and checkout_roots is not None:
+        fuzzers_raw = checkout_roots.fuzzers_root
+    if targets_raw is None and checkout_roots is not None:
+        targets_raw = checkout_roots.targets_root
+
+    if fuzzers_raw is None:
+        if require_targets:
+            raise NotADirectoryError('Fuzzer root is not configured; use --fuzzers or FM_FUZZERS_PATH')
+        return None
+    if targets_raw is None:
+        if require_targets:
+            raise NotADirectoryError('Target root is not configured; use --targets or FM_TARGETS_PATH')
+        targets_raw = Path.cwd()
+
+    return ExternalRoots.from_paths(
+        fuzzers_root=_resolve_required_dir(fuzzers_raw, label='Fuzzer root'),
+        targets_root=_resolve_required_dir(targets_raw, label='Target root') if require_targets else Path(targets_raw),
+    )
 
 
 def _docker_available() -> bool:
@@ -84,12 +122,18 @@ def main(argv: list[str] | None = None) -> int:
                         help='Host path to the config YAML')
     ap_run.add_argument('--out', type=Path, default=Path('out'),
                         help='Host output directory')
+    ap_run.add_argument('--fuzzers', type=Path, default=None,
+                        help='Directory containing fuzzer definitions')
+    ap_run.add_argument('--targets', type=Path, default=None,
+                        help='Directory containing target definitions')
 
     ap_report = sub.add_parser('report', help='Generate a static report for an existing run')
     ap_report.add_argument('run_dir', type=Path,
                            help='Run directory containing fuzzmeter.db')
     ap_report.add_argument('--out', dest='out_dir', type=Path, default=None,
                            help='Report output directory')
+    ap_report.add_argument('--fuzzers', type=Path, default=None,
+                           help='Directory containing reporting plugins for fuzzers')
 
     ap_srv = sub.add_parser('serve', help='Run the dynamic DB-backed web UI')
     ap_srv.add_argument('--root', type=Path, default=Path('out'),
@@ -119,10 +163,10 @@ def main(argv: list[str] | None = None) -> int:
             ap.error(f'Output directory is not a directory: {fm_out}')
         fm_out.mkdir(parents=True, exist_ok=True)
 
-        repo = _default_repo_root()
         try:
+            external_roots = _resolve_external_roots(fuzzers_arg=args.fuzzers, targets_arg=args.targets)
             config_src = config_path.read_text(encoding='utf-8')
-            campaign_config = load_campaign_config(repo, config_src)
+            campaign_config = load_campaign_config(external_roots, config_src)
         except (OSError, UnicodeDecodeError, TypeError, ValueError, RuntimeError) as exc:
             ap.error(str(exc))
 
@@ -135,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
             run_dir = run_experiment(
                 campaign_config,
                 out_root=fm_out,
-                repo_root=repo,
+                external_roots=external_roots,
                 config_src=config_src,
             )
         except KeyboardInterrupt:
@@ -143,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
             return 130
 
         logger.info('Experiment completed: %s', run_dir)
-        report_dir = write_report(Path(run_dir))
+        report_dir = write_report(Path(run_dir), fuzzers_root=external_roots.fuzzers_root)
         logger.info('Static report generated to: %s', report_dir)
         return 0
 
@@ -152,7 +196,17 @@ def main(argv: list[str] | None = None) -> int:
 
         run_dir = args.run_dir.expanduser().resolve()
         out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
-        report_dir = write_report(run_dir, out_dir=out_dir)
+        try:
+            report_roots = _resolve_external_roots(
+                fuzzers_arg=args.fuzzers,
+                targets_arg=None,
+                require_targets=False,
+            )
+        except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
+            logger.error('Invalid fuzzer root: %s', exc)
+            return 1
+        fuzzers_root = report_roots.fuzzers_root if report_roots is not None else None
+        report_dir = write_report(run_dir, out_dir=out_dir, fuzzers_root=fuzzers_root)
         logger.info('Static report generated to: %s', report_dir)
         return 0
 

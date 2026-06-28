@@ -1,7 +1,7 @@
 import os
 import re
 
-from fuzzers import utils
+from fuzzmeter.resources.instrumentation import utils
 
 
 def build():

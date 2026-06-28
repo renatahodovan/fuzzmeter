@@ -1,4 +1,6 @@
 reporting_parent: afl
+source_dependencies:
+  - afl
 runtime:
   # args:
   #   - -z

@@ -1,15 +1,5 @@
 from __future__ import annotations
 
-import os
-
-from pathlib import Path
-from typing import Any, Dict
-
-from fuzzers import utils
-
-# Optional benchmark metadata is exposed to fuzzer builds via FM_BENCHMARK_YAML.
-
-
 # Copyright 2020 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,9 +18,12 @@ from fuzzers import utils
 
 import os
 
+from pathlib import Path
+from typing import Any, Dict
+
 from fuzzers.afl.run import fuzz as afl_fuzzer
-from fuzzers import utils
 from fuzzers.aflplusplus.common import get_cmplog_build_directory
+from fuzzmeter.resources.instrumentation import utils
 
 # Optional benchmark metadata is exposed to fuzzer builds via FM_BENCHMARK_YAML.
 

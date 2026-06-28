@@ -5,7 +5,7 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-from .bake import fuzzer_source_dirs, generate_run_bake_hcl
+from .bake import INSTRUMENTATION_PROFILES, fuzzer_source_dirs, generate_run_bake_hcl
 from .client import ContainerSpec, DockerClient
 from .runtime import DockerRuntime
 
@@ -13,6 +13,7 @@ __all__ = [
     'ContainerSpec',
     'DockerClient',
     'DockerRuntime',
+    'INSTRUMENTATION_PROFILES',
     'fuzzer_source_dirs',
     'generate_run_bake_hcl',
 ]

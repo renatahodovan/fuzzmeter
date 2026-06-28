@@ -1,4 +1,6 @@
 parent: aflplusplus
+source_dependencies:
+  - grammarinator
 runtime:
   env:
     AFL_CUSTOM_MUTATOR_ONLY: 1

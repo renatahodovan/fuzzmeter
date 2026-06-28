@@ -17,24 +17,35 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fuzzmeter import cli
-from fuzzmeter.web import app as webapp
 
 
 class HostCliTest(unittest.TestCase):
     '''Verify host-side CLI helpers.'''
 
-    def test_default_repo_root_uses_cwd_when_it_has_repo_layout(self) -> None:
-        '''Verify that running from the repo root keeps relative build contexts stable.'''
+    def test_checkout_roots_use_cwd_when_it_has_resource_layout(self) -> None:
+        '''Verify that running from a checkout discovers fuzzer and target roots.'''
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             (root / 'fuzzers').mkdir()
-            (root / 'src').mkdir()
+            (root / 'targets').mkdir()
 
             with patch('pathlib.Path.cwd', return_value=root):
-                self.assertEqual(root.resolve(), cli._default_repo_root())
+                roots = cli._checkout_roots()
+
+            self.assertIsNotNone(roots)
+            assert roots is not None
+            self.assertEqual(root.resolve() / 'fuzzers', roots.fuzzers_root)
+            self.assertEqual(root.resolve() / 'targets', roots.targets_root)
 
     def test_serve_accepts_out_root(self) -> None:
         '''Verify that serving with an output root uses its runs directory.'''
+        try:
+            from fuzzmeter.web import app as webapp
+        except ModuleNotFoundError as exc:
+            if exc.name == 'flask':
+                self.skipTest('Flask is not installed in this environment')
+            raise
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_root = Path(tmp_dir) / 'out'
             runs_root = out_root / 'runs'

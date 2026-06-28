@@ -22,7 +22,7 @@ from typing import Any
 
 import logging
 
-from fuzzers import utils
+from fuzzmeter.resources.instrumentation import utils
 
 
 GRAMMARINATOR_DIR = Path('/grammarinator')

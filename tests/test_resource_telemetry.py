@@ -46,7 +46,7 @@ def _active_trial(root: Path, *, db_id: int = 1) -> TrialInstance:
         config=config,
         layout=layout,
         container_name='container',
-        repo_root=root,
+        fuzzers_root=root,
         start_ts=100,
     )
 

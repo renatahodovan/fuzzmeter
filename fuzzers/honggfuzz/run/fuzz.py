@@ -19,7 +19,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict
 
-from fuzzers import utils
+from fuzzmeter.resources.instrumentation import utils
 
 
 def fuzz(input_corpus, output_corpus, target_binary, input_mode: str):

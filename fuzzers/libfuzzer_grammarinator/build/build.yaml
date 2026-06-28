@@ -1,4 +1,6 @@
 parent: libfuzzer
+source_dependencies:
+  - grammarinator
 build:
   seed_cache:
     enabled: true

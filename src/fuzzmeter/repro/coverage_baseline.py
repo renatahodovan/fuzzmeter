@@ -46,7 +46,6 @@ def measure_seed_baseline(
     job: SeedBaselineJob,
     run_dir: Path,
     run_id: str,
-    repo_root: Path,
     docker_runtime: DockerRuntime,
     jobs: int,
 ) -> None:
@@ -75,7 +74,6 @@ def measure_seed_baseline(
         fuzz_target=job.fuzz_target,
         fuzzer=job.fuzzer,
         runner_image=job.runner_image,
-        repo_root=repo_root,
     )
 
     state_dir = base_root / '_state'

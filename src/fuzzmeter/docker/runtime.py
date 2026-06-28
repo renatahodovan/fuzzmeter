@@ -20,17 +20,17 @@ from typing import Mapping
 class DockerRuntime:
     '''Hold docker-related host settings for a fuzzmeter run.'''
 
-    repo_root: Path
+    fuzzers_root: Path
     out_src: str
     run_user: str | None
     memory: str | None = None
     memory_swap: str | None = None
 
     @classmethod
-    def from_paths(cls, *, repo_root: Path, out_root: Path) -> 'DockerRuntime':
+    def from_paths(cls, *, fuzzers_root: Path, out_root: Path) -> 'DockerRuntime':
         '''Create Docker runtime settings from explicit host paths.'''
         return cls(
-            repo_root=Path(repo_root).expanduser().resolve(),
+            fuzzers_root=Path(fuzzers_root).expanduser().resolve(),
             out_src=str(out_root.expanduser().resolve()),
             run_user=_host_user(),
         )
@@ -38,7 +38,7 @@ class DockerRuntime:
     def with_docker_limits(self, *, memory: str | None = None, memory_swap: str | None = None) -> 'DockerRuntime':
         '''Return a copy with docker memory limits applied.'''
         return DockerRuntime(
-            repo_root=self.repo_root,
+            fuzzers_root=self.fuzzers_root,
             out_src=self.out_src,
             run_user=self.run_user,
             memory=memory,
@@ -75,11 +75,9 @@ class DockerRuntime:
     def hook_env(self, extra: Mapping[str, object] | None = None) -> dict[str, str]:
         '''Return environment variables for host-side hook execution.'''
         env = os.environ.copy()
-        env['FM_REPO'] = str(self.repo_root)
+        env['FM_FUZZERS_ROOT'] = str(self.fuzzers_root)
         env['FM_OUT_SRC'] = self.out_src
         env['FM_LOG_LEVEL'] = os.environ['FM_LOG_LEVEL']
-        python_path = env.get('PYTHONPATH', '')
-        env['PYTHONPATH'] = f'{self.repo_root}:{python_path}'.rstrip(':')
         if extra:
             env.update({key: str(value) for key, value in extra.items()})
         return env

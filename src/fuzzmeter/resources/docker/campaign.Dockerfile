@@ -53,13 +53,12 @@ COPY --from=benchmark /src /src
 COPY --from=benchmark /out /out
 
 COPY --from=build_base /opt/fuzzmeter/campaign_build.py /opt/fuzzmeter/campaign_build.py
+COPY --from=build_base /opt/fuzzmeter/fuzzmeter /opt/fuzzmeter/fuzzmeter
 
 RUN --mount=type=bind,from=fuzzer_build_sources,source=.,target=/tmp/fuzzers,readonly \
     set -euxo pipefail; \
     mkdir -p /opt/fuzzmeter/fuzzers; \
-    cp /tmp/fuzzers/__init__.py /opt/fuzzmeter/fuzzers/__init__.py; \
-    cp /tmp/fuzzers/utils.py /opt/fuzzmeter/fuzzers/utils.py; \
-    cp -a /tmp/fuzzers/_common /opt/fuzzmeter/fuzzers/_common; \
+    touch /opt/fuzzmeter/fuzzers/__init__.py; \
     for fuzzer_dir in ${FUZZER_SOURCE_DIRS}; do \
       mkdir -p "/opt/fuzzmeter/fuzzers/${fuzzer_dir}"; \
       if compgen -G "/tmp/fuzzers/${fuzzer_dir}/*.py" > /dev/null; then \
@@ -103,9 +102,7 @@ COPY --from=campaign_builder /benchmark.yaml /benchmark.yaml
 RUN --mount=type=bind,from=fuzzer_run_sources,source=.,target=/tmp/fuzzers,readonly \
     set -euxo pipefail; \
     mkdir -p /opt/fuzzmeter/fuzzers; \
-    cp /tmp/fuzzers/__init__.py /opt/fuzzmeter/fuzzers/__init__.py; \
-    cp /tmp/fuzzers/utils.py /opt/fuzzmeter/fuzzers/utils.py; \
-    cp -a /tmp/fuzzers/_common /opt/fuzzmeter/fuzzers/_common; \
+    touch /opt/fuzzmeter/fuzzers/__init__.py; \
     for fuzzer_dir in ${FUZZER_SOURCE_DIRS}; do \
       mkdir -p "/opt/fuzzmeter/fuzzers/${fuzzer_dir}"; \
       if compgen -G "/tmp/fuzzers/${fuzzer_dir}/*.py" > /dev/null; then \

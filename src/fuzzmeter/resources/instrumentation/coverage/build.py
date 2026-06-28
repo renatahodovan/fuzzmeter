@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 
-from fuzzers import utils
+from fuzzmeter.resources.instrumentation import utils
 
 
 def build():
@@ -28,4 +28,3 @@ def build():
     utils.apply_configured_env(utils.get_build_env())
 
     utils.build_benchmark()
-

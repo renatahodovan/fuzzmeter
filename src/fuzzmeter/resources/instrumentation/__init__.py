@@ -5,3 +5,4 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Shared instrumentation helpers and packaged build profiles.'''

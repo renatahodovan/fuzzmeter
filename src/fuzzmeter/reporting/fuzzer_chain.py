@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 
-def load_fuzzer_plugin_candidates(run_dir: Path, repo_root: Path) -> tuple[dict[str, list[str]], dict[str, str]]:
+def load_fuzzer_plugin_candidates(run_dir: Path, fuzzers_root: Path) -> tuple[dict[str, list[str]], dict[str, str]]:
     '''Load configured reporting plugin candidates for measured fuzzers.'''
 
     path = Path(run_dir) / 'benchmark_config.json'
@@ -40,23 +40,23 @@ def load_fuzzer_plugin_candidates(run_dir: Path, repo_root: Path) -> tuple[dict[
         if fuzzer_base:
             base_by_name[fuzzer_name] = fuzzer_base
         chain = [str(name).strip() for name in entry.get('fuzzer_chain') or [] if str(name).strip()]
-        candidates_by_name[fuzzer_name] = expand_reporting_candidates(repo_root, chain or [fuzzer_name, fuzzer_base])
+        candidates_by_name[fuzzer_name] = expand_reporting_candidates(fuzzers_root, chain or [fuzzer_name, fuzzer_base])
     return candidates_by_name, base_by_name
 
 
-def plugin_candidates_for(fuzzer: str, repo_root: Path, candidates_by_name: dict[str, list[str]]) -> list[str]:
+def plugin_candidates_for(fuzzer: str, fuzzers_root: Path, candidates_by_name: dict[str, list[str]]) -> list[str]:
     '''Return the configured or inferred plugin candidate chain for a fuzzer.'''
 
-    return candidates_by_name.get(fuzzer) or expand_reporting_candidates(repo_root, [fuzzer])
+    return candidates_by_name.get(fuzzer) or expand_reporting_candidates(fuzzers_root, [fuzzer])
 
 
-def expand_reporting_candidates(repo_root: Path, names: Sequence[str | None]) -> list[str]:
+def expand_reporting_candidates(fuzzers_root: Path, names: Sequence[str | None]) -> list[str]:
     '''Expand fuzzer names through reporting_parent and parent YAML fields.'''
 
     out: list[str] = []
     seen: set[str] = set()
     for name in names:
-        _add_reporting_candidate(repo_root, name, out, seen)
+        _add_reporting_candidate(fuzzers_root, name, out, seen)
     return out
 
 
@@ -71,20 +71,20 @@ def dedupe(values: Sequence[str | None]) -> list[str]:
     return out
 
 
-def _add_reporting_candidate(repo_root: Path, name: str | None, out: list[str], seen: set[str]) -> None:
+def _add_reporting_candidate(fuzzers_root: Path, name: str | None, out: list[str], seen: set[str]) -> None:
     normalized = str(name or '').strip()
     if not normalized or normalized in seen:
         return
     seen.add(normalized)
     out.append(normalized)
-    config = _load_fuzzer_yaml(repo_root, normalized)
-    _add_reporting_candidate(repo_root, config.get('reporting_parent'), out, seen)
-    _add_reporting_candidate(repo_root, config.get('parent'), out, seen)
+    config = _load_fuzzer_yaml(fuzzers_root, normalized)
+    _add_reporting_candidate(fuzzers_root, config.get('reporting_parent'), out, seen)
+    _add_reporting_candidate(fuzzers_root, config.get('parent'), out, seen)
 
 
-def _load_fuzzer_yaml(repo_root: Path, fuzzer: str) -> dict[str, Any]:
+def _load_fuzzer_yaml(fuzzers_root: Path, fuzzer: str) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    root = Path(repo_root) / 'fuzzers' / fuzzer
+    root = Path(fuzzers_root) / fuzzer
     for path in (root / 'build' / 'build.yaml', root / 'run' / 'run.yaml'):
         if not path.is_file():
             continue

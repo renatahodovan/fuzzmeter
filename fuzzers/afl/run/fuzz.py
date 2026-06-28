@@ -19,7 +19,7 @@ import subprocess
 
 from pathlib import Path
 
-from fuzzers import utils
+from fuzzmeter.resources.instrumentation import utils
 
 
 def get_stats(output_corpus, fuzzer_log):  # pylint: disable=unused-argument

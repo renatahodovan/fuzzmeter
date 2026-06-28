@@ -51,7 +51,14 @@ def format_duration(seconds: int | None) -> str | None:
 class _PayloadBuilder:
     '''Build the report JSON payload from a fuzzmeter run database.'''
 
-    def __init__(self, run_dir: Path, *, run_id: str | None = None, file_url_prefix: str | None = None):
+    def __init__(
+        self,
+        run_dir: Path,
+        *,
+        run_id: str | None = None,
+        file_url_prefix: str | None = None,
+        fuzzers_root: Path | None = None,
+    ):
         self.run_dir = Path(run_dir).resolve()
         self.db_path = self.run_dir / 'fuzzmeter.db'
         if not self.db_path.exists():
@@ -79,7 +86,7 @@ class _PayloadBuilder:
             trial_version_fields=TRIAL_METADATA_FIELDS,
         )
         self._bug_analysis = BugAnalysis()
-        self._repo_root = Path(__file__).resolve().parents[3]
+        self._fuzzers_root = Path(fuzzers_root).expanduser().resolve() if fuzzers_root is not None else None
 
     def build(self) -> dict[str, Any]:
         '''Build the complete report payload.'''
@@ -97,16 +104,17 @@ class _PayloadBuilder:
         LOG.info('Collect uniqueness matrices')
         targets = self.create_matrices(targets, trials)
 
-        LOG.info('Collect extra sections')
-        attach_extra_sections(
-            repo_root=self._repo_root,
-            run_dir=self.run_dir,
-            run_id=self.run_id,
-            targets=targets,
-            trials=trials,
-            timeseries=timeseries,
-            bugs=bugs,
-        )
+        if self._fuzzers_root is not None:
+            LOG.info('Collect extra sections')
+            attach_extra_sections(
+                fuzzers_root=self._fuzzers_root,
+                run_dir=self.run_dir,
+                run_id=self.run_id,
+                targets=targets,
+                trials=trials,
+                timeseries=timeseries,
+                bugs=bugs,
+            )
 
         return {
             'meta': {
@@ -389,6 +397,7 @@ def build_payload(
     *,
     run_id: str | None = None,
     file_url_prefix: str | None = None,
+    fuzzers_root: Path | None = None,
 ) -> dict[str, Any]:
     '''Build the JSON payload consumed by the web report.'''
 
@@ -396,4 +405,5 @@ def build_payload(
         run_dir,
         run_id=run_id,
         file_url_prefix=file_url_prefix,
+        fuzzers_root=fuzzers_root,
     ).build()

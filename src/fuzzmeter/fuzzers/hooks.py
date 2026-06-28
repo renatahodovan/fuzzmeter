@@ -64,5 +64,5 @@ class HookRunner:
         raise subprocess.CalledProcessError(result.returncode, cmd, output=result.stdout)
 
     def _resolve_script(self, script: Path) -> Path:
-        '''Resolve a hook script path relative to the repository root.'''
-        return script if script.is_absolute() else (self.docker_runtime.repo_root / script)
+        '''Resolve a hook script path relative to the fuzzer resource root.'''
+        return script if script.is_absolute() else (self.docker_runtime.fuzzers_root / script)

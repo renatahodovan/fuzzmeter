@@ -5,3 +5,4 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Packaged runtime resources for Docker images and helper scripts.'''

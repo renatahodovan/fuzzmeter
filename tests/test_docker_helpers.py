@@ -46,7 +46,7 @@ class DockerHelperTest(unittest.TestCase):
         self.assertIn('  FM_LOG_LEVEL  = "INFO\\"quoted"', escaped_lines)
 
     def test_hook_env_requires_fm_log_level_and_does_not_set_legacy_fallback(self) -> None:
-        runtime = DockerRuntime(repo_root=Path('/repo'), out_src='/out', run_user=None)
+        runtime = DockerRuntime(fuzzers_root=Path('/fuzzers'), out_src='/out', run_user=None)
 
         with patch.dict('os.environ', {}, clear=True):
             with self.assertRaises(KeyError):
@@ -57,7 +57,8 @@ class DockerHelperTest(unittest.TestCase):
 
         self.assertEqual('WARNING', env['FM_LOG_LEVEL'])
         self.assertNotIn('FUZZMETER_LOG_LEVEL', env)
-        self.assertEqual('/repo:/existing', env['PYTHONPATH'])
+        self.assertEqual('/existing', env['PYTHONPATH'])
+        self.assertEqual('/fuzzers', env['FM_FUZZERS_ROOT'])
         self.assertEqual('3', env['COUNT'])
 
 

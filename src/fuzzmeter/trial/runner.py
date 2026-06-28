@@ -74,7 +74,7 @@ def run_one_trial(
         config=config,
         layout=layout,
         container_name=container_name,
-        repo_root=docker_runtime.repo_root,
+        fuzzers_root=docker_runtime.fuzzers_root,
         start_ts=start_ts,
     )
     log_proc: subprocess.Popen[str] | None = None

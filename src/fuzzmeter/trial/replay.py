@@ -94,7 +94,7 @@ def prepare_replay_trial(
         config=cfg,
         layout=layout,
         container_name=f'replay-{cfg.trial_key}',
-        repo_root=docker_runtime.repo_root,
+        fuzzers_root=docker_runtime.fuzzers_root,
         start_ts=start_ts,
         end_ts=end_ts,
     )

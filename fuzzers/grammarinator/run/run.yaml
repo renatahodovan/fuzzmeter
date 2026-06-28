@@ -3,6 +3,8 @@ allowed_benchmarks:
   - sqlite3:sqlite
   - jsoncpp:jsoncpp
   - lua:fuzz_lua
+source_dependencies:
+  - blackbox
 runtime:
   generator:
     batch_size: 1000

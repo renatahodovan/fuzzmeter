@@ -2,6 +2,8 @@ allowed_benchmarks:
   - jerryscript:jerry
   - sqlite3:sqlite
   - jsoncpp:jsoncpp
+source_dependencies:
+  - libfuzzer
 build:
   seed_cache:
     enabled: true

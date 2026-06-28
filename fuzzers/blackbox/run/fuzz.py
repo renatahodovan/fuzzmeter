@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fuzzers import utils
+from fuzzmeter.resources.instrumentation import utils
 
 level = getattr(logging, os.environ.get('FM_LOG_LEVEL', 'DEBUG'))
 logging.basicConfig(level=level, 

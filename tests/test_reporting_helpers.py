@@ -232,7 +232,7 @@ class ReportingPluginLoaderTest(unittest.TestCase):
             path.parent.mkdir(parents=True)
             path.write_text('VALUE = 1\n', encoding='utf-8')
 
-            plugin, matched = ReportingPluginLoader(Path(tmp)).load_first(['fz'])
+            plugin, matched = ReportingPluginLoader(Path(tmp) / 'fuzzers').load_first(['fz'])
 
         self.assertIsInstance(plugin, NullReportingPlugin)
         self.assertIsNone(matched)
@@ -243,7 +243,7 @@ class ReportingPluginLoaderTest(unittest.TestCase):
             path.parent.mkdir(parents=True)
             path.write_text('def build_extra_sections(ctx):\n    return []\n', encoding='utf-8')
 
-            plugin, matched = ReportingPluginLoader(Path(tmp)).load_first(['fz'])
+            plugin, matched = ReportingPluginLoader(Path(tmp) / 'fuzzers').load_first(['fz'])
 
         self.assertIsInstance(plugin, FunctionReportingPlugin)
         self.assertEqual('fz', matched)
@@ -263,7 +263,7 @@ class ReportingPluginLoaderTest(unittest.TestCase):
                 encoding='utf-8',
             )
 
-            plugin, matched = ReportingPluginLoader(Path(tmp)).load_first(['fz'])
+            plugin, matched = ReportingPluginLoader(Path(tmp) / 'fuzzers').load_first(['fz'])
 
         self.assertEqual('fz', matched)
         self.assertEqual([], plugin.build_extra_sections(_context()))
@@ -275,7 +275,7 @@ class ReportingPluginLoaderTest(unittest.TestCase):
             path.write_text('raise RuntimeError("boom")\n', encoding='utf-8')
 
             with self.assertRaisesRegex(RuntimeError, 'boom'):
-                ReportingPluginLoader(Path(tmp)).load_first(['fz'])
+                ReportingPluginLoader(Path(tmp) / 'fuzzers').load_first(['fz'])
 
     def test_invalid_candidate_names_do_not_escape_fuzzers_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -294,9 +294,9 @@ class ReportingPluginSectionsTest(unittest.TestCase):
 
     def test_expand_reporting_candidates_follows_parent_chain(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo_root = Path(tmp)
-            child_build = repo_root / 'fuzzers' / 'child' / 'build' / 'build.yaml'
-            parent_run = repo_root / 'fuzzers' / 'parent' / 'run' / 'run.yaml'
+            fuzzers_root = Path(tmp) / 'fuzzers'
+            child_build = fuzzers_root / 'child' / 'build' / 'build.yaml'
+            parent_run = fuzzers_root / 'parent' / 'run' / 'run.yaml'
             child_build.parent.mkdir(parents=True)
             parent_run.parent.mkdir(parents=True)
             child_build.write_text('reporting_parent: parent\n', encoding='utf-8')
@@ -304,18 +304,18 @@ class ReportingPluginSectionsTest(unittest.TestCase):
 
             self.assertEqual(
                 ['child', 'parent', 'grand'],
-                expand_reporting_candidates(repo_root, ['child', 'parent']),
+                expand_reporting_candidates(fuzzers_root, ['child', 'parent']),
             )
 
     def test_expand_reporting_candidates_ignores_unreadable_yaml(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo_root = Path(tmp)
-            child_build = repo_root / 'fuzzers' / 'child' / 'build' / 'build.yaml'
+            fuzzers_root = Path(tmp) / 'fuzzers'
+            child_build = fuzzers_root / 'child' / 'build' / 'build.yaml'
             child_build.parent.mkdir(parents=True)
             child_build.write_text('reporting_parent: parent\n', encoding='utf-8')
 
             with patch('pathlib.Path.read_text', side_effect=OSError('blocked')):
-                self.assertEqual(['child'], expand_reporting_candidates(repo_root, ['child']))
+                self.assertEqual(['child'], expand_reporting_candidates(fuzzers_root, ['child']))
 
     def test_load_fuzzer_plugin_candidates_ignores_invalid_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

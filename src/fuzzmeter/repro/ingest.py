@@ -83,7 +83,6 @@ def prepare_snapshot_inputs(
     fuzz_target: str,
     fuzzer: str,
     runner_image: str,
-    repo_root: Path,
     jobs: int | None = None,
 ) -> list[Path]:
     '''Copy snapshot inputs and optionally run the snapshot preprocess hook on them.'''
@@ -105,7 +104,6 @@ def prepare_snapshot_inputs(
                 fuzz_target=fuzz_target,
                 fuzzer=fuzzer,
                 runner_image=runner_image,
-                repo_root=repo_root,
                 jobs=jobs,
             ),
             cwd=snapshot_dir,
@@ -137,7 +135,6 @@ def _snapshot_preprocess_env(
     fuzz_target: str,
     fuzzer: str,
     runner_image: str,
-    repo_root: Path,
     jobs: int | None,
 ) -> dict[str, str]:
     return {
@@ -147,7 +144,6 @@ def _snapshot_preprocess_env(
         'FM_FUZZ_TARGET': fuzz_target,
         'FM_FUZZER': fuzzer,
         'FM_RUNNER_IMAGE': runner_image,
-        'FM_REPO_ROOT': str(repo_root),
         'FM_JOBS': str(max(1, int(jobs or 1))),
     }
 

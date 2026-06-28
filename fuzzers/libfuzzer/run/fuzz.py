@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict
 
-from fuzzers import utils
+from fuzzmeter.resources.instrumentation import utils
 
 
 LOG = logging.getLogger(__name__)

@@ -15,6 +15,7 @@ import unittest
 from pathlib import Path
 
 from fuzzmeter.config import load_campaign_config
+from fuzzmeter.paths import ExternalRoots
 
 
 class ConfigBuilderTest(unittest.TestCase):
@@ -24,7 +25,7 @@ class ConfigBuilderTest(unittest.TestCase):
         """Verify that the repository QuickJS target config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
-        config = load_campaign_config(
+        config = _load_campaign_config(
             repo_root,
             """
 fuzzers:
@@ -43,7 +44,7 @@ targets:
         """Verify that the repository JSC target config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
-        config = load_campaign_config(
+        config = _load_campaign_config(
             repo_root,
             """
 fuzzers:
@@ -61,7 +62,7 @@ targets:
         """Verify that the repository V8 target config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
-        config = load_campaign_config(
+        config = _load_campaign_config(
             repo_root,
             """
 fuzzers:
@@ -79,7 +80,7 @@ targets:
         """Verify that the repository SpiderMonkey target config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
-        config = load_campaign_config(
+        config = _load_campaign_config(
             repo_root,
             """
 fuzzers:
@@ -103,7 +104,7 @@ targets:
             _write_target(root, 'jerryscript', 'jerry')
             _write_target(root, 'sqlite3', 'ossfuzz')
 
-            config = load_campaign_config(
+            config = _load_campaign_config(
                 root,
                 """
 fuzzers:
@@ -132,7 +133,7 @@ targets:
             _write_target(root, 'jerryscript', 'jerry')
             _write_target(root, 'sqlite3', 'ossfuzz')
 
-            config = load_campaign_config(
+            config = _load_campaign_config(
                 root,
                 """
 fuzzers:
@@ -156,7 +157,7 @@ targets:
             _write_fuzzer(root, 'plain', '')
             _write_target(root, 'jerryscript', 'jerry', timeout_s=10)
 
-            config = load_campaign_config(
+            config = _load_campaign_config(
                 root,
                 """
 fuzzers:
@@ -176,7 +177,7 @@ targets:
             _write_fuzzer(root, 'plain', '')
             _write_target(root, 'jerryscript', 'jerry', timeout_s=10)
 
-            config = load_campaign_config(
+            config = _load_campaign_config(
                 root,
                 """
 fuzzers:
@@ -198,7 +199,7 @@ targets:
             _write_fuzzer(root, 'plain', '')
             _write_target(root, 'jerryscript', 'jerry')
 
-            config = load_campaign_config(
+            config = _load_campaign_config(
                 root,
                 """
 run:
@@ -221,7 +222,7 @@ targets:
             _write_fuzzer(root, 'plain', '')
             _write_target(root, 'jerryscript', 'jerry')
 
-            config = load_campaign_config(
+            config = _load_campaign_config(
                 root,
                 """
 run:
@@ -258,7 +259,7 @@ targets:
                 },
             )
 
-            config = load_campaign_config(
+            config = _load_campaign_config(
                 root,
                 """
 fuzzers:
@@ -293,7 +294,7 @@ targets:
                 },
             )
 
-            config = load_campaign_config(
+            config = _load_campaign_config(
                 root,
                 """
 fuzzers:
@@ -328,7 +329,7 @@ fuzz_targets:
             )
 
             with self.assertRaisesRegex(ValueError, 'root-level fuzzers'):
-                load_campaign_config(
+                _load_campaign_config(
                     root,
                     """
 fuzzers:
@@ -346,7 +347,7 @@ targets:
             _write_multi_target(root, 'jerryscript', {'jerry': {'input_mode': 'in_process'}})
 
             with self.assertRaisesRegex(ValueError, "requested fuzz target 'missing'"):
-                load_campaign_config(
+                _load_campaign_config(
                     root,
                     """
 fuzzers:
@@ -375,7 +376,7 @@ fuzz_targets:
             )
 
             with self.assertRaisesRegex(ValueError, 'exactly one of fuzz_target or fuzz_targets'):
-                load_campaign_config(
+                _load_campaign_config(
                     root,
                     """
 fuzzers:
@@ -398,7 +399,7 @@ targets:
             )
 
             with self.assertRaisesRegex(ValueError, 'non-empty mapping'):
-                load_campaign_config(
+                _load_campaign_config(
                     root,
                     """
 fuzzers:
@@ -413,6 +414,10 @@ def _write_fuzzer(root: Path, name: str, text: str) -> None:
     fuzzer_dir = root / 'fuzzers' / name / 'build'
     fuzzer_dir.mkdir(parents=True)
     fuzzer_dir.joinpath('build.yaml').write_text(text, encoding='utf-8')
+
+
+def _load_campaign_config(root: Path, text: str):
+    return load_campaign_config(ExternalRoots.from_checkout(root), text)
 
 
 def _write_target(root: Path, project: str, fuzz_target: str, *, timeout_s: int | None = None) -> None:
