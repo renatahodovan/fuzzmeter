@@ -21,6 +21,25 @@ from fuzzmeter.paths import ExternalRoots
 class ConfigBuilderTest(unittest.TestCase):
     """Verify campaign config expansion rules."""
 
+    def test_repository_curl_target_config_loads(self) -> None:
+        """Verify that the repository curl target config loads as-is."""
+        repo_root = Path(__file__).resolve().parents[1]
+
+        config = _load_campaign_config(
+            repo_root,
+            """
+fuzzers:
+  - libfuzzer
+targets:
+  - curl:curl_fuzzer
+""",
+        )
+
+        self.assertEqual(
+            [("curl", "curl_fuzzer", "in_process")],
+            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+        )
+
     def test_repository_quickjs_target_config_loads(self) -> None:
         """Verify that the repository QuickJS target config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
