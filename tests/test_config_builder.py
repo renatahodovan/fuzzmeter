@@ -40,6 +40,25 @@ targets:
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
+    def test_repository_openssl_target_config_loads(self) -> None:
+        """Verify that the repository OpenSSL target config loads as-is."""
+        repo_root = Path(__file__).resolve().parents[1]
+
+        config = _load_campaign_config(
+            repo_root,
+            """
+fuzzers:
+  - libfuzzer
+targets:
+  - openssl:x509
+""",
+        )
+
+        self.assertEqual(
+            [("openssl", "x509", "in_process")],
+            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+        )
+
     def test_repository_quickjs_target_config_loads(self) -> None:
         """Verify that the repository QuickJS target config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
