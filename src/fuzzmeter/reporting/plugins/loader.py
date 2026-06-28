@@ -56,7 +56,7 @@ class ReportingPluginLoader:
         '''Load the first available reporting plugin from the candidate fuzzer names.'''
 
         for fuzzer_name in fuzzer_names:
-            if not fuzzer_name:
+            if not _is_safe_fuzzer_name(fuzzer_name):
                 continue
             path = self.repo_root / 'fuzzers' / fuzzer_name / 'run' / 'reporting.py'
             if not path.is_file():
@@ -80,3 +80,11 @@ class ReportingPluginLoader:
         sys.modules[module_name] = module
         spec.loader.exec_module(module)  # type: ignore[attr-defined]
         return module
+
+
+def _is_safe_fuzzer_name(fuzzer_name: str) -> bool:
+    text = str(fuzzer_name or '').strip()
+    if not text:
+        return False
+    path = Path(text)
+    return not path.is_absolute() and len(path.parts) == 1 and path.parts[0] != '..'
