@@ -45,13 +45,16 @@ class WorkerConfig:
     cov_bin: Path
     out_dir: Path
     work_dir: Path
-    input_list: Path
     profdata: Path
-    coverage_sets: Path | None
+    coverage_sets: Path | None = None
     input_mode: str = ''
+    input_list: Path = Path()
     prof_list: Path = Path()
     batch_profdata: Path | None = None
     timeout_s: float = 0.0
+    path_eq_from: str = ''
+    path_eq_to: str = ''
+    skip_html: bool = False
 
     @classmethod
     def from_env(cls) -> WorkerConfig:
@@ -61,24 +64,39 @@ class WorkerConfig:
         profdata_env = os.environ.get('FM_PROFDATA_PATH', '').strip()
         coverage_sets_env = os.environ.get('FM_COVERAGE_SETS_JSON', '').strip()
         batch_profdata_env = os.environ.get('FM_BATCH_PROFDATA_PATH', '').strip()
-        common = {
-            'cov_bin': Path(f'/out/{os.environ["FM_TARGET_NAME"]}'),
-            'out_dir': out_dir,
-            'work_dir': Path(work_dir_env) if work_dir_env else out_dir / '_work',
-            'profdata': Path(profdata_env) if profdata_env else out_dir / 'merged.profdata',
-            'coverage_sets': Path(coverage_sets_env) if coverage_sets_env else None,
-        }
+        cov_bin = Path(f'/out/{os.environ["FM_TARGET_NAME"]}')
+        work_dir = Path(work_dir_env) if work_dir_env else out_dir / '_work'
+        profdata = Path(profdata_env) if profdata_env else out_dir / 'merged.profdata'
+        coverage_sets = Path(coverage_sets_env) if coverage_sets_env else None
+        path_eq_from = os.environ.get('FM_PATH_EQ_FROM', '').strip()
+        path_eq_to = os.environ.get('FM_PATH_EQ_TO', '').strip()
+        skip_html = 'FM_SKIP_HTML' in os.environ
+
         if batch_profdata_env:
             return cls(
-                **common,
+                cov_bin=cov_bin,
+                out_dir=out_dir,
+                work_dir=work_dir,
+                profdata=profdata,
+                coverage_sets=coverage_sets,
                 input_mode=os.environ['FM_INPUT_MODE'].strip(),
                 input_list=Path(os.environ['FM_INPUT_LIST']),
                 batch_profdata=Path(batch_profdata_env),
                 timeout_s=float(os.environ['FM_TIMEOUT_S']),
+                path_eq_from=path_eq_from,
+                path_eq_to=path_eq_to,
+                skip_html=skip_html,
             )
         return cls(
-            **common,
+            cov_bin=cov_bin,
+            out_dir=out_dir,
+            work_dir=work_dir,
+            profdata=profdata,
+            coverage_sets=coverage_sets,
             prof_list=Path(os.environ['FM_PROF_LIST']),
+            path_eq_from=path_eq_from,
+            path_eq_to=path_eq_to,
+            skip_html=skip_html,
         )
 
 
