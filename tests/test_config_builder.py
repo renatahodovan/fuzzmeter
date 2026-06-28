@@ -52,6 +52,22 @@ targets:
 
         self.assertEqual([('jsc', 'jsc', 'file')], [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases])
 
+    def test_repository_v8_target_config_loads(self) -> None:
+        '''Verify that the repository V8 target config loads as-is.'''
+        repo_root = Path(__file__).resolve().parents[1]
+
+        config = load_campaign_config(
+            repo_root,
+            '''
+fuzzers:
+  - blackbox
+targets:
+  - v8:d8
+''',
+        )
+
+        self.assertEqual([('v8', 'd8', 'file')], [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases])
+
     def test_allowed_benchmarks_limits_fuzzer_targets(self) -> None:
         '''Verify that fuzzer-level benchmark allowlists filter campaign cases.'''
         with tempfile.TemporaryDirectory() as tmp_dir:
