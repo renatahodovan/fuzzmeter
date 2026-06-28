@@ -59,6 +59,25 @@ targets:
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
+    def test_repository_libxml2_target_config_loads(self) -> None:
+        """Verify that the repository libxml2 target config loads as-is."""
+        repo_root = Path(__file__).resolve().parents[1]
+
+        config = _load_campaign_config(
+            repo_root,
+            """
+fuzzers:
+  - libfuzzer
+targets:
+  - libxml2:reader
+""",
+        )
+
+        self.assertEqual(
+            [("libxml2", "reader", "in_process")],
+            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+        )
+
     def test_repository_quickjs_target_config_loads(self) -> None:
         """Verify that the repository QuickJS target config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
