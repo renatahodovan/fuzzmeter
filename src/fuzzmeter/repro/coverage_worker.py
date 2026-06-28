@@ -114,7 +114,7 @@ def main() -> None:
 
 
 def _run_batch_mode(cfg: WorkerConfig) -> None:
-    inputs = [line.strip() for line in cfg.input_list.read_text(encoding='utf-8', errors='replace').splitlines() if line.strip()]
+    inputs = _read_nonempty_lines(cfg.input_list)
     profraws_dir = cfg.work_dir / 'worker_tmp'
     profraws_dir.mkdir(parents=True, exist_ok=True)
     attempted = len(inputs)
@@ -147,8 +147,7 @@ def _run_batch_mode(cfg: WorkerConfig) -> None:
 
 
 def _run_finalize_mode(cfg: WorkerConfig) -> None:
-    lines = cfg.prof_list.read_text(encoding='utf-8', errors='replace').splitlines()
-    merge_inputs = [path for path in lines if path and Path(path).is_file()]
+    merge_inputs = [path for path in _read_nonempty_lines(cfg.prof_list) if Path(path).is_file()]
 
     if merge_inputs:
         tmp_profdata = cfg.profdata.with_suffix('.tmp')
@@ -205,6 +204,7 @@ def _execute_one_input(cfg: WorkerConfig, input_path: str, index: int, profraws_
             cmd,
             input=stdin_data,
             capture_output=True,
+            check=False,
             text=True,
             encoding='utf-8',
             errors='replace',
@@ -254,6 +254,7 @@ def _execute_inprocess_batch(cfg: WorkerConfig, inputs: list[str], profraws_dir:
     cp = subprocess.run(
         cmd,
         capture_output=True,
+        check=False,
         text=True,
         encoding='utf-8',
         errors='replace',
@@ -272,10 +273,8 @@ def _execute_inprocess_batch(cfg: WorkerConfig, inputs: list[str], profraws_dir:
 
 
 def _write_coverage_outputs(cfg: WorkerConfig) -> None:
-    path_eq_from = os.environ.get('FM_PATH_EQ_FROM', '').strip()
-    path_eq_to = os.environ.get('FM_PATH_EQ_TO', '').strip()
-    pe_args = [f'--path-equivalence={path_eq_from},{path_eq_to}'] if path_eq_from and path_eq_to else []
-    if 'FM_SKIP_HTML' not in os.environ:
+    pe_args = _path_equivalence_args(cfg)
+    if not cfg.skip_html and 'FM_SKIP_HTML' not in os.environ:
         html_dir = cfg.out_dir / 'html'
         html_dir.mkdir(parents=True, exist_ok=True)
         _run(
@@ -393,7 +392,15 @@ def _merge_profiles(*, inputs: list[str], output: Path, work_dir: Path, out_dir:
 
 
 def _run(cmd: list[str], *, out_dir: Path, label: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    cp = subprocess.run(cmd, text=True, encoding='utf-8', errors='replace', capture_output=True, timeout=600.0)
+    cp = subprocess.run(
+        cmd,
+        check=False,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+        capture_output=True,
+        timeout=600.0,
+    )
     if cp.returncode == 0 or not check:
         return cp
     (out_dir / f'{label}.stdout.txt').write_text(cp.stdout or '', encoding='utf-8', errors='replace')
@@ -405,6 +412,22 @@ def _target_command(cfg: WorkerConfig, input_path: str) -> tuple[list[str], str 
     if cfg.input_mode in {'in_process', 'file'}:
         return [str(cfg.cov_bin), input_path], None
     return [str(cfg.cov_bin)], Path(input_path).read_text(encoding='utf-8', errors='replace')
+
+
+def _path_equivalence_args(cfg: WorkerConfig) -> list[str]:
+    path_eq_from = cfg.path_eq_from or os.environ.get('FM_PATH_EQ_FROM', '').strip()
+    path_eq_to = cfg.path_eq_to or os.environ.get('FM_PATH_EQ_TO', '').strip()
+    if path_eq_from and path_eq_to:
+        return [f'--path-equivalence={path_eq_from},{path_eq_to}']
+    return []
+
+
+def _read_nonempty_lines(path: Path) -> list[str]:
+    return [
+        line.strip()
+        for line in path.read_text(encoding='utf-8', errors='replace').splitlines()
+        if line.strip()
+    ]
 
 
 def _write_input_exec_diagnostics(
