@@ -55,6 +55,7 @@ def measure_seed_baseline(
     snapshot_dir = base_root / '_snapshot'
     corpus_dir = snapshot_dir / 'corpus'
     shutil.rmtree(snapshot_dir, ignore_errors=True)
+
     seed_input_files = [
         DetectedFile(
             rel_path=str(src.relative_to(job.seed_root)).replace('\\', '/'),
@@ -63,6 +64,7 @@ def measure_seed_baseline(
         )
         for src in sorted(path for path in job.seed_root.rglob('*') if path.is_file())
     ]
+
     prepare_snapshot_inputs(
         docker_runtime=docker_runtime,
         snapshot_dir=snapshot_dir,
@@ -76,12 +78,12 @@ def measure_seed_baseline(
         repo_root=repo_root,
     )
 
-    LOG.debug('Measuring seed baseline coverage for %s/%s/%s', job.fuzzer, job.benchmark, job.fuzz_target)
     state_dir = base_root / '_state'
     inputs = collect_inputs(corpus_dir)
     if not inputs:
         return
 
+    LOG.debug('Measuring seed baseline coverage for %s/%s/%s', job.fuzzer, job.benchmark, job.fuzz_target)
     batch_profdata_paths, coverage_batches = build_coverage_replay_batches(
         image=job.coverage_image,
         fuzz_target=job.fuzz_target,
@@ -107,6 +109,9 @@ def measure_seed_baseline(
         work_dir=state_dir / '_tmp_seed',
         profile_inputs=batch_profdata_paths,
     )
+
+    html_index = base_root / 'html' / 'index.html'
+    coverage_sets = base_root / 'coverage-sets.json'
     with open_db(db_path) as db:
         baseline_id = upsert_agg_snapshot(
             db,
@@ -122,16 +127,8 @@ def measure_seed_baseline(
         update_agg_snapshot_coverage(
             db,
             agg_snapshot_id=baseline_id,
-            coverage_html_dir=(
-                str((base_root / 'html' / 'index.html').relative_to(run_dir))
-                if (base_root / 'html' / 'index.html').exists()
-                else None
-            ),
-            coverage_sets_json_rel=(
-                str((base_root / 'coverage-sets.json').relative_to(run_dir))
-                if (base_root / 'coverage-sets.json').exists()
-                else None
-            ),
+            coverage_html_dir=str(html_index.relative_to(run_dir)) if html_index.exists() else None,
+            coverage_sets_json_rel=str(coverage_sets.relative_to(run_dir)) if coverage_sets.exists() else None,
             summary=summary,
         )
     LOG.debug('Seed coverage summary for %s/%s/%s: %s', job.fuzzer, job.benchmark, job.fuzz_target, summary)

@@ -37,7 +37,8 @@ def load_coverage_summary(summary_path: Path) -> dict:
         return {}
 
     try:
-        return json.loads(summary_path.read_text(encoding='utf-8', errors='replace') or '{}')
+        summary_text = summary_path.read_text(encoding='utf-8', errors='replace')
+        return json.loads(summary_text or '{}')
     except Exception:
         return {}
 
