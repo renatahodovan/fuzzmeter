@@ -9,21 +9,9 @@
 
 from __future__ import annotations
 
-from ..metrics import cliffs_delta, mann_whitney_u_pvalue, mean, rankdata_desc
+from ..metrics import cliffs_delta, mann_whitney_u_pvalue, mean, median, rankdata_desc
 
 from typing import Any
-
-
-def _median(values: list[float]) -> float | None:
-    '''Return the median of numeric values.'''
-
-    if not values:
-        return None
-    ordered = sorted(float(value) for value in values)
-    mid = len(ordered) // 2
-    if len(ordered) % 2 == 1:
-        return ordered[mid]
-    return (ordered[mid - 1] + ordered[mid]) / 2.0
 
 
 class SummaryAnalysis:
@@ -128,7 +116,7 @@ class SummaryAnalysis:
                     'relbug_score': mean(per_fuzzer_relbug_scores[fuzzer]),
                     'unique_bug_count': per_fuzzer_unique_bugs[fuzzer],
                     'exclusive_bug_count': per_fuzzer_exclusive_bugs[fuzzer],
-                    'median_execs_done': _median(per_fuzzer_execs[fuzzer]),
+                    'median_execs_done': median(per_fuzzer_execs[fuzzer]),
                 }
             )
         summary['rankings'].sort(

@@ -12,19 +12,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ..metrics import dt, safe_int
-
-
-def _median(values: list[int]) -> float | None:
-    '''Return the median of integer values.'''
-
-    if not values:
-        return None
-    ordered = sorted(int(value) for value in values)
-    mid = len(ordered) // 2
-    if len(ordered) % 2 == 1:
-        return float(ordered[mid])
-    return float(ordered[mid - 1] + ordered[mid]) / 2.0
+from ..metrics import dt, median, safe_int
 
 
 class BugAnalysis:
@@ -111,7 +99,7 @@ class BugAnalysis:
                 'total': exclusive_total,
                 'min': min(trial_counts) if trial_counts else None,
                 'max': max(trial_counts) if trial_counts else None,
-                'median': _median(trial_counts),
+                'median': median(trial_counts),
             }
         return target
 
