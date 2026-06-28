@@ -23,6 +23,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 RUN rm -f /usr/local/bin/cargo
 
+ENV CARGO_HOME="${SRC}/.cargo"
+ENV RUSTUP_HOME="${SRC}/.rustup"
+ENV PATH="${SRC}/.cargo/bin:${PATH}"
+
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > "${SRC}/rustbuild.sh" && \
     chmod +x "${SRC}/rustbuild.sh" && \
     "${SRC}/rustbuild.sh" -y

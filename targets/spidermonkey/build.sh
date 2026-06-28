@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source "${HOME}/.cargo/env"
+source /src/.cargo/env
 rustup default nightly
 
 cat > ./mozconfig <<'EOF'
@@ -22,7 +22,13 @@ EOF
 export MOZCONFIG=./mozconfig
 
 ./mach --no-interactive bootstrap --application-choice js
-./mach build "-j$(nproc)"
+
+build_jobs="$(nproc)"
+if [ "${build_jobs}" -gt 2 ]; then
+    build_jobs=2
+fi
+
+./mach build "-j${build_jobs}"
 
 cp obj-shell/dist/bin/js "${OUT}/${TARGET_NAME}"
 
