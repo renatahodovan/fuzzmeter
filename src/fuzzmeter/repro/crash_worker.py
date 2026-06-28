@@ -31,23 +31,17 @@ def main() -> None:
     target_name = os.environ['FM_TARGET_NAME']
     input_mode = os.environ['FM_INPUT_MODE']
     timeout_s = float(os.environ['FM_TIMEOUT_S'])
-    input_list_fn = os.environ['FM_CRASH_INPUT_LIST']
-    output_json_fn = os.environ['FM_CRASH_OUTPUT_JSON']
-
-    env = os.environ.copy()
-    env['ASAN_OPTIONS'] = 'symbolize=1:abort_on_error=1:disable_coredump=1:detect_leaks=0:handle_abort=1'
-    env['UBSAN_OPTIONS'] = 'print_stacktrace=1:halt_on_error=1'
-
-    output_json = Path(output_json_fn)
+    input_list = Path(os.environ['FM_CRASH_INPUT_LIST'])
+    output_json = Path(os.environ['FM_CRASH_OUTPUT_JSON'])
     output_json.parent.mkdir(parents=True, exist_ok=True)
-    crash_inputs = [
-        Path(line.strip())
-        for line in Path(input_list_fn).read_text(encoding='utf-8', errors='replace').splitlines()
-    ]
+
+    asan_bin = Path(f'/out/{target_name}')
+    env = _sanitizer_env()
+    crash_inputs = _read_crash_inputs(input_list)
 
     results = [
         _run_one(
-            asan_bin=Path(f'/out/{target_name}'),
+            asan_bin=asan_bin,
             crash_input=crash_input,
             input_mode=input_mode,
             timeout_s=timeout_s,
@@ -57,6 +51,20 @@ def main() -> None:
     ]
 
     output_json.write_text(json.dumps(results), encoding='utf-8')
+
+
+def _sanitizer_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env['ASAN_OPTIONS'] = 'symbolize=1:abort_on_error=1:disable_coredump=1:detect_leaks=0:handle_abort=1'
+    env['UBSAN_OPTIONS'] = 'print_stacktrace=1:halt_on_error=1'
+    return env
+
+
+def _read_crash_inputs(input_list: Path) -> list[Path]:
+    return [
+        Path(line.strip())
+        for line in input_list.read_text(encoding='utf-8', errors='replace').splitlines()
+    ]
 
 
 def _run_one(
@@ -79,6 +87,7 @@ def _run_one(
         result = subprocess.run(
             cmd,
             input=stdin_data,
+            check=False,
             text=True,
             encoding='utf-8',
             errors='replace',
