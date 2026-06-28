@@ -18,4 +18,4 @@ WORKDIR ${SRC}/quickjs
 COPY build.sh "${SRC}/"
 COPY benchmark.yaml /benchmark.yaml
 
-RUN sed -i -e '/qjs\\$(EXE) tests\\/test_worker.js/d' Makefile
+RUN sed -i -e '/qjs\$(EXE) tests\/test_worker.js/d' Makefile

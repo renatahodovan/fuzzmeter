@@ -8,7 +8,8 @@ cd /src/quickjs
 
 # Makefile should not override externally provided compiler flags.
 sed -i -e 's/CFLAGS=/CFLAGS+=/' Makefile
-sed -i -e 's/#define USE_WORKER/\\/\\/#define USE_WORKER/' quickjs-libc.c
+sed -i -e 's/#define USE_WORKER/\/\/#define USE_WORKER/' quickjs-libc.c
+sed -i -e 's/JS_SetModuleLoaderFunc(rt, NULL, js_module_loader, NULL);/JS_SetModuleLoaderFunc2(rt, NULL, js_module_loader, js_module_check_attributes, NULL);/' fuzz/fuzz_common.c
 CONFIG_CLANG=y make libquickjs.fuzz.a .obj/fuzz_common.o .obj/libregexp.fuzz.o .obj/cutils.fuzz.o .obj/libunicode.fuzz.o
 
 zip -r "${OUT}/fuzz_eval_seed_corpus.zip" /src/quickjs-corpus/js/*.js
