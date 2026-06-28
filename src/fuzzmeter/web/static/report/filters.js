@@ -16,9 +16,7 @@ import {
   FM_APP,
   byId,
   cleanFloats,
-  cliffsDelta,
   el,
-  mannWhitneyUPValue,
   rankdataDesc,
 } from './report-utils.js';
 import { filterExtraSections } from './extras.js';
@@ -177,29 +175,9 @@ export function enrichTargetForSelection(target) {
       fuzzer[`rank_${metric}_median`] = ranks[index];
     });
   });
-  const bestEntry = fuzzers.reduce((best, entry) => {
-    const value = entry.final?.regions_pct_median;
-    if (!Number.isFinite(Number(value))) return best;
-    if (!best) return entry;
-    return Number(value) > Number(best.final?.regions_pct_median) ? entry : best;
-  }, null);
-  const significance = [];
-  if (bestEntry) {
-    const bestDist = cleanFloats(bestEntry.distribution?.regions_pct || []);
-    fuzzers.forEach((entry) => {
-      if (entry.fuzzer === bestEntry.fuzzer) return;
-      significance.push({
-        vs: bestEntry.fuzzer,
-        fuzzer: entry.fuzzer,
-        p_value: mannWhitneyUPValue(bestDist, entry.distribution?.regions_pct || []),
-        cliffs_delta: cliffsDelta(bestDist, entry.distribution?.regions_pct || []),
-      });
-    });
-  }
   return {
     ...target,
     fuzzers,
-    significance_vs_best: significance,
   };
 }
 

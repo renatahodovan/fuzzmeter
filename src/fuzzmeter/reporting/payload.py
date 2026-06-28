@@ -16,7 +16,6 @@ from typing import Any
 
 from .analyzers.bug_analysis import BugAnalysis
 from .analyzers.coverage_analysis import CoverageAnalysis
-from .analyzers.summary_analysis import SummaryAnalysis
 from .analyzers.trial_analysis import TrialAnalysis
 from .data.coverage_data import CoverageData
 from .data.run_data import RunData
@@ -85,7 +84,6 @@ class _PayloadBuilder:
             final_output_dist_keys=FINAL_DIST_KEYS,
             curve_max_points=CURVE_MAX_POINTS,
         )
-        self._summary_analysis = SummaryAnalysis(cov_metrics=COV_METRICS)
         self._repo_root = Path(__file__).resolve().parents[3]
 
     def build(self) -> dict[str, Any]:
@@ -101,13 +99,8 @@ class _PayloadBuilder:
         bugs = self.collect_bugs()
         LOG.info('Collect target view')
         targets = self.collect_target_view(trials, timeseries, bugs)
-        LOG.info('Enrich target summary metrics')
-        targets = self._summary_analysis.enrich_targets(targets)
         LOG.info('Collect uniqueness matrices')
         targets = self.create_matrices(targets, trials)
-
-        LOG.info('Collect summary scores')
-        summary = self._summary_analysis.collect_summary_scores(targets)
 
         LOG.info('Collect extra sections')
         attach_extra_sections(
@@ -120,20 +113,12 @@ class _PayloadBuilder:
             bugs=bugs,
         )
 
-        fuzzers = sorted({trial['fuzzer'] for trial in trials if trial.get('fuzzer')})
-        benchmarks = sorted({target['benchmark'] for target in targets if target.get('benchmark')})
-        target_keys = [target['key'] for target in targets]
         return {
             'meta': {
                 'generated_at': dt(int(datetime.datetime.now(datetime.timezone.utc).timestamp())),
-                'run_dir': str(self.run_dir),
                 'run_id': self.run_id,
-                'schema_version': 9,
-                'mode': 'dynamic' if self.file_url_prefix else 'static',
             },
             'overview': overview,
-            'filters': {'fuzzers': fuzzers, 'benchmarks': benchmarks, 'targets': target_keys},
-            'summary': summary,
             'targets': targets,
             'trials': trials,
             'timeseries': timeseries,

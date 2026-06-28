@@ -13,7 +13,6 @@ import unittest
 
 from fuzzmeter.reporting.analyzers.bug_analysis import BugAnalysis
 from fuzzmeter.reporting.analyzers.coverage_analysis import CoverageAnalysis
-from fuzzmeter.reporting.analyzers.summary_analysis import SummaryAnalysis
 from fuzzmeter.reporting.analyzers.trial_analysis import TrialAnalysis
 from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.keys import SNAPSHOT_COVERAGE_FIELDS
@@ -184,62 +183,6 @@ class BugAnalysisBehaviorTest(unittest.TestCase):
     def test_integer_bug_median_matches_shared_metric_median_cases(self) -> None:
         for values in ([], [0], [0, 0], [1, 2, 3]):
             self.assertEqual(median(values), _bug_exclusive_median(values))
-
-
-class SummaryAnalysisTest(unittest.TestCase):
-    '''Verify target enrichment and campaign summary rankings.'''
-
-    def test_enrich_targets_ranks_fuzzers_and_compares_against_best(self) -> None:
-        target = {
-            'fuzzers': [
-                {'fuzzer': 'alpha', 'final': {'regions_pct_median': 80.0}, 'distribution': {'regions_pct': [80, 90]}},
-                {'fuzzer': 'beta', 'final': {'regions_pct_median': 40.0}, 'distribution': {'regions_pct': [30, 50]}},
-            ]
-        }
-
-        SummaryAnalysis(cov_metrics=('regions',)).enrich_targets([target])
-
-        self.assertEqual(1.0, target['fuzzers'][0]['rank_regions_median'])
-        self.assertEqual(2.0, target['fuzzers'][1]['rank_regions_median'])
-        self.assertEqual('alpha', target['significance_vs_best'][0]['vs'])
-        self.assertEqual('beta', target['significance_vs_best'][0]['fuzzer'])
-
-    def test_collect_summary_scores_sorts_by_coverage_score(self) -> None:
-        summary = SummaryAnalysis(cov_metrics=('regions',)).collect_summary_scores(
-            [
-                {
-                    'relcov_score_by_fuzzer': {'alpha': 2.0, 'beta': 1.0},
-                    'relbug_score_by_fuzzer': {'alpha': 0.0, 'beta': 1.0},
-                    'fuzzers': [
-                        {
-                            'fuzzer': 'alpha',
-                            'final': {
-                                'regions_pct_median': 80.0,
-                                'branches_cov_auc_median': 10.0,
-                                'accumulated_bug_count': 2,
-                                'execs_done_median': 100,
-                            },
-                            'exclusive_bugs': {'total': 1},
-                        },
-                        {
-                            'fuzzer': 'beta',
-                            'final': {
-                                'regions_pct_median': 40.0,
-                                'branches_cov_auc_median': 5.0,
-                                'accumulated_bug_count': 1,
-                                'execs_done_median': 50,
-                            },
-                            'exclusive_bugs': {'total': 0},
-                        },
-                    ],
-                }
-            ]
-        )
-
-        self.assertEqual(['alpha', 'beta'], [row['fuzzer'] for row in summary['rankings']])
-        self.assertEqual(100.0, summary['rankings'][0]['coverage_score'])
-        self.assertEqual(50.0, summary['rankings'][1]['coverage_score'])
-        self.assertEqual(100.0, summary['rankings'][0]['median_execs_done'])
 
 
 class CoverageAnalysisBehaviorTest(unittest.TestCase):

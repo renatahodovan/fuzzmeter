@@ -20,7 +20,7 @@ from typing import Any
 from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.reporting import build_payload, write_report
 
-PAYLOAD_HASH = '8f387b951dc50778e227d42da77765691d85fa2e1895f423f193fdc93bb3a753'
+PAYLOAD_HASH = 'cc536754c31ab11d9952eca8add9c0523afef2526b600908aa9e9e71101fa02b'
 
 
 class ReportingPayloadTest(unittest.TestCase):
@@ -195,7 +195,6 @@ def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(payload)
     normalized['meta'] = dict(payload['meta'])
     normalized['meta']['generated_at'] = '<generated>'
-    normalized['meta']['run_dir'] = '<run_dir>'
     return normalized
 
 

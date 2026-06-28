@@ -60,8 +60,7 @@ class ReportFrontendTest(unittest.TestCase):
             const enriched = enrichTargetForSelection(target);
             assert.equal(enriched.fuzzers[0].rank_regions_median, 1);
             assert.equal(enriched.fuzzers[1].rank_regions_median, 2);
-            assert.equal(enriched.significance_vs_best[0].vs, 'alpha');
-            assert.equal(enriched.significance_vs_best[0].fuzzer, 'beta');
+            assert.equal(enriched.significance_vs_best, undefined);
 
             const summary = computeSummary([enriched]);
             assert.deepEqual(summary.rankings, [

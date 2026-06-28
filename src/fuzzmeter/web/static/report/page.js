@@ -548,36 +548,6 @@ function createResourceTelemetryBlock(section) {
   return block;
 }
 
-function createSignificanceDetails(target) {
-  if (!(target.significance_vs_best || []).length) return null;
-  const details = el('details', 'details');
-  details.appendChild(el('summary', null, 'Sample statistics & significance (vs best fuzzer, Mann-Whitney U)'));
-  const tableHost = el('div');
-  renderDataTable(
-    tableHost,
-    [
-      { label: 'Fuzzer', key: 'fuzzer', kind: 'text', tooltip: 'Fuzzer being compared against the best fuzzer on this target.' },
-      { label: 'Compared to', key: 'vs', kind: 'text', tooltip: 'Best fuzzer on this target used as the reference sample.' },
-      { label: 'p-value', key: 'pValue', kind: 'text-num', tooltip: 'Mann-Whitney U p-value for the difference between the two samples.' },
-      { label: 'Cliff\'s δ', key: 'cliffsDelta', kind: 'text-num', tooltip: 'Cliff\'s delta effect size between the two samples.' },
-    ],
-    (target.significance_vs_best || []).map((row) => ({
-      fuzzer: row.fuzzer,
-      vs: row.vs,
-      pValue: row.p_value === null ? '—' : fmt(row.p_value, 4),
-      cliffsDelta: row.cliffs_delta === null ? '—' : fmt(row.cliffs_delta, 3),
-    })),
-  );
-  details.appendChild(tableHost);
-  details.appendChild(el(
-    'div',
-    'muted small',
-    'p-value: smaller means the observed difference is less likely to be random under the null hypothesis. ' +
-      'Cliff\'s δ: effect size in [-1, 1]; near 0 means little separation, near ±1 means strong separation.',
-  ));
-  return details;
-}
-
 function createExtraSectionDebugDetails(target) {
   const rows = target.extra_section_debug || [];
   if (!rows.length) return null;
