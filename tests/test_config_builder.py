@@ -68,6 +68,25 @@ targets:
 
         self.assertEqual([('v8', 'd8', 'file')], [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases])
 
+    def test_repository_spidermonkey_target_config_loads(self) -> None:
+        '''Verify that the repository SpiderMonkey target config loads as-is.'''
+        repo_root = Path(__file__).resolve().parents[1]
+
+        config = load_campaign_config(
+            repo_root,
+            '''
+fuzzers:
+  - blackbox
+targets:
+  - spidermonkey:js
+''',
+        )
+
+        self.assertEqual(
+            [('spidermonkey', 'js', 'file')],
+            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+        )
+
     def test_allowed_benchmarks_limits_fuzzer_targets(self) -> None:
         '''Verify that fuzzer-level benchmark allowlists filter campaign cases.'''
         with tempfile.TemporaryDirectory() as tmp_dir:
