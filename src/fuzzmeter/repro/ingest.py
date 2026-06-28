@@ -15,6 +15,7 @@ import shutil
 import sys
 import time
 
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
@@ -203,11 +204,9 @@ def _materialize_snapshot_file(src: Path, dst: Path) -> None:
     except OSError:
         pass
 
-    if _clone_file(src, dst):
-        os.chmod(dst, dst.stat().st_mode | 0o444)
-    else:
+    if not _clone_file(src, dst):
         shutil.copy2(src, dst)
-    os.chmod(dst, dst.stat().st_mode | 0o444)
+    dst.chmod(dst.stat().st_mode | 0o444)
 
 
 def _clone_file(src: Path, dst: Path) -> bool:
@@ -226,16 +225,13 @@ def _clone_file(src: Path, dst: Path) -> bool:
             import fcntl
 
             ficlone = 0x40049409
-            with src.open('rb') as src_handle:
-                with dst.open('wb') as dst_handle:
-                    fcntl.ioctl(dst_handle.fileno(), ficlone, src_handle.fileno())
+            with src.open('rb') as src_handle, dst.open('wb') as dst_handle:
+                fcntl.ioctl(dst_handle.fileno(), ficlone, src_handle.fileno())
             shutil.copystat(src, dst, follow_symlinks=True)
             return True
         except Exception:
-            try:
+            with suppress(OSError):
                 dst.unlink(missing_ok=True)
-            except OSError:
-                pass
             return False
 
     return False
