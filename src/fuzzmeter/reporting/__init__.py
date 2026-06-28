@@ -5,10 +5,11 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-'''Expose the reporting payload builder API.'''
+'''Expose the simplified reporting API.'''
 
 from __future__ import annotations
 
-from .api import build_payload
+from .export import write_report
+from .payload import build_payload
 
-__all__ = ['build_payload']
+__all__ = ['build_payload', 'write_report']

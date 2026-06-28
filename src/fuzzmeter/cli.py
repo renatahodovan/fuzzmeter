@@ -90,8 +90,6 @@ def main(argv: list[str] | None = None) -> int:
                            help='Run directory containing fuzzmeter.db')
     ap_report.add_argument('--out', dest='out_dir', type=Path, default=None,
                            help='Report output directory')
-    ap_report.add_argument('--templates', dest='template_dir', type=Path, default=None,
-                           help='Report template directory')
 
     ap_srv = sub.add_parser('serve', help='Run the dynamic DB-backed web UI')
     ap_srv.add_argument('--root', type=Path, default=Path('out'),
@@ -109,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == 'run':
         from .config import load_campaign_config
-        from .reporting.generate import generate_report
+        from .reporting import write_report
         from .run.runner import run_experiment
 
         config_path = args.config.expanduser().resolve()
@@ -145,17 +143,16 @@ def main(argv: list[str] | None = None) -> int:
             return 130
 
         logger.info('Experiment completed: %s', run_dir)
-        report_dir = generate_report(Path(run_dir))
+        report_dir = write_report(Path(run_dir))
         logger.info('Static report generated to: %s', report_dir)
         return 0
 
     if args.cmd == 'report':
-        from .reporting.generate import generate_report
+        from .reporting import write_report
 
         run_dir = args.run_dir.expanduser().resolve()
         out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
-        template_dir = args.template_dir.expanduser().resolve() if args.template_dir else None
-        report_dir = generate_report(run_dir, out_dir=out_dir, template_dir=template_dir)
+        report_dir = write_report(run_dir, out_dir=out_dir)
         logger.info('Static report generated to: %s', report_dir)
         return 0
 

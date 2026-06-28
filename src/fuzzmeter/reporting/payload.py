@@ -5,13 +5,11 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-'''Assemble and export the full fuzzmeter web report payload.'''
+'''Assemble the full fuzzmeter web report payload.'''
 
 from __future__ import annotations
 
-import argparse
 import datetime
-import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -20,7 +18,6 @@ from .analyzers.bug_analysis import BugAnalysis
 from .analyzers.coverage_analysis import CoverageAnalysis
 from .analyzers.summary_analysis import SummaryAnalysis
 from .analyzers.trial_analysis import TrialAnalysis
-from .assets import write_assets
 from .data.coverage_data import CoverageData
 from .data.run_data import RunData
 from .keys import COV_METRICS, FINAL_DIST_KEYS, SNAPSHOT_COVERAGE_FIELDS, TRIAL_METADATA_FIELDS
@@ -52,15 +49,15 @@ def format_duration(seconds: int | None) -> str | None:
     return ' '.join(parts)
 
 
-class ReportBuilder:
+class _PayloadBuilder:
     '''Build the report JSON payload from a fuzzmeter run database.'''
 
-    def __init__(self, run_dir: Path, *, run_id: str | None = None, url_prefix: str | None = None):
+    def __init__(self, run_dir: Path, *, run_id: str | None = None, file_url_prefix: str | None = None):
         self.run_dir = Path(run_dir).resolve()
         self.db_path = self.run_dir / 'fuzzmeter.db'
         if not self.db_path.exists():
             raise FileNotFoundError(f'Missing DB: {self.db_path}')
-        self.url_prefix = url_prefix
+        self.file_url_prefix = file_url_prefix
         self._run_data = RunData(self.db_path)
         loaded = self._run_data.load(run_dir_name=self.run_dir.name, run_id=run_id)
         self.run_id = loaded.run_id
@@ -132,7 +129,7 @@ class ReportBuilder:
                 'run_dir': str(self.run_dir),
                 'run_id': self.run_id,
                 'schema_version': 9,
-                'mode': 'dynamic' if self.url_prefix else 'static',
+                'mode': 'dynamic' if self.file_url_prefix else 'static',
             },
             'overview': overview,
             'filters': {'fuzzers': fuzzers, 'benchmarks': benchmarks, 'targets': target_keys},
@@ -187,8 +184,8 @@ class ReportBuilder:
         if not relpath:
             return None
         rel = str(relpath).replace('\\', '/')
-        if self.url_prefix:
-            return self.url_prefix.rstrip('/') + '/' + rel.lstrip('/')
+        if self.file_url_prefix:
+            return self.file_url_prefix.rstrip('/') + '/' + rel.lstrip('/')
         return '../' + rel
 
     def _agg_snapshot_for_fuzzer(self, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, Any]:
@@ -402,30 +399,16 @@ class ReportBuilder:
         )
 
 
-def generate_report(run_dir: Path, *, out_dir: Path | None = None, template_dir: Path | None = None) -> Path:
-    '''Generate a static report directory for a fuzzmeter run.'''
+def build_payload(
+    run_dir: Path,
+    *,
+    run_id: str | None = None,
+    file_url_prefix: str | None = None,
+) -> dict[str, Any]:
+    '''Build the JSON payload consumed by the web report.'''
 
-    run_dir = Path(run_dir).resolve()
-    report_dir = (out_dir or (run_dir / 'report')).resolve()
-    payload = ReportBuilder(run_dir).build()
-    report_dir.mkdir(parents=True, exist_ok=True)
-    (report_dir / 'data.json').write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding='utf-8')
-    write_assets(report_dir, template_dir, payload)
-    return report_dir
-
-
-def main() -> int:
-    '''Run the report generator command line interface.'''
-
-    parser = argparse.ArgumentParser(description='Generate static fuzzmeter HTML report')
-    parser.add_argument('run_dir', type=Path)
-    parser.add_argument('--out', dest='out_dir', type=Path, default=None)
-    parser.add_argument('--templates', dest='template_dir', type=Path, default=None)
-    args = parser.parse_args()
-    report_dir = generate_report(args.run_dir, out_dir=args.out_dir, template_dir=args.template_dir)
-    LOG.info('Report written to %s', report_dir)
-    return 0
-
-
-if __name__ == '__main__':
-    raise SystemExit(main())
+    return _PayloadBuilder(
+        run_dir,
+        run_id=run_id,
+        file_url_prefix=file_url_prefix,
+    ).build()

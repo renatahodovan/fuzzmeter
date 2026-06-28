@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from fuzzmeter.db import DB, ensure_schema
-from fuzzmeter.reporting.generate import ReportBuilder, generate_report
+from fuzzmeter.reporting import build_payload, write_report
 
 PAYLOAD_HASH = '8f387b951dc50778e227d42da77765691d85fa2e1895f423f193fdc93bb3a753'
 
@@ -31,17 +31,17 @@ class ReportingPayloadTest(unittest.TestCase):
             run_dir = Path(tmp)
             _build_run_fixture(run_dir)
 
-            payload = ReportBuilder(run_dir, run_id='run').build()
+            payload = build_payload(run_dir, run_id='run')
 
         normalized = _normalize_payload(payload)
         self.assertEqual(PAYLOAD_HASH, _payload_hash(normalized))
 
-    def test_generate_report_writes_static_payload_and_assets(self) -> None:
+    def test_write_report_writes_static_payload_and_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
             _build_run_fixture(run_dir)
 
-            report_dir = generate_report(run_dir, out_dir=run_dir / 'report')
+            report_dir = write_report(run_dir, out_dir=run_dir / 'report')
 
             self.assertEqual((run_dir / 'report').resolve(), report_dir)
             self.assertTrue((report_dir / 'data.json').is_file())

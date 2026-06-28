@@ -15,7 +15,7 @@ from fuzzmeter.reporting.analyzers.bug_analysis import BugAnalysis
 from fuzzmeter.reporting.analyzers.coverage_analysis import CoverageAnalysis
 from fuzzmeter.reporting.analyzers.summary_analysis import SummaryAnalysis
 from fuzzmeter.reporting.analyzers.trial_analysis import TrialAnalysis
-from fuzzmeter.reporting.generate import ReportBuilder
+from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.keys import SNAPSHOT_COVERAGE_FIELDS
 from fuzzmeter.reporting.metrics import median
 
@@ -341,7 +341,7 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         self.assertEqual('bug', fuzzer['bugs'][0]['bug_key'])
 
     def test_create_matrices_attaches_coverage_then_bug_stats_to_shared_target(self) -> None:
-        builder = ReportBuilder.__new__(ReportBuilder)
+        builder = _PayloadBuilder.__new__(_PayloadBuilder)
         builder._coverage_analysis = CoverageAnalysis(
             cov_metrics=('branches',),
             final_output_dist_keys=('branches_cov',),

@@ -19,7 +19,7 @@ from pathlib import Path
 from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.db.snapshot import upsert_agg_snapshot, update_agg_snapshot_coverage
 from fuzzmeter.reporting.analyzers.coverage_analysis import CoverageAnalysis
-from fuzzmeter.reporting.generate import ReportBuilder
+from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.metrics import (
     cliffs_delta,
     clean_floats,
@@ -245,7 +245,7 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertAlmostEqual(0.0, a12['matrix'][1][0])
 
     def test_overview_elapsed_uses_trial_time_not_snapshot_wall_time(self) -> None:
-        builder = ReportBuilder.__new__(ReportBuilder)
+        builder = _PayloadBuilder.__new__(_PayloadBuilder)
         builder._overview_raw = {'created_ts': 50}
         builder._trial_rows = [
             {'started_ts': 100, 'ended_ts': 450, 'time_seconds': 300},
@@ -319,13 +319,13 @@ class CoverageReportingTest(unittest.TestCase):
             finally:
                 db.close()
 
-            payload = ReportBuilder(run_dir, run_id='run').build()
+            payload = _PayloadBuilder(run_dir, run_id='run').build()
             fuzzer = payload['targets'][0]['fuzzers'][0]
             self.assertEqual('../coverage/fz/bench/target/campaign/html/index.html', fuzzer['coverage_report'])
             self.assertEqual(1, fuzzer['aggregate']['branches_covered'])
 
     def test_single_fuzzer_report_skips_pairwise_matrices(self) -> None:
-        builder = ReportBuilder.__new__(ReportBuilder)
+        builder = _PayloadBuilder.__new__(_PayloadBuilder)
         target = {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzers': [{'fuzzer': 'fz'}]}
 
         result = builder.create_matrices([target], [])

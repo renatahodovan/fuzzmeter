@@ -10,9 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ...reporting import build_payload, write_report
 from .file_service import FileService
-from ...reporting.api import build_payload
-from ...reporting.generate import generate_report
 
 
 class WebReportService:
@@ -22,7 +21,7 @@ class WebReportService:
         run_dir = FileService.resolve_run_dir(runs_root, run_id)
         if not run_dir.is_dir():
             raise FileNotFoundError(str(run_dir))
-        return build_payload(run_dir, run_id=run_id, url_prefix=f"/file/{run_id}/")
+        return build_payload(run_dir, run_id=run_id, file_url_prefix=f"/file/{run_id}/")
 
     @staticmethod
     def export_report(runs_root: Path, run_id: str) -> Path:
@@ -30,4 +29,4 @@ class WebReportService:
         if not run_dir.is_dir():
             raise FileNotFoundError(str(run_dir))
         out_dir = run_dir / "report"
-        return generate_report(run_dir, out_dir=out_dir, template_dir=None)
+        return write_report(run_dir, out_dir=out_dir)
