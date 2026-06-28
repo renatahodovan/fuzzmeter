@@ -56,11 +56,11 @@ def process_snapshot_crashes(
                 trial=snapshot.trial,
                 snapshot_id=snapshot.snapshot_id,
                 snapshot_crashes_dir=snapshot.snapshot_dir / 'crashes',
-                crash_files=crash_files,
+                crash_tests=crash_tests,
                 batch_index=batch_index,
                 repro_logs_dir=run_dir / 'repro_logs',
             )
-            for snapshot, batch_index, crash_files in crash_batches
+            for snapshot, batch_index, crash_tests in crash_batches
         ],
         progress_step=progress.step_crashes if progress is not None else None,
     )
