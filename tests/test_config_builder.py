@@ -20,6 +20,22 @@ from fuzzmeter.config import load_campaign_config
 class ConfigBuilderTest(unittest.TestCase):
     '''Verify campaign config expansion rules.'''
 
+    def test_repository_quickjs_target_config_loads(self) -> None:
+        '''Verify that the repository QuickJS target config loads as-is.'''
+        repo_root = Path(__file__).resolve().parents[1]
+
+        config = load_campaign_config(
+            repo_root,
+            '''
+fuzzers:
+  - libfuzzer
+targets:
+  - quickjs:fuzz_eval
+''',
+        )
+
+        self.assertEqual([('quickjs', 'fuzz_eval', 'in_process')], [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases])
+
     def test_allowed_benchmarks_limits_fuzzer_targets(self) -> None:
         '''Verify that fuzzer-level benchmark allowlists filter campaign cases.'''
         with tempfile.TemporaryDirectory() as tmp_dir:
