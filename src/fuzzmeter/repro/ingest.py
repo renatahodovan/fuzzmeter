@@ -89,6 +89,31 @@ def prepare_snapshot_inputs(
     if not input_files:
         return []
 
+    copied = _copy_snapshot_inputs(input_dir=input_dir, input_files=input_files)
+    if snapshot_preprocess is None:
+        return copied
+
+    HookRunner(docker_runtime=docker_runtime).run(
+        HookSpec(
+            name='snapshot_preprocess',
+            script=snapshot_preprocess,
+            env=_snapshot_preprocess_env(
+                snapshot_dir=snapshot_dir,
+                input_dir=input_dir,
+                benchmark=benchmark,
+                fuzz_target=fuzz_target,
+                fuzzer=fuzzer,
+                runner_image=runner_image,
+                repo_root=repo_root,
+                jobs=jobs,
+            ),
+            cwd=snapshot_dir,
+        )
+    )
+    return [path for path in input_dir.rglob('*') if path.is_file()]
+
+
+def _copy_snapshot_inputs(*, input_dir: Path, input_files: list[DetectedFile]) -> list[Path]:
     input_dir.mkdir(parents=True, exist_ok=True)
     copied = []
     for input_file in input_files:
@@ -100,27 +125,30 @@ def prepare_snapshot_inputs(
         except OSError:
             continue
 
-    if snapshot_preprocess is None:
-        return copied
+    return copied
 
-    HookRunner(docker_runtime=docker_runtime).run(
-        HookSpec(
-            name='snapshot_preprocess',
-            script=snapshot_preprocess,
-            env={
-                'FM_SNAPSHOT_DIR': str(snapshot_dir),
-                'FM_SNAPSHOT_INPUT_DIR': str(input_dir),
-                'FM_BENCHMARK': benchmark,
-                'FM_FUZZ_TARGET': fuzz_target,
-                'FM_FUZZER': fuzzer,
-                'FM_RUNNER_IMAGE': runner_image,
-                'FM_REPO_ROOT': str(repo_root),
-                'FM_JOBS': str(max(1, int(jobs or 1))),
-            },
-            cwd=snapshot_dir,
-        )
-    )
-    return [path for path in input_dir.rglob('*') if path.is_file()]
+
+def _snapshot_preprocess_env(
+    *,
+    snapshot_dir: Path,
+    input_dir: Path,
+    benchmark: str,
+    fuzz_target: str,
+    fuzzer: str,
+    runner_image: str,
+    repo_root: Path,
+    jobs: int | None,
+) -> dict[str, str]:
+    return {
+        'FM_SNAPSHOT_DIR': str(snapshot_dir),
+        'FM_SNAPSHOT_INPUT_DIR': str(input_dir),
+        'FM_BENCHMARK': benchmark,
+        'FM_FUZZ_TARGET': fuzz_target,
+        'FM_FUZZER': fuzzer,
+        'FM_RUNNER_IMAGE': runner_image,
+        'FM_REPO_ROOT': str(repo_root),
+        'FM_JOBS': str(max(1, int(jobs or 1))),
+    }
 
 
 def iter_visible_files_in_time_range(
