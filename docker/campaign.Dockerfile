@@ -80,10 +80,7 @@ RUN --mount=type=cache,target=/root/.cache \
     fi; \
     if [ ! -s /benchmark.yaml ]; then \
       printf "project: %s\n" "${BENCHMARK}" > /benchmark.yaml; \
-      printf "fuzz_target: %s\n" "${TARGET_NAME}" >> /benchmark.yaml; \
-      printf "target: %s:%s\n" "${BENCHMARK}" "${TARGET_NAME}" >> /benchmark.yaml; \
     fi; \
-    printf "\nfuzz_target: %s\ntarget: %s:%s\n" "${TARGET_NAME}" "${BENCHMARK}" "${TARGET_NAME}" >> /benchmark.yaml; \
     PYTHONPATH=/opt/fuzzmeter python3 /opt/fuzzmeter/campaign_build.py; \
     test -f "/out/${TARGET_NAME}"; \
     if [ "${FUZZER}" = "grammarinator" ] || [ "${FUZZER}" = "afl_grammarinator" ] || [ "${FUZZER}" = "libfuzzer_grammarinator" ]; then \

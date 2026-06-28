@@ -160,7 +160,8 @@ The most important campaign are:
        with ``fuzzer`` and ``parent``.
    * - ``targets``
      - Target specifications in ``project:fuzz_target`` form. The project
-       loads ``targets/<project>/benchmark.yaml``.
+       loads ``targets/<project>/benchmark.yaml``. A single benchmark file can
+       define more than one ``fuzz_target`` entry.
    * - ``run.time_seconds``
      - Fuzzing duration of each trial (i.e., one repetition of a fuzzer-target
        pair).
@@ -187,7 +188,23 @@ that change::
 
 Target configuration can also influence fuzzer configuration. For example, a target
 can tell a grammar-based fuzzer which grammar rule or grammar file should be
-used for that target.
+used for that target. Benchmark files can use either the legacy single-target
+schema or the newer multi-target schema::
+
+    project: jerryscript
+    fuzz_targets:
+      jerry:
+        input_mode: in_process
+        timeout_s: 1
+        fuzzers:
+          grammarinator:
+            build:
+              env:
+                GRAMMARINATOR_RULE: program
+
+Campaign files still refer to targets as ``project:fuzz_target``. Legacy
+benchmark files with root-level ``fuzz_target`` remain supported as an
+interim compatibility format.
 
 
 Basic Workflow

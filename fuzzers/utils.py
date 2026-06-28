@@ -28,8 +28,11 @@ DEFAULT_OPTIMIZATION_LEVEL = '-O3'
 LIBCPLUSPLUS_FLAG = ''
 
 NO_SANITIZER_COMPAT_CFLAGS = [
-    '-pthread', '-Wl,--no-as-needed', '-Wl,-ldl', '-Wl,-lm',
-    '-Wno-unused-command-line-argument'
+    '-pthread',
+    '-Wl,--no-as-needed',
+    '-Wl,-ldl',
+    '-Wl,-lm',
+    '-Wno-unused-command-line-argument',
 ]
 
 FUZZING_CFLAGS = ['-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION']
@@ -158,10 +161,56 @@ def get_benchmark_config():
     return _load_yaml_file(Path(BENCHMARK_CONFIG_PATH))
 
 
+def get_active_target_name(env=None):
+    """Return the active target name from the environment.
+
+    TARGET_NAME is the canonical runtime variable. FM_TARGET_NAME is kept as a
+    fallback for worker-style entrypoints that only export the FM_ variant.
+    """
+    if env is None:
+        env = os.environ
+    return (env.get('TARGET_NAME') or env.get('FM_TARGET_NAME') or '').strip()
+
+
+def get_active_target_config(env=None):
+    """Return the active target config from the benchmark YAML."""
+    if env is None:
+        env = os.environ
+
+    data = get_benchmark_config()
+    legacy_fuzz_target = str(data.get('fuzz_target') or '').strip()
+    multi_target_data = data.get('fuzz_targets')
+
+    has_legacy_target = bool(legacy_fuzz_target)
+    has_multi_target = multi_target_data is not None
+    if has_legacy_target and has_multi_target:
+        raise ValueError('benchmark.yaml must define exactly one of fuzz_target or fuzz_targets')
+    if not has_legacy_target and not has_multi_target:
+        raise ValueError('benchmark.yaml must define fuzz_target or fuzz_targets')
+
+    if has_multi_target:
+        if not isinstance(multi_target_data, dict) or not multi_target_data:
+            raise ValueError('benchmark.yaml fuzz_targets must be a non-empty mapping')
+        if data.get('fuzzers') is not None:
+            raise ValueError('benchmark.yaml with fuzz_targets must not define root-level fuzzers')
+
+        active_target = get_active_target_name(env)
+        if not active_target:
+            raise RuntimeError('TARGET_NAME must be set when benchmark.yaml uses fuzz_targets')
+        target_data = multi_target_data.get(active_target)
+        if target_data is None:
+            raise ValueError(f'benchmark.yaml does not define target {active_target!r}')
+        if not isinstance(target_data, dict):
+            raise TypeError(f'benchmark.yaml fuzz_targets.{active_target} must be a mapping')
+        return {'name': active_target, 'config': target_data}
+
+    return {'name': legacy_fuzz_target, 'config': data}
+
+
 def get_benchmark_fuzzer_config(base_fuzzer=None):
     base_fuzzer = _base_fuzzer_name(base_fuzzer)
-    data = get_benchmark_config()
-    fuzzers = data.get('fuzzers') or {}
+    target_config = get_active_target_config()['config']
+    fuzzers = target_config.get('fuzzers') or {}
     if isinstance(fuzzers, dict):
         cfg = fuzzers.get(base_fuzzer) or {}
         if cfg:
@@ -323,7 +372,7 @@ def set_fuzz_target(env=None):
     if env is None:
         env = os.environ
 
-    env['FUZZ_TARGET'] = str(get_benchmark_config().get('fuzz_target') or '')
+    env['FUZZ_TARGET'] = get_active_target_name(env)
 
 
 def set_compilation_flags(env=None):
@@ -379,4 +428,3 @@ def create_seed_file_for_empty_corpus(input_corpus):
     default_seed_file = os.path.join(input_corpus, 'default_seed')
     with open(default_seed_file, 'w', encoding='utf-8') as file_handle:
         file_handle.write('hi')
-        

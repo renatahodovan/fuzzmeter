@@ -5,7 +5,7 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-'''Build campaign configuration objects from YAML config files.'''
+"""Build campaign configuration objects from YAML config files."""
 
 from __future__ import annotations
 
@@ -62,19 +62,49 @@ def _load_target_config(path: Path, requested_fuzz_target: str) -> dict[str, Any
     data = _load_yaml(path)
 
     benchmark = str(data.get('project') or '').strip()
-    fuzz_target = str(data.get('fuzz_target') or '').strip()
+    legacy_fuzz_target = str(data.get('fuzz_target') or '').strip()
+    multi_target_data = data.get('fuzz_targets')
+
+    has_legacy_target = bool(legacy_fuzz_target)
+    has_multi_target = multi_target_data is not None
+    if has_legacy_target and has_multi_target:
+        raise ValueError(f'Benchmark config must define exactly one of fuzz_target or fuzz_targets: {path}')
+    if not has_legacy_target and not has_multi_target:
+        raise ValueError(f'Benchmark config must define fuzz_target or fuzz_targets: {path}')
+
+    if has_multi_target:
+        if not isinstance(multi_target_data, dict) or not multi_target_data:
+            raise ValueError(f'Benchmark config fuzz_targets must be a non-empty mapping: {path}')
+        if data.get('fuzzers') is not None:
+            raise ValueError(f'Benchmark config with fuzz_targets must not define root-level fuzzers: {path}')
+        target_data = multi_target_data.get(requested_fuzz_target)
+        if target_data is None:
+            raise ValueError(
+                f'The requested fuzz target {requested_fuzz_target!r} is not defined in the {benchmark!r} benchmark.'
+            )
+        if not isinstance(target_data, dict):
+            raise ValueError(f'Benchmark config fuzz_targets.{requested_fuzz_target} must be a mapping: {path}')
+        fuzz_target = requested_fuzz_target
+    else:
+        fuzz_target = legacy_fuzz_target
+        _validate_benchmark_and_target(benchmark, fuzz_target)
+        if fuzz_target != requested_fuzz_target:
+            raise ValueError(
+                f'The requested fuzz target {requested_fuzz_target!r} is not defined in the {benchmark!r} benchmark.'
+            )
+        target_data = data
+
     _validate_benchmark_and_target(benchmark, fuzz_target)
 
-    if fuzz_target != requested_fuzz_target:
-        raise ValueError(f'The requested fuzz target {fuzz_target!r} is not defined in the {benchmark!r} benchmark.')
-
-    input_mode = str(data.get('input_mode') or '')
+    input_mode = str(target_data.get('input_mode') or '')
     if input_mode not in INPUT_MODE_OPTIONS:
-        raise ValueError(f'Target config\' input_mode must be one of {INPUT_MODE_OPTIONS} but got {input_mode}.')
+        raise ValueError(f"Target config' input_mode must be one of {INPUT_MODE_OPTIONS} but got {input_mode}.")
 
-    timeout_s = data.get('timeout_s')
+    timeout_s = target_data.get('timeout_s')
     if timeout_s is None:
-        LOG.debug(f'No target timeout was specified for {benchmark}:{fuzz_target}; using {CampaignCase.target_timeout_s} as default.')
+        LOG.debug(
+            f'No target timeout was specified for {benchmark}:{fuzz_target}; using {CampaignCase.target_timeout_s} as default.'
+        )
         timeout_s = CampaignCase.target_timeout_s
     timeout_s = float(timeout_s)
     if timeout_s <= 0:
@@ -87,7 +117,7 @@ def _load_target_config(path: Path, requested_fuzz_target: str) -> dict[str, Any
         'timeout_s': timeout_s,
         'target_id': f'{benchmark}-{fuzz_target}',
         'config_path': str(path),
-        'fuzzers': data.get('fuzzers'),
+        'fuzzers': target_data.get('fuzzers'),
     }
 
 
@@ -99,16 +129,27 @@ def _normalized_int_value(name: str, value: str, min_value: int, max_value: int 
         raise ValueError(f'{name!r} value must be less than {max_value}.')
     return int_value
 
+
 def _load_campaign_settings(data: dict[str, Any]) -> CampaignSettings:
     run_data = data.get('run') or {}
     snap_data = run_data.get('snapshot') or {}
     return CampaignSettings(
-        time_seconds=_normalized_int_value('time_seconds', run_data.get('time_seconds', CampaignSettings.time_seconds), 60),
+        time_seconds=_normalized_int_value(
+            'time_seconds', run_data.get('time_seconds', CampaignSettings.time_seconds), 60
+        ),
         repetitions=_normalized_int_value('repetitions', run_data.get('repetitions', CampaignSettings.repetitions), 1),
-        parallel_jobs=_normalized_int_value('parallel_jobs', run_data.get('parallel_jobs', CampaignSettings.parallel_jobs), 1),
+        parallel_jobs=_normalized_int_value(
+            'parallel_jobs', run_data.get('parallel_jobs', CampaignSettings.parallel_jobs), 1
+        ),
         snapshot_jobs=_normalized_int_value('snapshot.jobs', snap_data.get('jobs', CampaignSettings.snapshot_jobs), 0),
-        snapshot_every_seconds=_normalized_int_value('snapshot.every_seconds', snap_data.get('every_seconds', CampaignSettings.snapshot_every_seconds), 60),
-        snapshot_export_every_ticks=_normalized_int_value('snapshot.export_every_ticks', snap_data.get('export_every_ticks', CampaignSettings.snapshot_export_every_ticks), 1),
+        snapshot_every_seconds=_normalized_int_value(
+            'snapshot.every_seconds', snap_data.get('every_seconds', CampaignSettings.snapshot_every_seconds), 60
+        ),
+        snapshot_export_every_ticks=_normalized_int_value(
+            'snapshot.export_every_ticks',
+            snap_data.get('export_every_ticks', CampaignSettings.snapshot_export_every_ticks),
+            1,
+        ),
         memory=run_data.get('memory', '') or None,
         memory_swap=run_data.get('memory_swap', '') or None,
     )
@@ -200,7 +241,7 @@ def _load_target_configs(data: dict[str, Any], source_root: Path) -> dict[str, d
     targets: dict[str, dict[str, Any]] = {}
     for target_spec in data.get('targets', []):
         if ':' not in target_spec:
-            raise ValueError(f'Unexpected target spec format: {target_spec!r} (missing \':\')')
+            raise ValueError(f"Unexpected target spec format: {target_spec!r} (missing ':')")
         benchmark, fuzz_target = target_spec.split(':', 1)
         benchmark, fuzz_target = benchmark.strip(), fuzz_target.strip()
         _validate_benchmark_and_target(benchmark, fuzz_target)
@@ -276,7 +317,7 @@ def _fuzzer_allows_target(fuzzer_configs: list[dict[str, Any]], target_config: d
 
 
 def load_campaign_config(source_root: Path, text: str) -> CampaignConfig:
-    '''Load a campaign configuration from YAML text.'''
+    """Load a campaign configuration from YAML text."""
     data = yaml.safe_load(text) or {}
     if not isinstance(data, dict):
         raise TypeError('Top-level config must be a mapping')
