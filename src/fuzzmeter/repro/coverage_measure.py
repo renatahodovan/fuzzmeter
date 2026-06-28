@@ -49,18 +49,18 @@ def build_coverage_replay_batches(
     timeout_s: float,
 ) -> tuple[list[Path], list[CoverageBatch]]:
     '''Create host-side coverage replay batches for one input set.'''
-
     if not inputs:
         return [], []
 
+    batch_root = state_dir / f'_batches_{batch_tag}'
+    diagnostics_root = state_dir / f'_batch_diag_{batch_tag}'
     input_batches = [
         inputs[index:index + DEFAULT_COVERAGE_BATCH_SIZE]
         for index in range(0, len(inputs), DEFAULT_COVERAGE_BATCH_SIZE)
     ]
-    batch_root = state_dir / f'_batches_{batch_tag}'
     batch_root.mkdir(parents=True, exist_ok=True)
-    diagnostics_root = state_dir / f'_batch_diag_{batch_tag}'
     batch_profdata_paths = [batch_root / f'batch_{index:06d}.profdata' for index in range(len(input_batches))]
+
     return batch_profdata_paths, [
         CoverageBatch(
             image=image,
@@ -119,11 +119,11 @@ def replay_coverage_batch(
     if not inputs:
         return
 
-    docker = DockerClient(docker_runtime)
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
     batch_profdata_path.parent.mkdir(parents=True, exist_ok=True)
     batch_profdata_path.unlink(missing_ok=True)
 
+    docker = DockerClient(docker_runtime)
     input_list_path = diagnostics_dir / 'inputs.txt'
     input_list_path.write_text(
         '\n'.join(docker.container_path(path) for path in inputs) + '\n',
@@ -175,14 +175,7 @@ def merge_coverage_outputs(
     docker = DockerClient(docker_runtime)
     state_dir.mkdir(parents=True, exist_ok=True)
     profdata_path = state_dir / 'merged.profdata'
-    existing_profiles: list[Path] = []
-    if profdata_path.is_file() and profdata_path.stat().st_size > 64:
-        existing_profiles.append(profdata_path)
-
-    merge_profiles = [
-        *existing_profiles,
-        *[path for path in profile_inputs if path.is_file() and path.stat().st_size > 64],
-    ]
+    merge_profiles = _usable_profiles([profdata_path, *profile_inputs])
 
     src_root = run_dir / 'coverage_src' / f'{benchmark}/{fuzz_target}'
     tmp_root = out_root.parent / f'.{out_root.name}.tmp'
@@ -226,6 +219,10 @@ def merge_coverage_outputs(
     return load_coverage_summary(out_root / 'summary.json')
 
 
+def _usable_profiles(paths: list[Path]) -> list[Path]:
+    return [path for path in paths if path.is_file() and path.stat().st_size > 64]
+
+
 def _preserve_previous_artifacts(*, out_root: Path, tmp_root: Path, names: tuple[str, ...]) -> None:
     for name in names:
         src = out_root / name
@@ -240,31 +237,31 @@ def _preserve_previous_artifacts(*, out_root: Path, tmp_root: Path, names: tuple
 
 
 def _replace_out_root(*, out_root: Path, tmp_root: Path, protected_dir: Path | None = None) -> None:
-    saved_state = None
-    final_state = None
+    saved_protected_dir = None
+    final_protected_dir = None
     if protected_dir is not None:
         try:
             protected_dir = protected_dir.resolve()
             out_root_resolved = out_root.resolve()
             protected_dir.relative_to(out_root_resolved)
-            final_state = protected_dir
-            saved_state = out_root_resolved.parent / f'.{out_root_resolved.name}.{protected_dir.name}.preserved'
-            shutil.rmtree(saved_state, ignore_errors=True)
+            final_protected_dir = protected_dir
+            saved_protected_dir = out_root_resolved.parent / f'.{out_root_resolved.name}.{protected_dir.name}.preserved'
+            shutil.rmtree(saved_protected_dir, ignore_errors=True)
             if protected_dir.exists():
-                protected_dir.rename(saved_state)
+                protected_dir.rename(saved_protected_dir)
         except Exception:
             LOG.debug('Could not preserve protected dir %s under %s', protected_dir, out_root)
-            saved_state = None
-            final_state = None
+            saved_protected_dir = None
+            final_protected_dir = None
 
     if out_root.exists():
         shutil.rmtree(out_root, ignore_errors=True)
     _promote_dir(tmp_root, out_root)
 
-    if saved_state is not None and final_state is not None:
-        final_state.parent.mkdir(parents=True, exist_ok=True)
-        shutil.rmtree(final_state, ignore_errors=True)
-        saved_state.rename(final_state)
+    if saved_protected_dir is not None and final_protected_dir is not None:
+        final_protected_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(final_protected_dir, ignore_errors=True)
+        saved_protected_dir.rename(final_protected_dir)
 
 
 def _promote_dir(src: Path, dst: Path) -> None:
