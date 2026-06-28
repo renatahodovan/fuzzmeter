@@ -9,11 +9,15 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Any, Sequence
 
+from .fuzzer_chain import (
+    dedupe,
+    load_fuzzer_plugin_candidates,
+    plugin_candidates_for,
+)
 from .metrics import safe_int
 from .plugin_api import ExtraSection, ReportingContext
 from .plugins.loader import ReportingPluginLoader
@@ -36,7 +40,7 @@ def attach_extra_sections(
 
     repo_root = Path(repo_root)
     loader = ReportingPluginLoader(repo_root)
-    fuzzer_candidates_by_name, fuzzer_base_by_name = _load_fuzzer_plugin_candidates(run_dir, repo_root)
+    fuzzer_candidates_by_name, fuzzer_base_by_name = load_fuzzer_plugin_candidates(run_dir, repo_root)
     trial_snapshot_index = _build_trial_snapshot_index(run_dir)
     trials_by_target_fuzzer = _group_by_target_fuzzer(trials)
     bugs_by_target_fuzzer = _group_by_target_fuzzer(bugs)
@@ -50,7 +54,7 @@ def attach_extra_sections(
             fuzzer = str(fuzzer_entry.get('fuzzer') or '')
             if not fuzzer:
                 continue
-            plugin_candidates = _plugin_candidates_for(fuzzer, repo_root, fuzzer_candidates_by_name)
+            plugin_candidates = plugin_candidates_for(fuzzer, repo_root, fuzzer_candidates_by_name)
             plugin, matched_plugin_name = loader.load_first(plugin_candidates)
             reps = trials_by_target_fuzzer.get((benchmark, fuzz_target, fuzzer), [])
             ctx = _build_reporting_context(
@@ -206,7 +210,7 @@ def _trial_snapshot_dirs(
     target_id = f'{benchmark}-{fuzz_target}'.replace('/', '_')
     if not fuzzer or rep is None:
         return []
-    for candidate in _dedupe([fuzzer, base_name, *plugin_candidates]):
+    for candidate in dedupe([fuzzer, base_name, *plugin_candidates]):
         snapshots = trial_snapshot_index.get((candidate, target_id, rep))
         if snapshots:
             return list(snapshots)
@@ -236,75 +240,6 @@ def _build_trial_snapshot_index(run_dir: Path) -> dict[tuple[str, str, int], lis
     return out
 
 
-def _load_fuzzer_plugin_candidates(run_dir: Path, repo_root: Path) -> tuple[dict[str, list[str]], dict[str, str]]:
-    path = Path(run_dir) / 'benchmark_config.json'
-    if not path.is_file():
-        return {}, {}
-    try:
-        data = json.loads(path.read_text(encoding='utf-8'))
-    except Exception:
-        return {}, {}
-    if not isinstance(data, list):
-        return {}, {}
-
-    candidates_by_name: dict[str, list[str]] = {}
-    base_by_name: dict[str, str] = {}
-    for entry in data:
-        if not isinstance(entry, dict):
-            continue
-        fuzzer_name = str(entry.get('fuzzer_name') or '').strip()
-        if not fuzzer_name:
-            continue
-        fuzzer_base = str(entry.get('fuzzer_base') or '').strip()
-        if fuzzer_base:
-            base_by_name[fuzzer_name] = fuzzer_base
-        chain = [str(name).strip() for name in entry.get('fuzzer_chain') or [] if str(name).strip()]
-        candidates_by_name[fuzzer_name] = _expand_reporting_candidates(repo_root, chain or [fuzzer_name, fuzzer_base])
-    return candidates_by_name, base_by_name
-
-
-def _plugin_candidates_for(fuzzer: str, repo_root: Path, candidates_by_name: dict[str, list[str]]) -> list[str]:
-    return candidates_by_name.get(fuzzer) or _expand_reporting_candidates(repo_root, [fuzzer])
-
-
-def _expand_reporting_candidates(repo_root: Path, names: Sequence[str | None]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for name in names:
-        _add_reporting_candidate(repo_root, name, out, seen)
-    return out
-
-
-def _add_reporting_candidate(repo_root: Path, name: str | None, out: list[str], seen: set[str]) -> None:
-    normalized = str(name or '').strip()
-    if not normalized or normalized in seen:
-        return
-    seen.add(normalized)
-    out.append(normalized)
-    config = _load_fuzzer_yaml(repo_root, normalized)
-    _add_reporting_candidate(repo_root, config.get('reporting_parent'), out, seen)
-    _add_reporting_candidate(repo_root, config.get('parent'), out, seen)
-
-
-def _load_fuzzer_yaml(repo_root: Path, fuzzer: str) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    root = Path(repo_root) / 'fuzzers' / fuzzer
-    for path in (root / 'build' / 'build.yaml', root / 'run' / 'run.yaml'):
-        if not path.is_file():
-            continue
-        for line in path.read_text(encoding='utf-8').splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith('#') or ':' not in stripped:
-                continue
-            if line[:1].isspace():
-                continue
-            key, value = stripped.split(':', 1)
-            key = key.strip()
-            if key in {'parent', 'reporting_parent'}:
-                out[key] = value.strip()
-    return out
-
-
 def _group_by_target_fuzzer(rows: Sequence[dict[str, Any]]) -> dict[tuple[str, str, str], list[dict[str, Any]]]:
     grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for row in rows:
@@ -315,12 +250,3 @@ def _group_by_target_fuzzer(rows: Sequence[dict[str, Any]]) -> dict[tuple[str, s
         )
         grouped.setdefault(key, []).append(row)
     return grouped
-
-
-def _dedupe(values: Sequence[str | None]) -> list[str]:
-    out: list[str] = []
-    for value in values:
-        text = str(value or '').strip()
-        if text and text not in out:
-            out.append(text)
-    return out

@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fuzzmeter.reporting.data.coverage_data import CoverageData
+from fuzzmeter.reporting.fuzzer_chain import expand_reporting_candidates
 from fuzzmeter.reporting.plugin_api import (
     ChartSeries,
     ChartSpec,
@@ -28,7 +29,6 @@ from fuzzmeter.reporting.plugin_api import (
 from fuzzmeter.reporting.plugin_sections import (
     _build_plugin_sections,
     _build_trial_snapshot_index,
-    _expand_reporting_candidates,
     _snapshot_dirs_by_trial,
 )
 from fuzzmeter.reporting.plugins.loader import (
@@ -304,7 +304,7 @@ class ReportingPluginSectionsTest(unittest.TestCase):
 
             self.assertEqual(
                 ['child', 'parent', 'grand'],
-                _expand_reporting_candidates(repo_root, ['child', 'parent']),
+                expand_reporting_candidates(repo_root, ['child', 'parent']),
             )
 
     def test_snapshot_dirs_use_fuzzer_base_and_candidate_fallbacks(self) -> None:
