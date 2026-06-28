@@ -49,20 +49,15 @@ def repro_crash_batch(
     repro_logs_dir.mkdir(parents=True, exist_ok=True)
 
     config = trial.config
-    hits: Counter = Counter()
-    bug_data_by_key: dict[str, dict[str, Any]] = {}
-    for bug_key, bug_metadata, first_seen_ts in _reproduce_crash_batch(
+    reproduced = _reproduce_crash_batch(
         docker_runtime=docker_runtime,
         trial=trial,
         snapshot_crashes_dir=snapshot_crashes_dir,
         crash_tests=crash_tests,
         repro_logs_dir=repro_logs_dir,
         batch_index=batch_index,
-    ):
-        hits[bug_key] += 1
-        bug_data = bug_data_by_key.get(bug_key)
-        if bug_data is None or first_seen_ts < bug_data['first_seen_ts']:
-            bug_data_by_key[bug_key] = {'metadata': bug_metadata, 'first_seen_ts': first_seen_ts}
+    )
+    hits, bug_data_by_key = _collect_bug_hits(reproduced)
 
     with open_db(db_path) as db:
         for bug_key, count in hits.items():
@@ -83,6 +78,21 @@ def repro_crash_batch(
                 first_seen_snapshot_id=snapshot_id,
             )
             upsert_bug_hits(db, bug_id=bug_id, snapshot_id=snapshot_id, hits=count)
+
+
+def _collect_bug_hits(
+    reproduced: list[tuple[str, dict[str, Any], int]],
+) -> tuple[Counter, dict[str, dict[str, Any]]]:
+    hits: Counter = Counter()
+    bug_data_by_key: dict[str, dict[str, Any]] = {}
+
+    for bug_key, bug_metadata, first_seen_ts in reproduced:
+        hits[bug_key] += 1
+        bug_data = bug_data_by_key.get(bug_key)
+        if bug_data is None or first_seen_ts < bug_data['first_seen_ts']:
+            bug_data_by_key[bug_key] = {'metadata': bug_metadata, 'first_seen_ts': first_seen_ts}
+
+    return hits, bug_data_by_key
 
 
 def _reproduce_crash_batch(
@@ -130,8 +140,8 @@ def _reproduce_crash_batch(
         )
 
     results: list[tuple[str, dict[str, Any], int]] = []
-    for new_file, output in zip(crash_tests, outputs):
-        output = (output.get('stdout') or '') + (output.get('stderr') or '')
+    for new_file, worker_output in zip(crash_tests, outputs, strict=False):
+        output = (worker_output.get('stdout') or '') + (worker_output.get('stderr') or '')
         results.append(_classify_crash_output(
             trial=trial,
             new_file=new_file,
