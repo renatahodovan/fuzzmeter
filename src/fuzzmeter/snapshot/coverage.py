@@ -27,9 +27,9 @@ from ..repro.coverage_state import (
     apply_snapshot_summary,
     collect_inputs,
     load_coverage_summary,
+    seed_coverage_root,
     trial_coverage_root,
 )
-from ..repro.coverage_trial import bootstrap_from_seed_baseline
 from ..trial.models import TrialInstance
 from .parallel import run_parallel_jobs
 from .progress import SnapshotProgress
@@ -243,3 +243,34 @@ def merge_trial_coverage_outputs(
             out_root=out_root,
             summary=summary,
         )
+
+
+def bootstrap_from_seed_baseline(
+    *,
+    run_dir: Path,
+    trial: TrialInstance,
+    latest_root: Path,
+    state_dir: Path,
+) -> None:
+    '''Copy seed baseline coverage state into an empty trial coverage state.'''
+    base_root = seed_coverage_root(run_dir, trial.config.fuzzer, trial.config.benchmark, trial.config.fuzz_target)
+    baseline_profdata = base_root / '_state' / 'merged.profdata'
+
+    if not (base_root / 'summary.json').exists():
+        return
+
+    if not (state_dir / 'merged.profdata').exists() and baseline_profdata.exists():
+        state_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(baseline_profdata, state_dir / 'merged.profdata')
+
+    latest_root.parent.mkdir(parents=True, exist_ok=True)
+    for name in (
+        'summary.json',
+        'coverage-sets.json',
+        'merge_run_diagnostics.txt',
+        'input_exec_diagnostics.txt',
+    ):
+        src = base_root / name
+        dst = latest_root / name
+        if src.exists() and not dst.exists():
+            shutil.copy2(src, dst)
