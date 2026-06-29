@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from ..reporting.keys import TRIAL_METADATA_FIELDS
+from .base import open_readonly_connection
 from .snapshot import SEED_BASELINE_IDX
 
 
@@ -25,11 +26,7 @@ class ReportingDB:
         self.con: sqlite3.Connection | None = None
 
     def __enter__(self) -> 'ReportingDB':
-        uri = f'file:{self.db_path.as_posix()}?mode=ro'
-        self.con = sqlite3.connect(uri, uri=True, check_same_thread=False)
-        self.con.row_factory = sqlite3.Row
-        self.con.execute('PRAGMA busy_timeout=3000')
-        self.con.execute('PRAGMA temp_store=MEMORY')
+        self.con = open_readonly_connection(self.db_path)
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

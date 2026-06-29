@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import tempfile
 import unittest
 from collections.abc import Iterator
@@ -19,6 +20,7 @@ from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.db import bug as db_bug
 from fuzzmeter.db import snapshot as db_snapshot
 from fuzzmeter.db import trials as db_trials
+from fuzzmeter.db.base import open_readonly_connection
 
 
 class DatabaseBehaviorTest(unittest.TestCase):
@@ -330,6 +332,26 @@ class DatabaseBehaviorTest(unittest.TestCase):
             },
             row,
         )
+
+    def test_readonly_connection_enables_foreign_keys_and_rejects_writes(self) -> None:
+        '''Read-only DB connections keep reporting and web reads non-mutating.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / 'fuzzmeter.db'
+            with _open_test_db(db_path):
+                pass
+
+            con = open_readonly_connection(db_path)
+            try:
+                foreign_keys = con.execute('PRAGMA foreign_keys').fetchone()[0]
+                with self.assertRaises(sqlite3.OperationalError):
+                    con.execute(
+                        'INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)',
+                        ('other-run', 2, 'config'),
+                    )
+            finally:
+                con.close()
+
+        self.assertEqual(1, foreign_keys)
 
 
 @contextmanager

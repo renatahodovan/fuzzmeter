@@ -28,6 +28,18 @@ def _is_locked_error(e: Exception) -> bool:
     return "database is locked" in msg or "database table is locked" in msg
 
 
+def open_readonly_connection(path: Path) -> sqlite3.Connection:
+    '''Open a read-only SQLite connection for reporting and web views.'''
+
+    uri = f'file:{Path(path).as_posix()}?mode=ro'
+    con = sqlite3.connect(uri, uri=True, check_same_thread=False)
+    con.row_factory = sqlite3.Row
+    con.execute('PRAGMA foreign_keys=ON')
+    con.execute('PRAGMA busy_timeout=3000')
+    con.execute('PRAGMA temp_store=MEMORY')
+    return con
+
+
 @dataclass
 class DB:
     '''Wrap a SQLite connection with retrying query helpers.'''
