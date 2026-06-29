@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..db import open_db
-from ..db.snapshot import SEED_BASELINE_IDX, update_agg_snapshot_coverage, upsert_agg_snapshot
+from ..db.snapshot import CoverageSummary, SEED_BASELINE_IDX, update_agg_snapshot_coverage, upsert_agg_snapshot
 from ..docker import DockerRuntime
 from .coverage_measure import build_coverage_replay_batches, merge_coverage_outputs, replay_coverage_batches
 from .coverage_state import collect_inputs, seed_coverage_root
@@ -125,8 +125,10 @@ def measure_seed_baseline(
         update_agg_snapshot_coverage(
             db,
             agg_snapshot_id=baseline_id,
-            coverage_html_dir=str(html_index.relative_to(run_dir)) if html_index.exists() else None,
+            coverage=CoverageSummary.from_mapping(
+                coverage_html_dir=str(html_index.relative_to(run_dir)) if html_index.exists() else None,
+                summary=summary,
+            ),
             coverage_sets_json_rel=str(coverage_sets.relative_to(run_dir)) if coverage_sets.exists() else None,
-            summary=summary,
         )
     LOG.debug('Seed coverage summary for %s/%s/%s: %s', job.fuzzer, job.benchmark, job.fuzz_target, summary)

@@ -104,17 +104,19 @@ def _create_trial_instance(
         ensure_schema(db)
         trial_db_id = db_trials.ensure_trial_row(
             db,
-            run_id='run',
-            fuzzer='aflplusplus',
-            benchmark='bench',
-            fuzz_target='target',
-            rep=rep_idx,
-            time_seconds=300,
-            status='running',
-            fuzzer_image='runner',
-            build_config_json=None,
-            runtime_config_json=None,
-            start_ts=start_ts,
+            db_trials.TrialRecord(
+                run_id='run',
+                fuzzer='aflplusplus',
+                benchmark='bench',
+                fuzz_target='target',
+                rep=rep_idx,
+                time_seconds=300,
+                status='running',
+                fuzzer_image='runner',
+                build_config_json=None,
+                runtime_config_json=None,
+                start_ts=start_ts,
+            ),
         )
         db.commit()
     finally:
@@ -237,17 +239,19 @@ class RunnerLoopTest(unittest.TestCase):
                 trial_db_ids = [
                     db_trials.ensure_trial_row(
                         db,
-                        run_id='run',
-                        fuzzer=f'fuzzer_{idx}',
-                        benchmark='bench',
-                        fuzz_target='target',
-                        rep=idx,
-                        time_seconds=300,
-                        status='preparing_replay',
-                        fuzzer_image='runner',
-                        build_config_json=None,
-                        runtime_config_json=None,
-                        start_ts=100 + idx,
+                        db_trials.TrialRecord(
+                            run_id='run',
+                            fuzzer=f'fuzzer_{idx}',
+                            benchmark='bench',
+                            fuzz_target='target',
+                            rep=idx,
+                            time_seconds=300,
+                            status='preparing_replay',
+                            fuzzer_image='runner',
+                            build_config_json=None,
+                            runtime_config_json=None,
+                            start_ts=100 + idx,
+                        ),
                     )
                     for idx in (1, 2)
                 ]

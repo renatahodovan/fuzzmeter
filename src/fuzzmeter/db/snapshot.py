@@ -11,12 +11,90 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from .base import DB
 
 LOG = logging.getLogger(__name__)
 SEED_BASELINE_IDX = 0
+
+
+@dataclass(frozen=True)
+class CoverageSummary:
+    '''Describe coverage fields stored on snapshot and aggregate rows.'''
+
+    coverage_html_dir: str | None
+    cov_lines_covered: int | None
+    cov_lines_total: int | None
+    cov_branches_covered: int | None
+    cov_branches_total: int | None
+    cov_regions_covered: int | None
+    cov_regions_total: int | None
+    cov_functions_covered: int | None
+    cov_functions_total: int | None
+
+    @classmethod
+    def from_mapping(cls, *, coverage_html_dir: str | None, summary: dict[str, Any]) -> 'CoverageSummary':
+        '''Create coverage fields from a coverage summary mapping.'''
+
+        return cls(
+            coverage_html_dir=coverage_html_dir,
+            cov_lines_covered=summary.get('cov_lines_covered'),
+            cov_lines_total=summary.get('cov_lines_total'),
+            cov_branches_covered=summary.get('cov_branches_covered'),
+            cov_branches_total=summary.get('cov_branches_total'),
+            cov_regions_covered=summary.get('cov_regions_covered'),
+            cov_regions_total=summary.get('cov_regions_total'),
+            cov_functions_covered=summary.get('cov_functions_covered'),
+            cov_functions_total=summary.get('cov_functions_total'),
+        )
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> 'CoverageSummary':
+        '''Create coverage fields from a database row.'''
+
+        return cls(
+            coverage_html_dir=row.get('coverage_html_dir'),
+            cov_lines_covered=row.get('cov_lines_covered'),
+            cov_lines_total=row.get('cov_lines_total'),
+            cov_branches_covered=row.get('cov_branches_covered'),
+            cov_branches_total=row.get('cov_branches_total'),
+            cov_regions_covered=row.get('cov_regions_covered'),
+            cov_regions_total=row.get('cov_regions_total'),
+            cov_functions_covered=row.get('cov_functions_covered'),
+            cov_functions_total=row.get('cov_functions_total'),
+        )
+
+    def values(self) -> tuple[Any, ...]:
+        '''Return coverage field values in database column order.'''
+
+        return (
+            self.coverage_html_dir,
+            self.cov_lines_covered,
+            self.cov_lines_total,
+            self.cov_branches_covered,
+            self.cov_branches_total,
+            self.cov_regions_covered,
+            self.cov_regions_total,
+            self.cov_functions_covered,
+            self.cov_functions_total,
+        )
+
+
+@dataclass(frozen=True)
+class SnapshotRecord:
+    '''Describe one trial snapshot row to persist.'''
+
+    trial_db_id: int
+    tick_idx: int
+    end_ts: int
+    corpus_files: int
+    execs_done: int | None
+    stats: dict[str, Any] | None
+    crashes: int | None
+    hangs: int | None
+    coverage: CoverageSummary | None = None
 
 
 def insert_tick(db: DB, *, run_id: str, idx: int, ts: int) -> None:
@@ -66,41 +144,36 @@ def list_trial_snapshots(db: DB, *, trial_row_id: int) -> list[dict[str, Any]]:
     )
 
 
-def save_snapshot_data(
-    db: DB,
-    *,
-    trial_db_id: int,
-    tick_idx: int,
-    end_ts: int,
-    corpus_files: int,
-    execs_done: int | None,
-    stats: dict[str, Any] | None,
-    crashes: int | None,
-    hangs: int | None,
-) -> int:
+def save_snapshot_data(db: DB, record: SnapshotRecord) -> int:
     '''Insert one snapshot row and return its database id.'''
 
     stats_json = None
-    if isinstance(stats, dict) and stats:
-        stats_json = json.dumps(stats, sort_keys=True, separators=(',', ':'), default=str)
+    if isinstance(record.stats, dict) and record.stats:
+        stats_json = json.dumps(record.stats, sort_keys=True, separators=(',', ':'), default=str)
     db.exec(
         """
         INSERT OR IGNORE INTO snapshots(trial_id, idx, ts, corpus_files, execs_done, stats_json, crashes, hangs)
         VALUES(?,?,?,?,?,?,?,?)
         """,
         (
-            int(trial_db_id),
-            int(tick_idx),
-            int(end_ts),
-            int(corpus_files),
-            None if execs_done is None else int(execs_done),
+            int(record.trial_db_id),
+            int(record.tick_idx),
+            int(record.end_ts),
+            int(record.corpus_files),
+            None if record.execs_done is None else int(record.execs_done),
             stats_json,
-            crashes,
-            hangs,
+            record.crashes,
+            record.hangs,
         ),
     )
-    sid = db.scalar('SELECT snapshot_id FROM snapshots WHERE trial_id=? AND idx=?', (int(trial_db_id), int(tick_idx)))
-    return int(sid or 0)
+    sid = db.scalar(
+        'SELECT snapshot_id FROM snapshots WHERE trial_id=? AND idx=?',
+        (int(record.trial_db_id), int(record.tick_idx)),
+    )
+    snapshot_id = int(sid or 0)
+    if record.coverage is not None and snapshot_id > 0:
+        set_snapshot_coverage_fields(db, snapshot_id=snapshot_id, coverage=record.coverage)
+    return snapshot_id
 
 
 def latest_trial_snapshot(db: DB, *, trial_row_id: int) -> dict[str, Any] | None:
@@ -149,34 +222,7 @@ def copy_previous_coverage_fields(db: DB, *, trial_row_id: int, snapshot_id: int
     )
     if not previous:
         return
-    row = previous[0]
-    db.exec(
-        """
-        UPDATE snapshots
-           SET coverage_html_dir=?,
-               cov_lines_covered=?,
-               cov_lines_total=?,
-               cov_branches_covered=?,
-               cov_branches_total=?,
-               cov_regions_covered=?,
-               cov_regions_total=?,
-               cov_functions_covered=?,
-               cov_functions_total=?
-         WHERE snapshot_id=?
-        """,
-        (
-            row.get('coverage_html_dir'),
-            row.get('cov_lines_covered'),
-            row.get('cov_lines_total'),
-            row.get('cov_branches_covered'),
-            row.get('cov_branches_total'),
-            row.get('cov_regions_covered'),
-            row.get('cov_regions_total'),
-            row.get('cov_functions_covered'),
-            row.get('cov_functions_total'),
-            int(snapshot_id),
-        ),
-    )
+    _update_snapshot_coverage(db, snapshot_id=snapshot_id, coverage=CoverageSummary.from_row(previous[0]))
 
 
 def copy_seed_baseline_coverage_fields(
@@ -212,62 +258,36 @@ def copy_seed_baseline_coverage_fields(
     )
     if not baseline:
         return False
-    row = baseline[0]
-    db.exec(
-        """
-        UPDATE snapshots
-           SET coverage_html_dir=?,
-               cov_lines_covered=?,
-               cov_lines_total=?,
-               cov_branches_covered=?,
-               cov_branches_total=?,
-               cov_regions_covered=?,
-               cov_regions_total=?,
-               cov_functions_covered=?,
-               cov_functions_total=?
-         WHERE snapshot_id=?
-        """,
-        (
-            row.get('coverage_html_dir'),
-            row.get('cov_lines_covered'),
-            row.get('cov_lines_total'),
-            row.get('cov_branches_covered'),
-            row.get('cov_branches_total'),
-            row.get('cov_regions_covered'),
-            row.get('cov_regions_total'),
-            row.get('cov_functions_covered'),
-            row.get('cov_functions_total'),
-            int(snapshot_id),
-        ),
-    )
+    _update_snapshot_coverage(db, snapshot_id=snapshot_id, coverage=CoverageSummary.from_row(baseline[0]))
     return True
 
 
-def set_snapshot_coverage_fields(
-    db: DB,
-    *,
-    snapshot_id: int,
-    coverage_html_dir: str | None,
-    cov_lines_covered: int | None,
-    cov_lines_total: int | None,
-    cov_branches_covered: int | None,
-    cov_branches_total: int | None,
-    cov_regions_covered: int | None,
-    cov_regions_total: int | None,
-    cov_functions_covered: int | None,
-    cov_functions_total: int | None,
-) -> None:
+def set_snapshot_coverage_fields(db: DB, *, snapshot_id: int, coverage: CoverageSummary) -> None:
     '''Store coverage summary fields on one snapshot row.'''
 
-    if any(v is None for v in [cov_lines_covered, cov_lines_total, cov_branches_covered, cov_branches_total]):
+    if any(
+        value is None
+        for value in [
+            coverage.cov_lines_covered,
+            coverage.cov_lines_total,
+            coverage.cov_branches_covered,
+            coverage.cov_branches_total,
+        ]
+    ):
         LOG.warning(
             'Coverage summary missing fields for snapshot_id=%d: lines %s/%s branches %s/%s',
             snapshot_id,
-            cov_lines_covered,
-            cov_lines_total,
-            cov_branches_covered,
-            cov_branches_total,
+            coverage.cov_lines_covered,
+            coverage.cov_lines_total,
+            coverage.cov_branches_covered,
+            coverage.cov_branches_total,
         )
+
+    _update_snapshot_coverage(db, snapshot_id=snapshot_id, coverage=coverage)
+
+
+def _update_snapshot_coverage(db: DB, *, snapshot_id: int, coverage: CoverageSummary) -> None:
+    '''Store coverage fields on one snapshot row without extra validation.'''
 
     db.exec(
         """
@@ -283,18 +303,7 @@ def set_snapshot_coverage_fields(
                cov_functions_total=?
          WHERE snapshot_id=?
         """,
-        (
-            coverage_html_dir,
-            cov_lines_covered,
-            cov_lines_total,
-            cov_branches_covered,
-            cov_branches_total,
-            cov_regions_covered,
-            cov_regions_total,
-            cov_functions_covered,
-            cov_functions_total,
-            int(snapshot_id),
-        ),
+        (*coverage.values(), int(snapshot_id)),
     )
 
 
@@ -340,8 +349,7 @@ def update_agg_snapshot_coverage(
     db: DB,
     *,
     agg_snapshot_id: int,
-    coverage_html_dir: str | None,
-    summary: dict[str, Any],
+    coverage: CoverageSummary,
     coverage_sets_json_rel: str | None = None,
 ) -> None:
     '''Store aggregated coverage outputs on one aggregated snapshot row.'''
@@ -362,15 +370,7 @@ def update_agg_snapshot_coverage(
          WHERE agg_snapshot_id=?
         """,
         (
-            coverage_html_dir,
-            summary.get('cov_lines_covered'),
-            summary.get('cov_lines_total'),
-            summary.get('cov_branches_covered'),
-            summary.get('cov_branches_total'),
-            summary.get('cov_regions_covered'),
-            summary.get('cov_regions_total'),
-            summary.get('cov_functions_covered'),
-            summary.get('cov_functions_total'),
+            *coverage.values(),
             coverage_sets_json_rel,
             int(agg_snapshot_id),
         ),

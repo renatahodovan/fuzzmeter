@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 from ..db.base import DB
-from ..db.snapshot import set_snapshot_coverage_fields
+from ..db.snapshot import CoverageSummary, set_snapshot_coverage_fields
 
 
 def trial_coverage_root(run_dir: Path, fuzzer: str, benchmark: str, fuzz_target: str) -> Path:
@@ -50,13 +50,5 @@ def apply_snapshot_summary(*, db: DB, run_dir: Path, snapshot_id: int, out_root:
     set_snapshot_coverage_fields(
         db=db,
         snapshot_id=snapshot_id,
-        coverage_html_dir=rel_html,
-        cov_lines_covered=summary.get('cov_lines_covered'),
-        cov_lines_total=summary.get('cov_lines_total'),
-        cov_branches_covered=summary.get('cov_branches_covered'),
-        cov_branches_total=summary.get('cov_branches_total'),
-        cov_regions_covered=summary.get('cov_regions_covered'),
-        cov_regions_total=summary.get('cov_regions_total'),
-        cov_functions_covered=summary.get('cov_functions_covered'),
-        cov_functions_total=summary.get('cov_functions_total'),
+        coverage=CoverageSummary.from_mapping(coverage_html_dir=rel_html, summary=summary),
     )

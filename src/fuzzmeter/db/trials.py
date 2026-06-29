@@ -9,24 +9,29 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from .base import DB
 
 
-def ensure_trial_row(
-    db: DB,
-    *,
-    run_id: str,
-    fuzzer: str,
-    benchmark: str,
-    fuzz_target: str,
-    rep: int,
-    time_seconds: int,
-    status: str,
-    fuzzer_image: str,
-    build_config_json: str | None,
-    runtime_config_json: str | None,
-    start_ts: int,
-) -> int:
+@dataclass(frozen=True)
+class TrialRecord:
+    '''Describe one trial row to create or refresh.'''
+
+    run_id: str
+    fuzzer: str
+    benchmark: str
+    fuzz_target: str
+    rep: int
+    time_seconds: int
+    status: str
+    fuzzer_image: str
+    build_config_json: str | None
+    runtime_config_json: str | None
+    start_ts: int
+
+
+def ensure_trial_row(db: DB, record: TrialRecord) -> int:
     '''Create or find one trial row and return its database id.'''
     db.exec(
         '''
@@ -37,25 +42,31 @@ def ensure_trial_row(
         VALUES(?,?,?,?,?,?,?,?,?,?)
         ''',
         (
-            str(run_id),
-            str(fuzzer),
-            str(benchmark),
-            str(fuzz_target),
-            int(rep),
-            int(time_seconds),
-            str(status),
-            str(fuzzer_image),
-            build_config_json,
-            runtime_config_json,
+            str(record.run_id),
+            str(record.fuzzer),
+            str(record.benchmark),
+            str(record.fuzz_target),
+            int(record.rep),
+            int(record.time_seconds),
+            str(record.status),
+            str(record.fuzzer_image),
+            record.build_config_json,
+            record.runtime_config_json,
         ),
     )
     tid = db.scalar(
         'SELECT trial_id FROM trials WHERE run_id=? AND fuzzer=? AND benchmark=? AND fuzz_target=? AND rep=?',
-        (str(run_id), str(fuzzer), str(benchmark), str(fuzz_target), int(rep)),
+        (
+            str(record.run_id),
+            str(record.fuzzer),
+            str(record.benchmark),
+            str(record.fuzz_target),
+            int(record.rep),
+        ),
     )
     if tid is None:
         raise RuntimeError('Failed to create trial row')
-    db.exec('UPDATE trials SET started_ts=? WHERE trial_id=?', (int(start_ts), int(tid)))
+    db.exec('UPDATE trials SET started_ts=? WHERE trial_id=?', (int(record.start_ts), int(tid)))
     return int(tid)
 
 

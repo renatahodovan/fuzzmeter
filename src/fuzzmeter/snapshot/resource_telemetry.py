@@ -78,15 +78,17 @@ class ResourceTelemetryCollector:
             disk_bytes = None if disk_kib is None else disk_kib * 1024
             db_resource_telemetry.upsert_resource_telemetry(
                 db,
-                trial_row_id=trial.db_id,
-                idx=tick_idx,
-                ts=ts,
-                container_name=trial.container_name,
-                cpu_percent=_parse_percent(stats.get('CPUPerc')),
-                memory_usage_bytes=self._memory_usage_bytes(stats),
-                memory_limit_bytes=self._memory_limit_bytes(stats),
-                memory_percent=_parse_percent(stats.get('MemPerc')),
-                corpus_disk_usage_bytes=disk_bytes,
+                db_resource_telemetry.TelemetrySample(
+                    trial_row_id=trial.db_id,
+                    idx=tick_idx,
+                    ts=ts,
+                    container_name=trial.container_name,
+                    cpu_percent=_parse_percent(stats.get('CPUPerc')),
+                    memory_usage_bytes=self._memory_usage_bytes(stats),
+                    memory_limit_bytes=self._memory_limit_bytes(stats),
+                    memory_percent=_parse_percent(stats.get('MemPerc')),
+                    corpus_disk_usage_bytes=disk_bytes,
+                ),
             )
 
     @staticmethod

@@ -17,7 +17,7 @@ import unittest
 from pathlib import Path
 
 from fuzzmeter.db import DB, ensure_schema
-from fuzzmeter.db.snapshot import upsert_agg_snapshot, update_agg_snapshot_coverage
+from fuzzmeter.db.snapshot import CoverageSummary, upsert_agg_snapshot, update_agg_snapshot_coverage
 from fuzzmeter.reporting.analyzers import coverage_curves, coverage_matrices
 from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.metrics import (
@@ -281,17 +281,19 @@ class CoverageReportingTest(unittest.TestCase):
                 update_agg_snapshot_coverage(
                     db,
                     agg_snapshot_id=agg_id,
-                    coverage_html_dir=str(html_index.relative_to(run_dir)),
-                    summary={
-                        'cov_branches_covered': 1,
-                        'cov_branches_total': 1,
-                        'cov_lines_covered': 1,
-                        'cov_lines_total': 1,
-                        'cov_regions_covered': 1,
-                        'cov_regions_total': 1,
-                        'cov_functions_covered': 0,
-                        'cov_functions_total': 0,
-                    },
+                    coverage=CoverageSummary.from_mapping(
+                        coverage_html_dir=str(html_index.relative_to(run_dir)),
+                        summary={
+                            'cov_branches_covered': 1,
+                            'cov_branches_total': 1,
+                            'cov_lines_covered': 1,
+                            'cov_lines_total': 1,
+                            'cov_regions_covered': 1,
+                            'cov_regions_total': 1,
+                            'cov_functions_covered': 0,
+                            'cov_functions_total': 0,
+                        },
+                    ),
                 )
                 db.commit()
             finally:

@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from ..db import open_db
-from ..db.bug import ensure_bug, upsert_bug_hits
+from ..db.bug import BugRecord, ensure_bug, upsert_bug_hits
 from ..docker import DockerClient, DockerRuntime
 from ..trial.models import TrialInstance
 from .ingest import DetectedFile
@@ -65,17 +65,19 @@ def repro_crash_batch(
             metadata = bug_data['metadata']
             bug_id = ensure_bug(
                 db,
-                run_id=run_id,
-                fuzzer=config.fuzzer,
-                benchmark=config.benchmark,
-                fuzz_target=config.fuzz_target,
-                bug_key=bug_key,
-                issue_type=metadata['issue_type'],
-                top_func=metadata['top_func'],
-                frames=metadata['frames'],
-                output=metadata['output'],
-                first_seen_ts=bug_data['first_seen_ts'],
-                first_seen_snapshot_id=snapshot_id,
+                BugRecord(
+                    run_id=run_id,
+                    fuzzer=config.fuzzer,
+                    benchmark=config.benchmark,
+                    fuzz_target=config.fuzz_target,
+                    bug_key=bug_key,
+                    issue_type=metadata['issue_type'],
+                    top_func=metadata['top_func'],
+                    frames=metadata['frames'],
+                    output=metadata['output'],
+                    first_seen_ts=bug_data['first_seen_ts'],
+                    first_seen_snapshot_id=snapshot_id,
+                ),
             )
             upsert_bug_hits(db, bug_id=bug_id, snapshot_id=snapshot_id, hits=count)
 

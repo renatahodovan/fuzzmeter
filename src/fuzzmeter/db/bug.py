@@ -10,8 +10,26 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 
 from .base import DB
+
+
+@dataclass(frozen=True)
+class BugRecord:
+    '''Describe one deduplicated bug row to persist.'''
+
+    run_id: str
+    fuzzer: str
+    benchmark: str
+    fuzz_target: str
+    bug_key: str
+    issue_type: str | None
+    top_func: str | None
+    frames: list[str]
+    output: str | None
+    first_seen_ts: int
+    first_seen_snapshot_id: int
 
 
 def get_bug_id(
@@ -36,21 +54,7 @@ def get_bug_id(
     return int(row["bug_id"]) if row else None
 
 
-def ensure_bug(
-    db: DB,
-    *,
-    run_id: str,
-    fuzzer: str,
-    benchmark: str,
-    fuzz_target: str,
-    bug_key: str,
-    issue_type: str | None,
-    top_func: str | None,
-    frames: list[str],
-    output: str | None,
-    first_seen_ts: int,
-    first_seen_snapshot_id: int,
-) -> int:
+def ensure_bug(db: DB, record: BugRecord) -> int:
     '''Insert one bug row when missing and return its database id.'''
 
     db.exec(
@@ -62,26 +66,26 @@ def ensure_bug(
         ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
-            str(run_id),
-            str(fuzzer),
-            str(benchmark),
-            str(fuzz_target),
-            str(bug_key),
-            issue_type,
-            top_func,
-            json.dumps(frames[:8]),
-            output,
-            int(first_seen_ts),
-            int(first_seen_snapshot_id),
+            str(record.run_id),
+            str(record.fuzzer),
+            str(record.benchmark),
+            str(record.fuzz_target),
+            str(record.bug_key),
+            record.issue_type,
+            record.top_func,
+            json.dumps(record.frames[:8]),
+            record.output,
+            int(record.first_seen_ts),
+            int(record.first_seen_snapshot_id),
         ),
     )
     bid = get_bug_id(
         db,
-        run_id=run_id,
-        fuzzer=fuzzer,
-        benchmark=benchmark,
-        fuzz_target=fuzz_target,
-        bug_key=bug_key,
+        run_id=record.run_id,
+        fuzzer=record.fuzzer,
+        benchmark=record.benchmark,
+        fuzz_target=record.fuzz_target,
+        bug_key=record.bug_key,
     )
     if bid is None:
         raise RuntimeError('Failed to ensure bug row')

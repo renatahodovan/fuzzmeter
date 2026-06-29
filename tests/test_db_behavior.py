@@ -43,14 +43,7 @@ class DatabaseBehaviorTest(unittest.TestCase):
             trial_id = _ensure_trial(db)
             empty_id = db_snapshot.save_snapshot_data(
                 db,
-                trial_db_id=trial_id,
-                tick_idx=1,
-                end_ts=10,
-                corpus_files=0,
-                execs_done=None,
-                stats=None,
-                crashes=0,
-                hangs=0,
+                _snapshot_record(trial_id=trial_id, tick_idx=1, end_ts=10, corpus_files=0),
             )
             db.exec(
                 'UPDATE snapshots SET coverage_html_dir=? WHERE snapshot_id=?',
@@ -59,53 +52,34 @@ class DatabaseBehaviorTest(unittest.TestCase):
 
             target_id = db_snapshot.save_snapshot_data(
                 db,
-                trial_db_id=trial_id,
-                tick_idx=2,
-                end_ts=20,
-                corpus_files=0,
-                execs_done=None,
-                stats=None,
-                crashes=0,
-                hangs=0,
+                _snapshot_record(trial_id=trial_id, tick_idx=2, end_ts=20, corpus_files=0),
             )
             db_snapshot.copy_previous_coverage_fields(db, trial_row_id=trial_id, snapshot_id=target_id)
             target_without_metrics = _snapshot_coverage_row(db, target_id)
 
             covered_id = db_snapshot.save_snapshot_data(
                 db,
-                trial_db_id=trial_id,
-                tick_idx=3,
-                end_ts=30,
-                corpus_files=1,
-                execs_done=10,
-                stats={},
-                crashes=0,
-                hangs=0,
+                _snapshot_record(trial_id=trial_id, tick_idx=3, end_ts=30, corpus_files=1, execs_done=10),
             )
             db_snapshot.set_snapshot_coverage_fields(
                 db,
                 snapshot_id=covered_id,
-                coverage_html_dir='coverage/covered/html/index.html',
-                cov_lines_covered=7,
-                cov_lines_total=11,
-                cov_branches_covered=3,
-                cov_branches_total=5,
-                cov_regions_covered=13,
-                cov_regions_total=17,
-                cov_functions_covered=2,
-                cov_functions_total=4,
+                coverage=db_snapshot.CoverageSummary(
+                    coverage_html_dir='coverage/covered/html/index.html',
+                    cov_lines_covered=7,
+                    cov_lines_total=11,
+                    cov_branches_covered=3,
+                    cov_branches_total=5,
+                    cov_regions_covered=13,
+                    cov_regions_total=17,
+                    cov_functions_covered=2,
+                    cov_functions_total=4,
+                ),
             )
 
             copied_id = db_snapshot.save_snapshot_data(
                 db,
-                trial_db_id=trial_id,
-                tick_idx=4,
-                end_ts=40,
-                corpus_files=1,
-                execs_done=20,
-                stats={},
-                crashes=0,
-                hangs=0,
+                _snapshot_record(trial_id=trial_id, tick_idx=4, end_ts=40, corpus_files=1, execs_done=20),
             )
             db_snapshot.copy_previous_coverage_fields(db, trial_row_id=trial_id, snapshot_id=copied_id)
             copied = _snapshot_coverage_row(db, copied_id)
@@ -127,14 +101,7 @@ class DatabaseBehaviorTest(unittest.TestCase):
             trial_id = _ensure_trial(db)
             snapshot_id = db_snapshot.save_snapshot_data(
                 db,
-                trial_db_id=trial_id,
-                tick_idx=1,
-                end_ts=10,
-                corpus_files=0,
-                execs_done=None,
-                stats=None,
-                crashes=0,
-                hangs=0,
+                _snapshot_record(trial_id=trial_id, tick_idx=1, end_ts=10, corpus_files=0),
             )
             non_baseline_id = db_snapshot.upsert_agg_snapshot(
                 db,
@@ -148,8 +115,10 @@ class DatabaseBehaviorTest(unittest.TestCase):
             db_snapshot.update_agg_snapshot_coverage(
                 db,
                 agg_snapshot_id=non_baseline_id,
-                coverage_html_dir='coverage/nonbaseline/html/index.html',
-                summary={'cov_lines_covered': 99, 'cov_lines_total': 100},
+                coverage=db_snapshot.CoverageSummary.from_mapping(
+                    coverage_html_dir='coverage/nonbaseline/html/index.html',
+                    summary={'cov_lines_covered': 99, 'cov_lines_total': 100},
+                ),
                 coverage_sets_json_rel='coverage/nonbaseline/coverage-sets.json',
             )
 
@@ -174,8 +143,10 @@ class DatabaseBehaviorTest(unittest.TestCase):
             db_snapshot.update_agg_snapshot_coverage(
                 db,
                 agg_snapshot_id=baseline_id,
-                coverage_html_dir='coverage_seed/fz/bench/target/html/index.html',
-                summary={'cov_lines_covered': 5, 'cov_lines_total': 8},
+                coverage=db_snapshot.CoverageSummary.from_mapping(
+                    coverage_html_dir='coverage_seed/fz/bench/target/html/index.html',
+                    summary={'cov_lines_covered': 5, 'cov_lines_total': 8},
+                ),
                 coverage_sets_json_rel='coverage_seed/fz/bench/target/coverage-sets.json',
             )
             copied_with_baseline = db_snapshot.copy_seed_baseline_coverage_fields(
@@ -209,8 +180,10 @@ class DatabaseBehaviorTest(unittest.TestCase):
             db_snapshot.update_agg_snapshot_coverage(
                 db,
                 agg_snapshot_id=first_id,
-                coverage_html_dir='coverage/fz/bench/target/campaign/html/index.html',
-                summary={'cov_lines_covered': 1, 'cov_lines_total': 2},
+                coverage=db_snapshot.CoverageSummary.from_mapping(
+                    coverage_html_dir='coverage/fz/bench/target/campaign/html/index.html',
+                    summary={'cov_lines_covered': 1, 'cov_lines_total': 2},
+                ),
                 coverage_sets_json_rel='coverage/fz/bench/target/campaign_snapshots/000007/coverage-sets.json',
             )
             second_id = db_snapshot.upsert_agg_snapshot(
@@ -239,42 +212,39 @@ class DatabaseBehaviorTest(unittest.TestCase):
             trial_id = _ensure_trial(db)
             snapshot_id = db_snapshot.save_snapshot_data(
                 db,
-                trial_db_id=trial_id,
-                tick_idx=1,
-                end_ts=10,
-                corpus_files=1,
-                execs_done=None,
-                stats=None,
-                crashes=1,
-                hangs=0,
+                _snapshot_record(trial_id=trial_id, tick_idx=1, end_ts=10, corpus_files=1, crashes=1),
             )
             first_bug_id = db_bug.ensure_bug(
                 db,
-                run_id='run',
-                fuzzer='fz',
-                benchmark='bench',
-                fuzz_target='target',
-                bug_key='asan|top',
-                issue_type='asan',
-                top_func='top',
-                frames=['top', 'caller'],
-                output='first output',
-                first_seen_ts=10,
-                first_seen_snapshot_id=snapshot_id,
+                db_bug.BugRecord(
+                    run_id='run',
+                    fuzzer='fz',
+                    benchmark='bench',
+                    fuzz_target='target',
+                    bug_key='asan|top',
+                    issue_type='asan',
+                    top_func='top',
+                    frames=['top', 'caller'],
+                    output='first output',
+                    first_seen_ts=10,
+                    first_seen_snapshot_id=snapshot_id,
+                ),
             )
             second_bug_id = db_bug.ensure_bug(
                 db,
-                run_id='run',
-                fuzzer='fz',
-                benchmark='bench',
-                fuzz_target='target',
-                bug_key='asan|top',
-                issue_type='different',
-                top_func='different',
-                frames=['different'],
-                output='second output',
-                first_seen_ts=20,
-                first_seen_snapshot_id=snapshot_id,
+                db_bug.BugRecord(
+                    run_id='run',
+                    fuzzer='fz',
+                    benchmark='bench',
+                    fuzz_target='target',
+                    bug_key='asan|top',
+                    issue_type='different',
+                    top_func='different',
+                    frames=['different'],
+                    output='second output',
+                    first_seen_ts=20,
+                    first_seen_snapshot_id=snapshot_id,
+                ),
             )
             db_bug.upsert_bug_hits(db, bug_id=first_bug_id, snapshot_id=snapshot_id, hits=2)
             db_bug.upsert_bug_hits(db, bug_id=first_bug_id, snapshot_id=snapshot_id, hits=5)
@@ -312,8 +282,10 @@ class DatabaseBehaviorTest(unittest.TestCase):
                 db_snapshot.update_agg_snapshot_coverage(
                     db,
                     agg_snapshot_id=agg_id,
-                    coverage_html_dir='coverage/fz/bench/target/campaign/html/index.html',
-                    summary={'cov_lines_covered': 9, 'cov_lines_total': 10},
+                    coverage=db_snapshot.CoverageSummary.from_mapping(
+                        coverage_html_dir='coverage/fz/bench/target/campaign/html/index.html',
+                        summary={'cov_lines_covered': 9, 'cov_lines_total': 10},
+                    ),
                     coverage_sets_json_rel='coverage/fz/bench/target/campaign_snapshots/000003/coverage-sets.json',
                 )
                 row = db.q1(
@@ -375,17 +347,42 @@ def _open_test_db(db_path: Path | None = None) -> Iterator[DB]:
 def _ensure_trial(db: DB, *, start_ts: int = 100) -> int:
     return db_trials.ensure_trial_row(
         db,
-        run_id='run',
-        fuzzer='fz',
-        benchmark='bench',
-        fuzz_target='target',
-        rep=0,
-        time_seconds=60,
-        status='running',
-        fuzzer_image='image',
-        build_config_json=None,
-        runtime_config_json=None,
-        start_ts=start_ts,
+        db_trials.TrialRecord(
+            run_id='run',
+            fuzzer='fz',
+            benchmark='bench',
+            fuzz_target='target',
+            rep=0,
+            time_seconds=60,
+            status='running',
+            fuzzer_image='image',
+            build_config_json=None,
+            runtime_config_json=None,
+            start_ts=start_ts,
+        ),
+    )
+
+
+def _snapshot_record(
+    *,
+    trial_id: int,
+    tick_idx: int,
+    end_ts: int,
+    corpus_files: int,
+    execs_done: int | None = None,
+    stats: dict | None = None,
+    crashes: int | None = 0,
+    hangs: int | None = 0,
+) -> db_snapshot.SnapshotRecord:
+    return db_snapshot.SnapshotRecord(
+        trial_db_id=trial_id,
+        tick_idx=tick_idx,
+        end_ts=end_ts,
+        corpus_files=corpus_files,
+        execs_done=execs_done,
+        stats=stats,
+        crashes=crashes,
+        hangs=hangs,
     )
 
 

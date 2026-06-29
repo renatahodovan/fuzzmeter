@@ -198,8 +198,10 @@ def process_snapshot_coverage(
         db_snapshot.update_agg_snapshot_coverage(
             db,
             agg_snapshot_id=agg_id,
-            coverage_html_dir=str(html_index.relative_to(run_dir)) if html_index.exists() else None,
-            summary=summary,
+            coverage=db_snapshot.CoverageSummary.from_mapping(
+                coverage_html_dir=str(html_index.relative_to(run_dir)) if html_index.exists() else None,
+                summary=summary,
+            ),
             coverage_sets_json_rel=coverage_sets_json_rel,
         )
     db.commit()

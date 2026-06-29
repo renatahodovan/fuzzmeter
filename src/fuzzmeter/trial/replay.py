@@ -76,17 +76,19 @@ def prepare_replay_trial(
     with open_db(db_path) as db:
         trial_db_id = db_trials.ensure_trial_row(
             db,
-            run_id=run_id,
-            fuzzer=cfg.fuzzer,
-            benchmark=cfg.benchmark,
-            fuzz_target=cfg.fuzz_target,
-            rep=cfg.rep_idx,
-            time_seconds=cfg.trial_timeout,
-            status='running',
-            fuzzer_image=cfg.images.runner,
-            build_config_json=json.dumps(cfg.build_config, sort_keys=True),
-            runtime_config_json=json.dumps(cfg.runtime_config, sort_keys=True),
-            start_ts=start_ts,
+            db_trials.TrialRecord(
+                run_id=run_id,
+                fuzzer=cfg.fuzzer,
+                benchmark=cfg.benchmark,
+                fuzz_target=cfg.fuzz_target,
+                rep=cfg.rep_idx,
+                time_seconds=cfg.trial_timeout,
+                status='running',
+                fuzzer_image=cfg.images.runner,
+                build_config_json=json.dumps(cfg.build_config, sort_keys=True),
+                runtime_config_json=json.dumps(cfg.runtime_config, sort_keys=True),
+                start_ts=start_ts,
+            ),
         )
 
     return ReplayTrialInstance(

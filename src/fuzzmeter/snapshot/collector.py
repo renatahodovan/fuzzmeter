@@ -123,14 +123,16 @@ def _collect_trial_snapshot(
     with open_db(db_path) as db:
         snapshot_id = db_snapshot.save_snapshot_data(
             db,
-            trial_db_id=trial.db_id,
-            tick_idx=tick_idx,
-            end_ts=end_ts,
-            corpus_files=prev_corpus_count + new_corpus_count,
-            execs_done=_safe_int(stats.get('execs_done')),
-            stats=stats,
-            crashes=len(processed_by_kind['crashes']),
-            hangs=0,
+            db_snapshot.SnapshotRecord(
+                trial_db_id=trial.db_id,
+                tick_idx=tick_idx,
+                end_ts=end_ts,
+                corpus_files=prev_corpus_count + new_corpus_count,
+                execs_done=_safe_int(stats.get('execs_done')),
+                stats=stats,
+                crashes=len(processed_by_kind['crashes']),
+                hangs=0,
+            ),
         )
         if snapshot_id <= 0:
             raise RuntimeError(f'Could not save snapshot data for {tick_idx}. tick.')

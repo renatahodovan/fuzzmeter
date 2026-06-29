@@ -15,6 +15,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fuzzmeter.db.resource_telemetry import TelemetrySample
 from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.snapshot.resource_telemetry import ResourceTelemetryCollector
 from fuzzmeter.trial.models import TrialConfig, TrialImages, TrialInstance, TrialLayout
@@ -78,15 +79,17 @@ class ResourceTelemetryTest(unittest.TestCase):
         docker_stats.assert_called_once_with(['container'])
         upsert.assert_called_once_with(
             None,
-            trial_row_id=trial.db_id,
-            idx=1,
-            ts=100,
-            container_name='container',
-            cpu_percent=1.5,
-            memory_usage_bytes=2 * 1024 * 1024,
-            memory_limit_bytes=4 * 1024 * 1024,
-            memory_percent=50.0,
-            corpus_disk_usage_bytes=2 * 1024,
+            TelemetrySample(
+                trial_row_id=trial.db_id,
+                idx=1,
+                ts=100,
+                container_name='container',
+                cpu_percent=1.5,
+                memory_usage_bytes=2 * 1024 * 1024,
+                memory_limit_bytes=4 * 1024 * 1024,
+                memory_percent=50.0,
+                corpus_disk_usage_bytes=2 * 1024,
+            ),
         )
 
 
