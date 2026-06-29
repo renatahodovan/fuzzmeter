@@ -14,13 +14,8 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .base import open_readonly_connection
+from .fields import TRIAL_METADATA_FIELDS
 from .snapshot import SEED_BASELINE_IDX
-
-_TRIAL_METADATA_FIELDS = (
-    'fuzzer_image',
-    'build_config_json',
-    'runtime_config_json',
-)
 
 
 class ReportingDB:
@@ -114,7 +109,7 @@ class ReportingDB:
     def trial_rows(self, run_id: str) -> list[dict[str, Any]]:
         '''Return all trial rows that belong to a run.'''
 
-        metadata_select = ', '.join(_TRIAL_METADATA_FIELDS)
+        metadata_select = ', '.join(TRIAL_METADATA_FIELDS)
         return self.rows(
             f"""
             SELECT trial_id, fuzzer, benchmark, fuzz_target, rep,

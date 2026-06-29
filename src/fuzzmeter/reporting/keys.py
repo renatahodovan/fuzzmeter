@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+from ..db.fields import TRIAL_METADATA_FIELDS
+
 COV_METRICS = ('lines', 'branches', 'functions', 'regions')
 
 FINAL_DIST_KEYS = (
@@ -42,9 +44,3 @@ SNAPSHOT_COVERAGE_FIELDS = {
     'functions': ('cov_functions_covered', 'cov_functions_total'),
     'regions': ('cov_regions_covered', 'cov_regions_total'),
 }
-
-TRIAL_METADATA_FIELDS = (
-    'fuzzer_image',
-    'build_config_json',
-    'runtime_config_json',
-)
