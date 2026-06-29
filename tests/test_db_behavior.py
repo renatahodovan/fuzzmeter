@@ -21,6 +21,7 @@ from fuzzmeter.db import bug as db_bug
 from fuzzmeter.db import snapshot as db_snapshot
 from fuzzmeter.db import trials as db_trials
 from fuzzmeter.db.base import open_readonly_connection
+from fuzzmeter.db.report_views import ReportingDB
 
 
 class DatabaseBehaviorTest(unittest.TestCase):
@@ -324,6 +325,46 @@ class DatabaseBehaviorTest(unittest.TestCase):
                 con.close()
 
         self.assertEqual(1, foreign_keys)
+
+    def test_reporting_run_summary_counts_current_schema_rows(self) -> None:
+        '''ReportingDB exposes current-schema run summary counts for the web UI.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / 'fuzzmeter.db'
+            with _open_test_db(db_path) as db:
+                trial_id = _ensure_trial(db)
+                db_trials.set_trial_status(db, trial_id=trial_id, status='done', ended_ts=200)
+                snapshot_id = db_snapshot.save_snapshot_data(
+                    db,
+                    _snapshot_record(trial_id=trial_id, tick_idx=1, end_ts=200, corpus_files=1),
+                )
+                db_bug.ensure_bug(
+                    db,
+                    db_bug.BugRecord(
+                        run_id='run',
+                        fuzzer='fz',
+                        benchmark='bench',
+                        fuzz_target='target',
+                        bug_key='bug',
+                        issue_type='crash',
+                        top_func='main',
+                        frames=['main'],
+                        output='output',
+                        first_seen_ts=200,
+                        first_seen_snapshot_id=snapshot_id,
+                    ),
+                )
+
+            with ReportingDB(db_path) as reporting_db:
+                counts = reporting_db.run_summary_counts('run')
+
+        self.assertEqual(1, counts['trials'])
+        self.assertEqual(1, counts['snapshots'])
+        self.assertEqual(1, counts['bugs'])
+        self.assertEqual(1, counts['benchmark_count'])
+        self.assertEqual(1, counts['target_count'])
+        self.assertEqual(1, counts['fuzzer_count'])
+        self.assertEqual({'done': 1}, counts['status_counts'])
+        self.assertEqual('config', counts['config_src'])
 
 
 @contextmanager

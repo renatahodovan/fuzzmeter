@@ -13,9 +13,14 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Sequence
 
-from ..reporting.keys import TRIAL_METADATA_FIELDS
 from .base import open_readonly_connection
 from .snapshot import SEED_BASELINE_IDX
+
+_TRIAL_METADATA_FIELDS = (
+    'fuzzer_image',
+    'build_config_json',
+    'runtime_config_json',
+)
 
 
 class ReportingDB:
@@ -47,22 +52,6 @@ class ReportingDB:
         row = self.con.execute(sql, tuple(params)).fetchone()
         return None if row is None else row[0]
 
-    def table_exists(self, table_name: str) -> bool:
-        '''Return whether the database contains the named table.'''
-
-        assert self.con is not None
-        return bool(self.scalar(
-            'SELECT 1 FROM sqlite_master WHERE type=\'table\' AND name=? LIMIT 1',
-            (str(table_name),),
-        ))
-
-    def col_exists(self, table_name: str, col_name: str) -> bool:
-        '''Return whether the named table contains the named column.'''
-
-        assert self.con is not None
-        rows = self.rows(f'PRAGMA table_info({table_name})')
-        return any(str(row.get('name') or '') == str(col_name) for row in rows)
-
     def infer_run_id(self, fallback: str) -> str:
         '''Return the newest run id or the provided fallback.'''
 
@@ -83,10 +72,49 @@ class ReportingDB:
         overview['bugs'] = int(self.scalar('SELECT COUNT(*) FROM bugs WHERE run_id=?', (run_id,)) or 0)
         return overview
 
+    def status_counts(self, run_id: str) -> dict[str, int]:
+        '''Return trial status counts for a run.'''
+
+        rows = self.rows(
+            '''
+            SELECT status, COUNT(*) AS c
+              FROM trials
+             WHERE run_id=?
+             GROUP BY status
+            ''',
+            (run_id,),
+        )
+        return {str(row.get('status') or 'unknown'): int(row.get('c') or 0) for row in rows}
+
+    def run_summary_counts(self, run_id: str) -> dict[str, Any]:
+        '''Return web run summary counts for a run.'''
+
+        overview = self.run_overview(run_id)
+        return {
+            'created_ts': int(overview.get('created_ts') or 0) or None,
+            'trials': int(overview.get('trials') or 0),
+            'snapshots': int(overview.get('snapshots') or 0),
+            'bugs': int(overview.get('bugs') or 0),
+            'benchmark_count': int(
+                self.scalar('SELECT COUNT(DISTINCT benchmark) FROM trials WHERE run_id=?', (run_id,)) or 0
+            ),
+            'target_count': int(
+                self.scalar(
+                    'SELECT COUNT(DISTINCT benchmark || \'::\' || fuzz_target) FROM trials WHERE run_id=?',
+                    (run_id,),
+                ) or 0
+            ),
+            'fuzzer_count': int(
+                self.scalar('SELECT COUNT(DISTINCT fuzzer) FROM trials WHERE run_id=?', (run_id,)) or 0
+            ),
+            'status_counts': self.status_counts(run_id),
+            'config_src': overview.get('config_src'),
+        }
+
     def trial_rows(self, run_id: str) -> list[dict[str, Any]]:
         '''Return all trial rows that belong to a run.'''
 
-        metadata_select = ', '.join(TRIAL_METADATA_FIELDS)
+        metadata_select = ', '.join(_TRIAL_METADATA_FIELDS)
         return self.rows(
             f"""
             SELECT trial_id, fuzzer, benchmark, fuzz_target, rep,

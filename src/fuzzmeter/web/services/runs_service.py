@@ -58,47 +58,19 @@ class RunsService:
         }
 
     @staticmethod
-    def _status_summary(db: ReportingDB, run_id: str) -> dict[str, int]:
-        if not db.table_exists("trials") or not db.col_exists("trials", "status"):
-            return {}
-        where = "WHERE run_id=?" if db.col_exists("trials", "run_id") else ""
-        params: tuple[Any, ...] = (run_id,) if where else ()
-        rows = db.rows(
-            f"SELECT status, COUNT(*) AS c FROM trials {where} GROUP BY status",
-            params,
-        )
-        return {
-            str(row.get("status") or "unknown"): int(row.get("c") or 0)
-            for row in rows
-        }
-
-    @staticmethod
     def _run_summary(db: ReportingDB, run_id: str) -> dict[str, Any]:
-        overview = db.run_overview(run_id)
-        config = RunsService._parse_config(overview.get("config_src"))
-        where = "WHERE run_id=?" if db.col_exists("trials", "run_id") else ""
-        params: tuple[Any, ...] = (run_id,) if where else ()
-
-        if db.table_exists("trials"):
-            benchmark_count = int(db.scalar(f"SELECT COUNT(DISTINCT benchmark) FROM trials {where}", params) or 0)
-            target_count = int(
-                db.scalar(f"SELECT COUNT(DISTINCT benchmark || '::' || fuzz_target) FROM trials {where}", params) or 0
-            )
-            fuzzer_count = int(db.scalar(f"SELECT COUNT(DISTINCT fuzzer) FROM trials {where}", params) or 0)
-        else:
-            benchmark_count = 0
-            target_count = 0
-            fuzzer_count = 0
+        counts = db.run_summary_counts(run_id)
+        config = RunsService._parse_config(counts.get("config_src"))
 
         return {
-            "created_ts": int(overview.get("created_ts") or 0) or None,
-            "trials": int(overview.get("trials") or 0),
-            "snapshots": int(overview.get("snapshots") or 0),
-            "bugs": int(overview.get("bugs") or 0),
-            "benchmark_count": benchmark_count,
-            "target_count": target_count,
-            "fuzzer_count": fuzzer_count or len(config.get("fuzzers") or []),
-            "status_counts": RunsService._status_summary(db, run_id),
+            "created_ts": counts["created_ts"],
+            "trials": counts["trials"],
+            "snapshots": counts["snapshots"],
+            "bugs": counts["bugs"],
+            "benchmark_count": counts["benchmark_count"],
+            "target_count": counts["target_count"],
+            "fuzzer_count": counts["fuzzer_count"] or len(config.get("fuzzers") or []),
+            "status_counts": counts["status_counts"],
             "config": config,
         }
 
