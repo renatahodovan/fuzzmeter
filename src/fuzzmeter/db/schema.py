@@ -39,7 +39,9 @@ _SCHEMA = [
       runtime_config_json TEXT,
 
       started_ts INTEGER,
-      ended_ts INTEGER
+      ended_ts INTEGER,
+
+      FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
     )
     """,
     """
@@ -82,7 +84,8 @@ _SCHEMA = [
       cov_functions_covered INTEGER,
       cov_functions_total INTEGER,
 
-      UNIQUE(trial_id, idx)
+      UNIQUE(trial_id, idx),
+      FOREIGN KEY(trial_id) REFERENCES trials(trial_id) ON DELETE CASCADE
     )
     """,
     """
@@ -90,6 +93,8 @@ _SCHEMA = [
       ON snapshots(trial_id, idx)
     """,
     """
+    -- No foreign key to trials: seed baseline aggregate rows at idx=0 can be
+    -- written before any trial-level snapshots exist.
     CREATE TABLE IF NOT EXISTS agg_snapshots(
       agg_snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
       run_id TEXT NOT NULL,
@@ -139,7 +144,9 @@ _SCHEMA = [
       bug_id INTEGER NOT NULL,
       snapshot_id INTEGER NOT NULL,
       hits INTEGER NOT NULL,
-      PRIMARY KEY(bug_id, snapshot_id)
+      PRIMARY KEY(bug_id, snapshot_id),
+      FOREIGN KEY(bug_id) REFERENCES bugs(bug_id) ON DELETE CASCADE,
+      FOREIGN KEY(snapshot_id) REFERENCES snapshots(snapshot_id) ON DELETE CASCADE
     )
     """,
     """
@@ -153,7 +160,8 @@ _SCHEMA = [
       memory_limit_bytes INTEGER,
       memory_percent REAL,
       corpus_disk_usage_bytes INTEGER,
-      PRIMARY KEY(trial_id, idx)
+      PRIMARY KEY(trial_id, idx),
+      FOREIGN KEY(trial_id) REFERENCES trials(trial_id) ON DELETE CASCADE
     )
     """,
     """

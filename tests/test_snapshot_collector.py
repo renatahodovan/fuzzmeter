@@ -151,6 +151,14 @@ class SnapshotCollectorTest(unittest.TestCase):
             db_path = root / 'state.db'
             db = DB.open(db_path)
             ensure_schema(db)
+            db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run-1', 1, 'config'))
+            db.exec(
+                '''
+                INSERT INTO trials(trial_id, run_id, fuzzer, benchmark, fuzz_target, rep, status)
+                VALUES(?,?,?,?,?,?,?)
+                ''',
+                (1, 'run-1', 'aflplusplus', 'bench', 'target', 0, 'running'),
+            )
             db.close()
 
             trial = _active_trial(root, started_ts=0)

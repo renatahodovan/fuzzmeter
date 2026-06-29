@@ -366,6 +366,90 @@ class DatabaseBehaviorTest(unittest.TestCase):
         self.assertEqual({'done': 1}, counts['status_counts'])
         self.assertEqual('config', counts['config_src'])
 
+    def test_current_schema_rejects_orphan_child_rows_and_cascades_owned_rows(self) -> None:
+        '''Current foreign keys protect owned child rows.'''
+        with _open_test_db() as db:
+            with self.assertRaises(sqlite3.IntegrityError):
+                db.exec(
+                    '''
+                    INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep)
+                    VALUES(?,?,?,?,?)
+                    ''',
+                    ('missing-run', 'fz', 'bench', 'target', 0),
+                )
+
+            with self.assertRaises(sqlite3.IntegrityError):
+                db.exec(
+                    '''
+                    INSERT INTO snapshots(trial_id, idx, ts, corpus_files)
+                    VALUES(?,?,?,?)
+                    ''',
+                    (999, 1, 10, 0),
+                )
+
+            with self.assertRaises(sqlite3.IntegrityError):
+                db.exec(
+                    '''
+                    INSERT INTO resource_telemetry(trial_id, idx, ts, container_name)
+                    VALUES(?,?,?,?)
+                    ''',
+                    (999, 1, 10, 'container'),
+                )
+
+            trial_id = _ensure_trial(db)
+            snapshot_id = db_snapshot.save_snapshot_data(
+                db,
+                _snapshot_record(trial_id=trial_id, tick_idx=1, end_ts=10, corpus_files=1),
+            )
+            bug_id = db_bug.ensure_bug(
+                db,
+                db_bug.BugRecord(
+                    run_id='run',
+                    fuzzer='fz',
+                    benchmark='bench',
+                    fuzz_target='target',
+                    bug_key='bug',
+                    issue_type='crash',
+                    top_func='main',
+                    frames=['main'],
+                    output='output',
+                    first_seen_ts=10,
+                    first_seen_snapshot_id=snapshot_id,
+                ),
+            )
+
+            with self.assertRaises(sqlite3.IntegrityError):
+                db_bug.upsert_bug_hits(db, bug_id=bug_id, snapshot_id=999, hits=1)
+            with self.assertRaises(sqlite3.IntegrityError):
+                db_bug.upsert_bug_hits(db, bug_id=999, snapshot_id=snapshot_id, hits=1)
+
+            db_bug.upsert_bug_hits(db, bug_id=bug_id, snapshot_id=snapshot_id, hits=1)
+            db.exec(
+                '''
+                INSERT INTO resource_telemetry(trial_id, idx, ts, container_name)
+                VALUES(?,?,?,?)
+                ''',
+                (trial_id, 1, 10, 'container'),
+            )
+            db.exec('DELETE FROM trials WHERE trial_id=?', (trial_id,))
+
+            child_counts = {
+                'snapshots': db.scalar('SELECT COUNT(*) FROM snapshots'),
+                'bug_hits': db.scalar('SELECT COUNT(*) FROM bug_hits'),
+                'resource_telemetry': db.scalar('SELECT COUNT(*) FROM resource_telemetry'),
+                'bugs': db.scalar('SELECT COUNT(*) FROM bugs'),
+            }
+
+        self.assertEqual(
+            {
+                'snapshots': 0,
+                'bug_hits': 0,
+                'resource_telemetry': 0,
+                'bugs': 1,
+            },
+            child_counts,
+        )
+
 
 @contextmanager
 def _open_test_db(db_path: Path | None = None) -> Iterator[DB]:

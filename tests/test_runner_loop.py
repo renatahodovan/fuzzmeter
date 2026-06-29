@@ -102,6 +102,7 @@ def _create_trial_instance(
     db = DB.open(db_path)
     try:
         ensure_schema(db)
+        db.exec('INSERT OR IGNORE INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
         trial_db_id = db_trials.ensure_trial_row(
             db,
             db_trials.TrialRecord(

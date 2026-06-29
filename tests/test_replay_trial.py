@@ -60,6 +60,7 @@ class ReplayTrialRunnerTest(unittest.TestCase):
             db_path = root / 'state.db'
             db = DB.open(db_path)
             ensure_schema(db)
+            db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run-1', 1, 'config'))
             db.close()
 
             replay_dir = root / 'source'
@@ -97,6 +98,7 @@ class ReplayTrialRunnerTest(unittest.TestCase):
             db_path = root / 'state.db'
             db = DB.open(db_path)
             ensure_schema(db)
+            db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run-1', 1, 'config'))
             db.close()
 
             replay_dir = root / 'source'

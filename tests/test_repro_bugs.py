@@ -164,6 +164,24 @@ def _create_db(db_path: Path) -> None:
     db = DB.open(db_path)
     try:
         ensure_schema(db)
+        db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
+        db.exec(
+            '''
+            INSERT INTO trials(
+              trial_id, run_id, fuzzer, benchmark, fuzz_target, rep, status
+            )
+            VALUES(?,?,?,?,?,?,?)
+            ''',
+            (1, 'run', 'fuzzer', 'bench', 'target', 0, 'running'),
+        )
+        for snapshot_id in (7, 9):
+            db.exec(
+                '''
+                INSERT INTO snapshots(snapshot_id, trial_id, idx, ts, corpus_files)
+                VALUES(?,?,?,?,?)
+                ''',
+                (snapshot_id, 1, snapshot_id, snapshot_id, 0),
+            )
     finally:
         db.close()
 
