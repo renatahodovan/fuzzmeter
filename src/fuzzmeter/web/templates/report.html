@@ -14,10 +14,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>FuzzMeter Report</title>
 
-  {% if run_id %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='report.css') }}" />
-  {% else %}
+  {% if static_report %}
     <link rel="stylesheet" href="report.css" />
+  {% else %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='report.css') }}" />
   {% endif %}
 </head>
 <body>
@@ -68,7 +68,6 @@
   <div class="layout">
     <aside class="sidebar">
       <div class="sidebar-inner">
-        <!-- <div class="side-title">Navigate</div> -->
         <div class="side-title" id="tocOverview"></div>
         <div class="side-title side-title-targets">Targets</div>
         <div class="toc" id="tocTargets"></div>
@@ -87,9 +86,6 @@
               <div class="block-title">FUZZER RANKING</div>
               <div class="chart-actions" id="summaryPanelActions"></div>
             </div>
-        <!-- <div class="muted small">
-          Coverage score compares median region coverage, and AUC score compares median branch coverage-time AUC, both normalized to the best fuzzer on each target. Click a column header to sort.
-        </div> -->
             <table class="table ranking-table">
           <thead>
             <tr>
@@ -347,10 +343,10 @@
   }
 </script>
 
-{% if run_id %}
-<script type="module" src="{{ url_for('static', filename='report.js') }}"></script>
+{% if static_report %}
+<script src="report.js"></script>
 {% else %}
-<script type="module" src="report.js"></script>
+<script type="module" src="{{ url_for('static', filename='report.js') }}"></script>
 {% endif %}
 
 </body>

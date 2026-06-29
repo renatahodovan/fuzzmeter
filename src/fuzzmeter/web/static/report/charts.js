@@ -650,28 +650,27 @@ function exportPayload(frame) {
 }
 
 function renderCanvasChart(canvas, rawSpec = {}) {
-  if (!canvas) return;
+  if (!canvas) return null;
   const spec = normalizeSpec(rawSpec);
   const prepared = prepareCanvas(canvas);
   if (!hasRenderableData(spec)) {
     canvas._chartPayload = null;
-    canvas._exportPayload = null;
     drawNoData(prepared.ctx, prepared.width, prepared.height, rawSpec.emptyMessage || 'No data');
-    return;
+    return null;
   }
   const frame = makeFrame(canvas, spec);
   if (frame.plotWidth <= 0 || frame.plotHeight <= 0) {
     canvas._chartPayload = null;
-    canvas._exportPayload = null;
     drawNoData(frame.ctx, frame.width, frame.height, rawSpec.emptyMessage || 'No data');
-    return;
+    return null;
   }
   drawFrame(frame);
   MARK_RENDERERS[spec.kind]?.(frame);
-  canvas._exportPayload = JSON.parse(JSON.stringify(exportPayload(frame)));
-  canvas._chartPayload = { ...canvas._exportPayload, left: frame.left, plotHeight: frame.plotHeight, plotWidth: frame.plotWidth, top: frame.top, xMax: frame.xMax, xMin: frame.xMin };
+  const payload = JSON.parse(JSON.stringify(exportPayload(frame)));
+  canvas._chartPayload = { ...payload, left: frame.left, plotHeight: frame.plotHeight, plotWidth: frame.plotWidth, top: frame.top, xMax: frame.xMax, xMin: frame.xMin };
   if (spec.kind === 'line') installLineTooltip(canvas);
   if (spec.kind === 'distribution') installDistributionTooltip(canvas);
+  return payload;
 }
 
 function renderLegend(host, series = []) {
@@ -893,11 +892,11 @@ function canvasWithBackground(canvas, background = EXPORT_BACKGROUND) {
   return composed;
 }
 
-async function exportCanvas(canvas, fileName, format) {
+async function exportCanvas(canvas, fileName, format, handle = null) {
   if (!canvas) return false;
-  const sourceCanvas = canvas._exportCanvas || canvas;
+  const sourceCanvas = handle?.surface || canvas;
   if (format === 'latex') {
-    const latex = buildLatex(canvas._exportPayload);
+    const latex = buildLatex(handle?.payload);
     if (!latex) return false;
     downloadBlob(new Blob([latex], { type: 'application/x-tex' }), `${fileName || 'chart'}.tex`);
     return true;
@@ -1080,15 +1079,17 @@ export function makeCanvasCard({ title, subtitle = '', withLegend = false, expor
   const titleEl = part(card, 'title');
   const subtitleEl = part(card, 'subtitle');
   const canvas = part(card, 'canvas');
+  const exportHandle = { payload: null, surface: null };
   const legend = part(card, 'legend');
   titleEl.textContent = title;
   subtitleEl.textContent = subtitle;
   legend.hidden = !withLegend;
   let currentExportName = exportName;
-  installExportMenu(part(card, 'download'), (format) => exportCanvas(canvas, currentExportName, format));
+  installExportMenu(part(card, 'download'), (format) => exportCanvas(canvas, currentExportName, format, exportHandle));
   return {
     canvas,
     card,
+    exportHandle,
     legend,
     setExportName(nextName) { currentExportName = nextName; },
     setSubtitle(nextSubtitle) { subtitleEl.textContent = nextSubtitle || ''; },
@@ -1100,13 +1101,11 @@ export function makeCanvasCard({ title, subtitle = '', withLegend = false, expor
 
 function updateCanvasExportSurface(canvas, legend) {
   if (!canvas || !legend || legend.hidden || !legend.childElementCount) {
-    if (canvas) canvas._exportCanvas = null;
-    return;
+    return null;
   }
   const legendItems = Array.from(legend.querySelectorAll('.legend-item'));
   if (!legendItems.length) {
-    canvas._exportCanvas = null;
-    return;
+    return null;
   }
   const gap = 12;
   const dpr = window.devicePixelRatio || 1;
@@ -1157,7 +1156,7 @@ function updateCanvasExportSurface(canvas, legend) {
       x += ctxMeasure.measureText(entry.label).width + gap;
     });
   });
-  canvas._exportCanvas = exportCanvasEl;
+  return exportCanvasEl;
 }
 
 /**
@@ -1233,9 +1232,10 @@ export function renderChartCard(card, spec = {}) {
   if (spec.title !== undefined) card.setTitle?.(spec.title);
   if (spec.subtitle !== undefined) card.setSubtitle?.(spec.subtitle);
   if (spec.exportName !== undefined) card.setExportName?.(spec.exportName);
-  if (card.canvas && spec.kind) renderCanvasChart(card.canvas, spec);
+  if (card.canvas && spec.kind && card.exportHandle) card.exportHandle.payload = renderCanvasChart(card.canvas, spec);
+  else if (card.canvas && spec.kind) renderCanvasChart(card.canvas, spec);
   if (card.legend && spec.legend !== false) renderLegend(card.legend, spec.legendSeries || spec.series || []);
-  if (card.canvas) updateCanvasExportSurface(card.canvas, card.legend);
+  if (card.canvas && card.exportHandle) card.exportHandle.surface = updateCanvasExportSurface(card.canvas, card.legend);
 }
 
 /**

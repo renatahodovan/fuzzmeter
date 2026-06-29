@@ -5,23 +5,21 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-'''Write static web report assets for generated reporting output.'''
+"""Write static web report assets for generated reporting output."""
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import re
 import shutil
-
-from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
 
 def write_assets(report_dir: Path, payload: dict[str, Any]) -> None:
-    '''Write static HTML, CSS, and JavaScript report assets.'''
-
+    """Write static HTML, CSS, and JavaScript report assets."""
     report_dir.mkdir(parents=True, exist_ok=True)
     candidates = _asset_roots()
     for name in ('report.css',):
@@ -34,16 +32,8 @@ def write_assets(report_dir: Path, payload: dict[str, Any]) -> None:
     if report_html is None:
         raise FileNotFoundError('Could not locate report assets (report.html/report.css/report.js)')
     env = Environment(loader=FileSystemLoader(str(report_html.parent)))
-    rendered_html = env.get_template(report_html.name).render(run_id=None)
-    rendered_html = rendered_html.replace(
-        '<script type="module" src="report.js"></script>',
-        '<script src="report.js"></script>',
-    )
-    static_payload_script = (
-        '<script>\n'
-        f'window.FM_STATIC_DATA = {json.dumps(payload, ensure_ascii=False)};\n'
-        '</script>\n'
-    )
+    rendered_html = env.get_template(report_html.name).render(run_id=None, static_report=True)
+    static_payload_script = f'<script>\nwindow.FM_STATIC_DATA = {json.dumps(payload, ensure_ascii=False)};\n</script>\n'
     (report_dir / 'report.html').write_text(
         rendered_html.replace('</body>', f'{static_payload_script}</body>'),
         encoding='utf-8',
@@ -82,7 +72,20 @@ def _find_report_module_dir(candidates: list[Path]) -> Path | None:
 
 
 def _bundle_report_modules(module_dir: Path) -> str:
-    order = ['report-utils.js', 'charts.js', 'extras.js', 'filters.js', 'page.js', 'app.js']
+    order = [
+        'state.js',
+        'dom.js',
+        'stats.js',
+        'format.js',
+        'report-data.js',
+        'ui.js',
+        'report-utils.js',
+        'charts.js',
+        'extras.js',
+        'filters.js',
+        'page.js',
+        'app.js',
+    ]
     parts = [
         '/* Auto-generated static bundle for file:// report viewing. */',
         '',
@@ -92,7 +95,7 @@ def _bundle_report_modules(module_dir: Path) -> str:
         if not source.is_file():
             raise FileNotFoundError(f'Could not locate report module: {source}')
         text = source.read_text(encoding='utf-8')
-        text = re.sub(r"^\s*import\s+[\s\S]*?;\s*$", '', text, flags=re.MULTILINE)
+        text = re.sub(r'^\s*import\s+[\s\S]*?;\s*$', '', text, flags=re.MULTILINE)
         text = re.sub(r'^\s*export\s+', '', text, flags=re.MULTILINE)
         parts.append(text.strip())
         parts.append('')

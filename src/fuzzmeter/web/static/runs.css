@@ -1,0 +1,184 @@
+/*
+ * Copyright (c) 2026 Renata Hodovan, Akos Kiss.
+ *
+ * Licensed under the BSD 3-Clause License
+ * <LICENSE.rst or https://opensource.org/licenses/BSD-3-Clause>.
+ * This file may not be copied, modified, or distributed except
+ * according to those terms.
+ */
+
+.runs-toolbar{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  margin-bottom:14px;
+}
+.runs-toolbar-left,.runs-toolbar-right{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.runs-search{
+  min-width:min(420px, 100%);
+  flex:1 1 320px;
+}
+.runs-list{
+  display:grid;
+  gap:14px;
+}
+.run-card{
+  border:1px solid var(--border);
+  background:var(--panel);
+  border-radius:16px;
+  padding:14px;
+  display:grid;
+  gap:14px;
+  cursor:pointer;
+}
+.run-card.selected{
+  border-color:rgba(90, 170, 255, .55);
+  background:rgba(90, 170, 255, .12);
+  box-shadow:0 0 0 1px rgba(90, 170, 255, .25);
+}
+.run-card-head{
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  align-items:flex-start;
+  flex-wrap:wrap;
+}
+.run-card-main{
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+  min-width:0;
+  flex:1 1 520px;
+}
+.run-card-title{
+  font-size:16px;
+  font-weight:700;
+  word-break:break-word;
+}
+.run-card-subtitle{
+  color:var(--muted);
+  font-size:12px;
+  margin-top:4px;
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.run-card-badges{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:flex-end;
+}
+.run-badge{
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:4px 9px;
+  font-size:12px;
+  color:var(--text);
+  background:rgba(255,255,255,.04);
+}
+.run-badge.running{ background:rgba(64, 200, 120, .12); border-color:rgba(64, 200, 120, .35); }
+.run-badge.done{ background:rgba(90, 170, 255, .12); border-color:rgba(90, 170, 255, .35); }
+.run-badge.issues{ background:rgba(255, 150, 90, .12); border-color:rgba(255, 150, 90, .35); }
+.run-badge.static{ background:rgba(188, 156, 255, .12); border-color:rgba(188, 156, 255, .35); }
+.run-badge.error{ background:rgba(255, 96, 96, .12); border-color:rgba(255, 96, 96, .35); }
+.run-summary{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(120px, 1fr));
+  gap:10px;
+}
+.summary-chip{
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:10px 12px;
+  background:rgba(255,255,255,.03);
+}
+.summary-chip-label{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  color:var(--muted);
+  margin-bottom:4px;
+}
+.summary-chip-value{
+  font-size:18px;
+  font-weight:700;
+}
+.summary-chip-note{
+  font-size:12px;
+  color:var(--muted);
+  margin-top:2px;
+}
+.run-actions{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  border-top:1px solid var(--border);
+  padding-top:12px;
+}
+.run-actions-main,.run-actions-side{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.run-action-help{
+  color:var(--muted);
+  font-size:12px;
+}
+.config-card{
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:10px 12px;
+  background:rgba(255,255,255,.03);
+}
+.config-card-title{
+  font-size:12px;
+  color:var(--muted);
+  margin-bottom:8px;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.config-kv{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  gap:6px 10px;
+  font-size:13px;
+}
+.config-kv dt{
+  color:var(--muted);
+}
+.config-kv dd{
+  margin:0;
+  word-break:break-word;
+}
+.run-empty{
+  border:1px dashed var(--border);
+  border-radius:16px;
+  padding:24px;
+  text-align:center;
+  color:var(--muted);
+}
+
+@media (max-width: 900px){
+  .run-card-head,.run-actions{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .run-card-badges{
+    justify-content:flex-start;
+  }
+  .run-actions-main,.run-actions-side{
+    width:100%;
+  }
+}

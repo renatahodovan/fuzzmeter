@@ -458,23 +458,6 @@ h3{ margin:10px 0 8px 0; font-size:14px; }
   font-weight:500;
 }
 
-.run-checkbox,
-#selectAllRuns{
-  width:18px;
-  height:18px;
-  margin:0;
-  accent-color:var(--accent);
-  cursor:pointer;
-}
-
-.table td.run-select,
-.table th.run-select{
-  width:44px;
-  text-align:center;
-  padding-left:12px;
-  padding-right:12px;
-}
-
 .pill,.badge{
   display:inline-flex;
   align-items:center;
