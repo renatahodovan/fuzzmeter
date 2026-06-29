@@ -16,7 +16,7 @@ from pathlib import Path
 
 from flask import Blueprint, abort, current_app, jsonify, render_template
 
-from ..services.report_service import WebReportService
+from ..services.report_service import export_static_report, load_report_payload
 
 LOG = logging.getLogger(__name__)
 bp = Blueprint('reports', __name__)
@@ -29,14 +29,18 @@ def _runs_root() -> Path:
 
 @bp.get('/run/<run_id>')
 def run_page(run_id: str):
+    '''Render the live report shell for a run id without validating it yet.'''
+
     return render_template('report.html', run_id=run_id)
 
 
 @bp.get('/api/run/<run_id>/data')
 def api_run_data(run_id: str):
+    '''Return live report data for an existing run.'''
+
     try:
         ts = time.time()
-        payload = WebReportService.load_payload(_runs_root(), run_id)
+        payload = load_report_payload(_runs_root(), run_id)
         LOG.info('Report payload for %s ready in %.2f seconds', run_id, time.time() - ts)
         return jsonify(payload)
     except FileNotFoundError as exc:
@@ -49,8 +53,10 @@ def api_run_data(run_id: str):
 
 @bp.post('/api/run/<run_id>/generate')
 def api_generate_run(run_id: str):
+    '''Generate a static report for an existing run.'''
+
     try:
-        out = WebReportService.export_report(_runs_root(), run_id)
+        out = export_static_report(_runs_root(), run_id)
     except FileNotFoundError:
         abort(404)
     except ValueError as exc:

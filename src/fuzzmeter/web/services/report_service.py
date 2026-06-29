@@ -5,28 +5,26 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Adapt reporting payload and export helpers for live web runs.'''
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
 from ...reporting import build_payload, write_report
-from .file_service import FileService
+from .file_service import require_run_dir
 
 
-class WebReportService:
+def load_report_payload(runs_root: Path, run_id: str) -> dict[str, Any]:
+    '''Build the live report payload for one existing run.'''
 
-    @staticmethod
-    def load_payload(runs_root: Path, run_id: str) -> dict[str, Any]:
-        run_dir = FileService.resolve_run_dir(runs_root, run_id)
-        if not run_dir.is_dir():
-            raise FileNotFoundError(str(run_dir))
-        return build_payload(run_dir, run_id=run_id, file_url_prefix=f"/file/{run_id}/")
+    run_dir = require_run_dir(runs_root, run_id)
+    return build_payload(run_dir, run_id=run_id, file_url_prefix=f'/file/{run_id}/')
 
-    @staticmethod
-    def export_report(runs_root: Path, run_id: str) -> Path:
-        run_dir = FileService.resolve_run_dir(runs_root, run_id)
-        if not run_dir.is_dir():
-            raise FileNotFoundError(str(run_dir))
-        out_dir = run_dir / "report"
-        return write_report(run_dir, out_dir=out_dir)
+
+def export_static_report(runs_root: Path, run_id: str) -> Path:
+    '''Write a static report for one existing run and return its directory.'''
+
+    run_dir = require_run_dir(runs_root, run_id)
+    return write_report(run_dir, out_dir=run_dir / 'report')

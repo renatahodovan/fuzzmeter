@@ -5,8 +5,10 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Publish the Flask blueprints owned by the web route package.'''
+
 from .files import bp as files_bp
 from .reports import bp as reports_bp
 from .runs import bp as runs_bp
 
-__all__ = ["files_bp", "reports_bp", "runs_bp"]
+__all__ = ['files_bp', 'reports_bp', 'runs_bp']

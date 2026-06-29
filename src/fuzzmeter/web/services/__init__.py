@@ -5,8 +5,6 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-from .file_service import FileService
-from .report_service import WebReportService
-from .runs_service import RunsService
+'''Group web service modules without re-exporting private convenience APIs.'''
 
-__all__ = ["FileService", "RunsService", "WebReportService"]
+__all__: list[str] = []
