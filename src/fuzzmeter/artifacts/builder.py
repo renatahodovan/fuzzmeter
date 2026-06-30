@@ -9,12 +9,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from importlib import resources
 import logging
+from pathlib import Path
 import shutil
 import subprocess
-
-from importlib import resources
-from pathlib import Path
 
 from ..config import CampaignConfig
 from ..docker import DockerRuntime, fuzzer_source_dirs, generate_run_bake_hcl
@@ -26,9 +26,24 @@ from .seeds import measure_seed_baselines, prepare_seed_corpora
 logger = logging.getLogger('fuzzmeter')
 
 
+@dataclass(frozen=True)
+class _FuzzerContexts:
+    build_by_fuzzer: dict[str, Path]
+    run_by_fuzzer: dict[str, Path]
+    instrumentation_build_by_profile: dict[str, Path]
+
+    def paths(self) -> list[Path]:
+        paths = [
+            *self.build_by_fuzzer.values(),
+            *self.run_by_fuzzer.values(),
+            *self.instrumentation_build_by_profile.values(),
+        ]
+        return sorted(set(paths))
+
+
 def _build_images(*, campaign_config: CampaignConfig, run_dir: Path, external_roots: ExternalRoots) -> None:
     '''Build all docker images needed by a run.'''
-    fuzzer_build_sources, fuzzer_run_sources = _prepare_fuzzer_contexts(
+    fuzzer_contexts = _prepare_fuzzer_contexts(
         campaign_config=campaign_config,
         run_dir=run_dir,
         fuzzers_root=external_roots.fuzzers_root,
@@ -43,8 +58,9 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path, external_ro
             targets_root=external_roots.targets_root,
             entries=campaign_config.cases,
             memory_limit=campaign_config.settings.memory,
-            fuzzer_build_sources=fuzzer_build_sources,
-            fuzzer_run_sources=fuzzer_run_sources,
+            fuzzer_build_sources=fuzzer_contexts.build_by_fuzzer,
+            fuzzer_run_sources=fuzzer_contexts.run_by_fuzzer,
+            instrumentation_build_sources=fuzzer_contexts.instrumentation_build_by_profile,
             docker_resources=Path(docker_resources_path),
             entrypoint_resources=Path(entrypoint_resources_path),
             fuzzmeter_resources=fuzzmeter_resources_path,
@@ -57,8 +73,7 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path, external_ro
             f'--allow=fs.read={Path(docker_resources_path).resolve()}',
             f'--allow=fs.read={Path(entrypoint_resources_path).resolve()}',
             f'--allow=fs.read={fuzzmeter_resources_path.resolve()}',
-            f'--allow=fs.read={fuzzer_build_sources.resolve()}',
-            f'--allow=fs.read={fuzzer_run_sources.resolve()}',
+            *[f'--allow=fs.read={path.resolve()}' for path in fuzzer_contexts.paths()],
             f'--allow=fs.read={external_roots.targets_root.resolve()}',
         ]
 
@@ -74,13 +89,14 @@ def _prepare_fuzzer_contexts(
     campaign_config: CampaignConfig,
     run_dir: Path,
     fuzzers_root: Path,
-) -> tuple[Path, Path]:
+) -> _FuzzerContexts:
     resources_root = Path(run_dir) / 'fuzzer_resources'
     build_root = resources_root / 'build'
     run_root = resources_root / 'run'
+    instrumentation_root = resources_root / 'instrumentation'
 
     # Ensure using empty directories.
-    for root in (build_root, run_root):
+    for root in (build_root, run_root, instrumentation_root):
         if root.exists():
             for child in root.iterdir():
                 if child.is_dir():
@@ -90,20 +106,47 @@ def _prepare_fuzzer_contexts(
         else:
             root.mkdir(parents=True, exist_ok=True)
 
-    fuzzers = sorted({
-        source_dir
-        for entry in campaign_config.cases
-        for source_dir in fuzzer_source_dirs(Path(fuzzers_root), entry.fuzzer_base)
-    })
+    fuzzer_impls = sorted({entry.fuzzer_base for entry in campaign_config.cases})
+    build_by_fuzzer: dict[str, Path] = {}
+    run_by_fuzzer: dict[str, Path] = {}
+    for fuzzer in fuzzer_impls:
+        source_dirs = fuzzer_source_dirs(Path(fuzzers_root), fuzzer)
+        build_by_fuzzer[fuzzer] = _copy_fuzzer_context(
+            fuzzers_root=fuzzers_root,
+            root=build_root,
+            context_name=fuzzer,
+            fuzzers=source_dirs,
+            phase='build',
+        )
+        run_by_fuzzer[fuzzer] = _copy_fuzzer_context(
+            fuzzers_root=fuzzers_root,
+            root=run_root,
+            context_name=fuzzer,
+            fuzzers=source_dirs,
+            phase='run',
+        )
 
-    for phase, root in (('build', build_root), ('run', run_root)):
-        _write_fuzzer_namespace(out_root=root)
-        if phase == 'build':
-            _copy_internal_instrumentation_sources(out_root=root)
-        for fuzzer in fuzzers:
-            _copy_fuzzer_phase(fuzzers_root=fuzzers_root, out_root=root, fuzzer=fuzzer, phase=phase)
+    return _FuzzerContexts(
+        build_by_fuzzer=build_by_fuzzer,
+        run_by_fuzzer=run_by_fuzzer,
+        instrumentation_build_by_profile=_copy_internal_instrumentation_sources(out_root=instrumentation_root),
+    )
 
-    return build_root, run_root
+
+def _copy_fuzzer_context(
+    *,
+    fuzzers_root: Path,
+    root: Path,
+    context_name: str,
+    fuzzers: list[str],
+    phase: str,
+) -> Path:
+    out_root = root / context_name
+    out_root.mkdir(parents=True, exist_ok=True)
+    _write_fuzzer_namespace(out_root=out_root)
+    for fuzzer in fuzzers:
+        _copy_fuzzer_phase(fuzzers_root=fuzzers_root, out_root=out_root, fuzzer=fuzzer, phase=phase)
+    return out_root
 
 
 def _write_fuzzer_namespace(*, out_root: Path) -> None:
@@ -131,17 +174,21 @@ def _copy_fuzzer_phase(*, fuzzers_root: Path, out_root: Path, fuzzer: str, phase
     )
 
 
-def _copy_internal_instrumentation_sources(*, out_root: Path) -> None:
+def _copy_internal_instrumentation_sources(*, out_root: Path) -> dict[str, Path]:
+    contexts: dict[str, Path] = {}
     with resources.as_file(instrumentation_resources()) as instrumentation_root:
         for name, _, _ in INSTRUMENTATION_PROFILES:
             src_dir = Path(instrumentation_root) / name
-            dst_dir = out_root / name
+            context_root = out_root / name
+            dst_dir = context_root / name
             build_dir = dst_dir / 'build'
             build_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_dir / 'Dockerfile', dst_dir / 'Dockerfile')
             shutil.copy2(src_dir / 'build.py', build_dir / 'build.py')
             (dst_dir / '__init__.py').write_text('', encoding='utf-8')
             (build_dir / '__init__.py').write_text('', encoding='utf-8')
+            contexts[name] = context_root
+    return contexts
 
 
 def prepare_artifacts(

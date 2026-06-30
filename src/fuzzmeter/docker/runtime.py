@@ -9,9 +9,8 @@
 
 from __future__ import annotations
 
-import os
-
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Mapping
 
@@ -78,6 +77,8 @@ class DockerRuntime:
         env['FM_FUZZERS_ROOT'] = str(self.fuzzers_root)
         env['FM_OUT_SRC'] = self.out_src
         env['FM_LOG_LEVEL'] = os.environ['FM_LOG_LEVEL']
+        repo_root = str(self.fuzzers_root.parent)
+        env['PYTHONPATH'] = repo_root if not env.get('PYTHONPATH') else f'{repo_root}{os.pathsep}{env["PYTHONPATH"]}'
         if extra:
             env.update({key: str(value) for key, value in extra.items()})
         return env

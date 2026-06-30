@@ -9,10 +9,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import tempfile
 import unittest
-
-from pathlib import Path
 from unittest.mock import patch
 
 from fuzzmeter.artifacts.builder import _build_images
@@ -61,12 +60,57 @@ class ArtifactBuilderTest(unittest.TestCase):
             campaign_dockerfile = Path('src/fuzzmeter/resources/docker/campaign.Dockerfile').read_text(
                 encoding='utf-8'
             )
-            self.assertIn('COPY --from=build_base /opt/fuzzmeter/fuzzmeter /opt/fuzzmeter/fuzzmeter', campaign_dockerfile)
+            self.assertIn(
+                'COPY --from=build_base /opt/fuzzmeter/fuzzmeter /opt/fuzzmeter/fuzzmeter',
+                campaign_dockerfile,
+            )
+
+    def test_buildx_bake_scopes_copied_sources_to_each_fuzzer(self) -> None:
+        '''Verify that changing the campaign fuzzer set does not change unrelated fuzzer contexts.'''
+        with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as out_dir:
+            repo_root = Path(repo_dir)
+            run_dir = Path(out_dir) / 'runs' / 'run'
+            run_dir.mkdir(parents=True)
+            _write_repo_sources(repo_root, fuzzers=('other', 'plain'))
+
+            with patch('fuzzmeter.artifacts.builder.subprocess.run'):
+                _build_images(
+                    campaign_config=CampaignConfig(
+                        settings=CampaignSettings(),
+                        cases=[
+                            CampaignCase(
+                                fuzzer_name='other',
+                                fuzzer_chain=('other',),
+                                benchmark='bench',
+                                fuzz_target='target',
+                                input_mode='file',
+                            ),
+                            CampaignCase(
+                                fuzzer_name='plain',
+                                fuzzer_chain=('plain',),
+                                benchmark='bench',
+                                fuzz_target='target',
+                                input_mode='file',
+                            ),
+                        ],
+                    ),
+                    run_dir=run_dir,
+                    external_roots=ExternalRoots.from_checkout(repo_root),
+                )
+
+            plain_build_context = run_dir / 'fuzzer_resources' / 'build' / 'plain'
+            self.assertTrue((plain_build_context / 'plain' / 'build' / 'Dockerfile').is_file())
+            self.assertFalse((plain_build_context / 'other').exists())
+
+            bake_hcl = (run_dir / 'bake.hcl').read_text(encoding='utf-8')
+            plain_block = _target_block(bake_hcl, 'runner_plain_bench-target')
+            self.assertIn(f'fuzzer_build_sources = "{plain_build_context.resolve()}"', plain_block)
+            self.assertNotIn(str((run_dir / 'fuzzer_resources' / 'build' / 'other').resolve()), plain_block)
 
 
-def _write_repo_sources(repo_root: Path) -> None:
+def _write_repo_sources(repo_root: Path, *, fuzzers: tuple[str, ...] = ('plain',)) -> None:
     fuzzers_root = repo_root / 'fuzzers'
-    for fuzzer in ('plain',):
+    for fuzzer in fuzzers:
         for phase in ('build', 'run'):
             phase_dir = fuzzers_root / fuzzer / phase
             phase_dir.mkdir(parents=True)
@@ -75,6 +119,12 @@ def _write_repo_sources(repo_root: Path) -> None:
     target_dir = repo_root / 'targets' / 'bench'
     target_dir.mkdir(parents=True)
     (target_dir / 'Dockerfile').write_text('FROM scratch\n', encoding='utf-8')
+
+
+def _target_block(bake_hcl: str, target: str) -> str:
+    start = bake_hcl.index(f'target "{target}" {{')
+    end = bake_hcl.index('\n}\n', start)
+    return bake_hcl[start : end + 3]
 
 
 if __name__ == '__main__':

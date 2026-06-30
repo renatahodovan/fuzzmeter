@@ -6,6 +6,7 @@ ARG BUILD_BASE_IMAGE=build_base
 ARG RUNTIME_BASE_IMAGE=runtime_base
 ARG RUNNER_BASE_IMAGE=runtime_base
 ARG CLANG_BASE_IMAGE=clang_base
+ARG INSTRUMENTATION_RUNTIME_IMAGE=instrumentation_runtime
 
 FROM ${BUILDER_IMAGE} AS builder
 FROM ${BENCHMARK_IMAGE} AS benchmark
@@ -115,9 +116,9 @@ RUN --mount=type=bind,from=fuzzer_run_sources,source=.,target=/tmp/fuzzers,reado
     done
 ENV FM_TARGET_NAME=${TARGET_NAME}
 
-FROM ${CLANG_BASE_IMAGE} AS clang_base
+FROM ${INSTRUMENTATION_RUNTIME_IMAGE} AS instrumentation_runtime
 
-FROM clang_base AS coverage_runner
+FROM instrumentation_runtime AS coverage_runner
 ARG TARGET_NAME
 COPY --from=campaign_builder /src /src
 COPY --from=campaign_builder /work /work
@@ -128,7 +129,7 @@ COPY --from=runtime_base /opt/fuzzmeter/coverage_worker.py /opt/fuzzmeter/covera
 ENV PYTHONPATH=/opt/fuzzmeter
 ENV FM_TARGET_NAME=${TARGET_NAME}
 
-FROM clang_base AS crash_runner
+FROM instrumentation_runtime AS crash_runner
 ARG TARGET_NAME
 COPY --from=campaign_builder /src /src
 COPY --from=campaign_builder /work /work
