@@ -312,6 +312,46 @@ Charts and tables can be exported as publication-friendly PNG or PDF files.
 Reports also link to complete HTML coverage reports when coverage exports are
 available.
 
+Temporary Composite Report Views
+--------------------------------
+
+When ``fuzzmeter serve`` starts, it scans the direct child directories under
+the configured runs root and indexes the composite measurement descriptors
+stored in each ``fuzzmeter.db``. Only descriptor metadata is loaded at startup;
+time series, trial, bug, and coverage data stay in their original run
+directories and are read lazily when a temporary composite report view needs
+them.
+
+Composite views are read-only and no-copy. FuzzMeter does not create a merged
+database, copy artifacts, or write a ``comparison.json`` file. The view
+selection lives only in the running ``serve`` process. The browser keeps the
+view id in the URL, so refreshing the page preserves the comparison until the
+server restarts. After a restart the same URL reports an expired view and the
+selection must be recreated.
+
+Composite views can be created in two ways:
+
+* from the runs page by selecting stored measurements and opening a comparison;
+* from an active run report by adding historical measurements to the current
+  report. In this case the active run is first seeded into the same temporary
+  view model, then historical series are added through the shared API.
+
+Compatibility follows an "inform, do not filter" policy. Different
+``benchmark`` or ``fuzz_target`` values and invalid descriptors are marked
+``incompatible``. Environment, config-detail, and user-defined source
+differences are marked ``risky`` and are shown as field-level metadata for the
+user to judge. Runtime length, repetition count, and fuzzer version metadata
+are displayed in the source summary and report payload, but they do not block
+selection.
+
+Project-specific source metadata is optional. If ``run.source_info`` is true,
+FuzzMeter looks for ``source_info.py`` hooks under target and fuzzer roots and
+runs the same hook infrastructure with two scopes: ``target_source`` and
+``fuzzer_version``. Hook output is redacted before storage: likely secret
+fields and private absolute path fragments are replaced with placeholder
+values, and the report treats missing source metadata as ``risky`` rather than
+silently compatible.
+
 To serve existing runs dynamically::
 
     fuzzmeter --log-level INFO serve --root out/runs --host 127.0.0.1 --port 8000
