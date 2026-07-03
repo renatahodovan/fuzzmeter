@@ -140,6 +140,35 @@ class CompositeMeasurement:
 
 
 @dataclass(frozen=True)
+class CompositeSource:
+    '''Describe one discovered run directory or invalid source.'''
+
+    source_id: str
+    path: Path
+    db_path: Path
+    status: str = 'ok'
+    error: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        '''Return a JSON-compatible representation.'''
+        return {
+            'source_id': self.source_id,
+            'path': str(self.path),
+            'db_path': str(self.db_path),
+            'status': self.status,
+            'error': self.error,
+        }
+
+
+@dataclass(frozen=True)
+class CompositeDiscovery:
+    '''Hold all discovered descriptors and invalid sources.'''
+
+    measurements: tuple[CompositeMeasurement, ...] = ()
+    invalid_sources: tuple[CompositeSource, ...] = ()
+
+
+@dataclass(frozen=True)
 class CompatibilityIssue:
     '''Describe one compatibility or risk signal for the user.'''
 
