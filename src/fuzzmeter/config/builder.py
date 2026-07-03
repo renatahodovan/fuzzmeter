@@ -133,6 +133,9 @@ def _normalized_int_value(name: str, value: str, min_value: int, max_value: int 
 def _load_campaign_settings(data: dict[str, Any]) -> CampaignSettings:
     run_data = data.get('run') or {}
     snap_data = run_data.get('snapshot') or {}
+    source_info = run_data.get('source_info', run_data.get('identity', CampaignSettings.source_info))
+    if not isinstance(source_info, bool):
+        raise TypeError('run.source_info must be true or false.')
     return CampaignSettings(
         time_seconds=_normalized_int_value(
             'time_seconds', run_data.get('time_seconds', CampaignSettings.time_seconds), 60
@@ -152,6 +155,7 @@ def _load_campaign_settings(data: dict[str, Any]) -> CampaignSettings:
         ),
         memory=run_data.get('memory', '') or None,
         memory_swap=run_data.get('memory_swap', '') or None,
+        source_info=source_info,
     )
 
 

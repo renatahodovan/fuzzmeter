@@ -53,6 +53,7 @@ class CampaignSettings:
     snapshot_export_every_ticks: int = 1
     memory: str | None = None
     memory_swap: str | None = None
+    source_info: bool = False
 
 
 @dataclass(frozen=True)
