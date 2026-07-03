@@ -61,6 +61,7 @@
           <div id="benchmarkFilterOptions" class="filter-options"></div>
         </div>
       </div>
+      <button id="compositeAddToggle" class="btn" type="button" hidden>Add measurements</button>
       <button id="themeToggle" class="btn" type="button" aria-label="Toggle light and dark theme">Theme</button>
     </div>
   </header>
@@ -75,6 +76,16 @@
     </aside>
 
     <main class="content">
+      <section class="panel source-panel" id="sourcePanel" hidden>
+        <div class="subcard-head">
+          <div>
+            <div class="block-title">SOURCES</div>
+            <div class="block-subtitle">Fresh and historical measurements rendered in this report view.</div>
+          </div>
+        </div>
+        <div id="sourceList" class="source-list"></div>
+      </section>
+
       <section class="panel overview-group" id="overviewPanel">
         <div class="section-banner card-title target-banner-title">Overview</div>
         <div class="overview-body">
@@ -217,6 +228,25 @@
   </div>
 </div>
 
+<div id="compositeModal" class="modal hidden" aria-hidden="true">
+  <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="compositeModalTitle">
+    <div class="modal-head">
+      <div>
+        <div id="compositeModalTitle" class="modal-title">Add measurements</div>
+        <div id="compositeStatus" class="muted small"></div>
+      </div>
+      <div class="chart-actions">
+        <button id="compositeRefreshSources" class="btn" type="button">Refresh sources</button>
+        <button id="compositeModalClose" class="btn" type="button">Close</button>
+      </div>
+    </div>
+    <div id="compositeMeasurementOptions" class="composite-options"></div>
+    <div class="modal-actions">
+      <button id="compositeAddSelected" class="btn" type="button" disabled>Add selected</button>
+    </div>
+  </div>
+</div>
+
 <template id="tplTargetSection">
   <section class="target-card">
     <div class="card-header">
@@ -232,6 +262,7 @@
       <thead>
         <tr>
           <th title="Fuzzer name, version summary, config action, and coverage report link.">Fuzzer</th>
+          <th title="Whether this fuzzer-target series comes from the active run or a historical measurement.">Source</th>
           <th class="num" data-sort-key="branches_union" title="Final branch coverage per target and per fuzzer. The large number is the union of branches covered across all trials, with per-trial min, max, and median shown below.">
             <div class="th-stack">
               <span data-part="coverage-head">Branches</span>
@@ -339,10 +370,10 @@
 <script>
   window.FM_RUN_ID = {{ (run_id or '')|tojson }};
   window.FM_VIEW_ID = {{ (view_id or '')|tojson }};
-  if (window.FM_RUN_ID) {
-    window.FM_DATA_URL = "/api/run/" + window.FM_RUN_ID + "/data";
-  } else if (window.FM_VIEW_ID) {
+  if (window.FM_VIEW_ID) {
     window.FM_DATA_URL = "/api/composite/views/" + window.FM_VIEW_ID + "/data";
+  } else if (window.FM_RUN_ID) {
+    window.FM_DATA_URL = "/api/run/" + window.FM_RUN_ID + "/data";
   }
 </script>
 

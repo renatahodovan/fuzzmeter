@@ -84,6 +84,8 @@ def _bundle_report_modules(module_dir: Path) -> str:
         'extras.js',
         'filters.js',
         'page.js',
+        'composite-shared.js',
+        'composite.js',
         'app.js',
     ]
     parts = [

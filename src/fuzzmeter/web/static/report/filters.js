@@ -313,6 +313,18 @@ export function selectedFuzzerNames() {
   return Array.from(FM_APP.state.selectedFuzzers);
 }
 
+export function selectNewFilterEntries(previous, next) {
+  const previousFuzzers = new Set(allFuzzerNames(previous));
+  allFuzzerNames(next).forEach((name) => {
+    if (!previousFuzzers.has(name)) FM_APP.state.selectedFuzzers.add(name);
+  });
+
+  const previousBenchmarks = new Set(allBenchmarkNames(previous));
+  allBenchmarkNames(next).forEach((name) => {
+    if (!previousBenchmarks.has(name)) FM_APP.state.selectedBenchmarks.add(name);
+  });
+}
+
 function syncFilterButton(allNames) {
   const button = byId('fuzzerFilterToggle');
   const count = byId('fuzzerFilterCount');

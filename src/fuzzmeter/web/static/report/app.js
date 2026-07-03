@@ -37,8 +37,13 @@ import {
   installFuzzerFilter,
   renderBenchmarkFilterOptions,
   renderFuzzerFilterOptions,
+  selectNewFilterEntries,
   selectedFuzzerNames,
 } from './filters.js';
+import {
+  installCompositeControls,
+  renderSourceSummary,
+} from './composite.js';
 import { createTargetSection } from './page.js';
 
 function compareSummaryRows(left, right, key, direction) {
@@ -434,6 +439,16 @@ async function render() {
 
   window.addEventListener('resize', debounce(() => FM_APP.redrawAll(), 120));
   applyTheme(preferredTheme());
+  renderSourceSummary(data);
+  installCompositeControls(async () => {
+    const previous = FM_APP.rawData;
+    const next = await fetchJSON(window.FM_DATA_URL && window.FM_DATA_URL.length ? window.FM_DATA_URL : 'data.json');
+    selectNewFilterEntries(previous, next);
+    FM_APP.rawData = next;
+    assignFuzzerColors(next);
+    renderFromState();
+    renderSourceSummary(next);
+  });
 }
 
 render().catch((error) => {

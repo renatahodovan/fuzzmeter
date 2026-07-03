@@ -99,6 +99,7 @@ class ReportFrontendTest(unittest.TestCase):
               formatDuration,
               matchesFilter,
               normalizedStatusCounts,
+              refresh,
               statusBadge,
               toggleRunSelection,
               toggleVisibleSelection,
@@ -157,6 +158,50 @@ class ReportFrontendTest(unittest.TestCase):
             assert.deepEqual(Array.from(state.selectedRuns).sort(), ['alpha-run', 'beta-run']);
             toggleVisibleSelection(state, ['alpha-run', 'beta-run']);
             assert.deepEqual(Array.from(state.selectedRuns), []);
+
+            const calls = [];
+            const elements = new Map();
+            function node() {
+              return {
+                textContent: '',
+                disabled: false,
+                dataset: {},
+                classList: { toggle() {} },
+                appendChild() {},
+                addEventListener() {},
+              };
+            }
+            globalThis.document = {
+              createElement() { return node(); },
+              querySelectorAll() { return []; },
+              getElementById(id) {
+                if (!elements.has(id)) elements.set(id, node());
+                return elements.get(id);
+              },
+            };
+            globalThis.fetch = async (url, opts = {}) => {
+              calls.push([url, opts.method || 'GET']);
+              return {
+                ok: true,
+                async json() {
+                  if (url === '/api/runs') return { runs: [] };
+                  if (url === '/api/composite/sources/refresh') return { measurements: [], invalid_sources: [] };
+                  throw new Error(`Unexpected URL: ${url}`);
+                },
+              };
+            };
+            await refresh({
+              runs: [],
+              measurements: [],
+              invalidSources: [],
+              filterText: '',
+              selectedRuns: new Set(),
+              selectedMeasurements: new Set(),
+            });
+            assert.deepEqual(calls, [
+              ['/api/runs', 'GET'],
+              ['/api/composite/sources/refresh', 'POST'],
+            ]);
         """
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],
@@ -207,6 +252,45 @@ class ReportFrontendTest(unittest.TestCase):
             assert.ok(sparseSegments.every((segment) => segment[0].high < 20600));
             assert.equal(shouldDrawDistributionViolin([1, 2, 3, 4]), false);
             assert.equal(shouldDrawDistributionViolin([1, 2, 3, 4, 5]), true);
+        """
+        subprocess.run(
+            ['node', '--no-warnings', '--input-type=module', '-e', script],
+            cwd=REPO_ROOT,
+            check=True,
+        )
+
+    def test_composite_reload_selects_new_filter_entries(self) -> None:
+        script = r"""
+            import assert from 'node:assert/strict';
+            import { FM_APP } from './src/fuzzmeter/web/static/report/state.js';
+            import { selectNewFilterEntries } from './src/fuzzmeter/web/static/report/filters.js';
+
+            FM_APP.state.selectedFuzzers = new Set(['fresh']);
+            FM_APP.state.selectedBenchmarks = new Set(['bench']);
+
+            const previous = {
+              targets: [
+                { benchmark: 'bench', fuzzers: [{ fuzzer: 'fresh' }] },
+              ],
+            };
+            const next = {
+              targets: [
+                { benchmark: 'bench', fuzzers: [{ fuzzer: 'fresh' }, { fuzzer: 'historical' }] },
+                { benchmark: 'other-bench', fuzzers: [{ fuzzer: 'other-historical' }] },
+              ],
+            };
+
+            selectNewFilterEntries(previous, next);
+
+            assert.deepEqual(Array.from(FM_APP.state.selectedFuzzers).sort(), [
+              'fresh',
+              'historical',
+              'other-historical',
+            ]);
+            assert.deepEqual(Array.from(FM_APP.state.selectedBenchmarks).sort(), [
+              'bench',
+              'other-bench',
+            ]);
         """
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],

@@ -265,6 +265,7 @@ function renderFuzzerTable(section) {
     nameRow.appendChild(textWrap);
     nameCell.appendChild(nameRow);
     tr.appendChild(nameCell);
+    tr.appendChild(el('td', null, fuzzer.origin || 'fresh'));
 
     const branchUnionValue = fuzzer.aggregate?.branches_covered;
     appendCustomAggregateCell(
@@ -451,6 +452,7 @@ function createTrialTableBlock(section) {
   const body = el('div');
   const columns = [
     ['Fuzzer', null, 'Fuzzer name for the trial row.'],
+    ['Source', null, 'Whether this trial row comes from the active run or a historical measurement.'],
     ['Rep', 'num', 'Repetition index inside the fuzzer-target group.'],
     ['Run time', 'num', 'Elapsed runtime of the trial.'],
     ['Exec/sec', 'num', 'Executed tests per second at the end of the trial.'],
@@ -937,13 +939,14 @@ function renderTrialTableBlock(section) {
     })
     .map((trial) => ({
       c0: String(trial._fuzzer || '—'),
-      c1: formatGroupedNumber(trial.rep, { maximumFractionDigits: 0 }),
-      c2: formatDuration(trial.elapsed_seconds),
-      c3: trial.execs_per_sec == null ? '—' : formatGroupedNumber(trial.execs_per_sec, { maximumFractionDigits: 1 }),
-      c4: formatGroupedNumber(trial.regions_cov, { maximumFractionDigits: 0 }),
-      c5: formatGroupedNumber(trial.branches_cov, { maximumFractionDigits: 0 }),
-      c6: trial.convergence_pct == null ? '—' : fmtPct(trial.convergence_pct, 1),
-      c7: trial.execs_done == null ? '—' : formatGroupedNumber(per10kExec(trial.branches_cov, trial.execs_done), { maximumFractionDigits: 1 }),
+      c1: String(trial.origin || 'fresh'),
+      c2: formatGroupedNumber(trial.rep, { maximumFractionDigits: 0 }),
+      c3: formatDuration(trial.elapsed_seconds),
+      c4: trial.execs_per_sec == null ? '—' : formatGroupedNumber(trial.execs_per_sec, { maximumFractionDigits: 1 }),
+      c5: formatGroupedNumber(trial.regions_cov, { maximumFractionDigits: 0 }),
+      c6: formatGroupedNumber(trial.branches_cov, { maximumFractionDigits: 0 }),
+      c7: trial.convergence_pct == null ? '—' : fmtPct(trial.convergence_pct, 1),
+      c8: trial.execs_done == null ? '—' : formatGroupedNumber(per10kExec(trial.branches_cov, trial.execs_done), { maximumFractionDigits: 1 }),
     }));
   renderDataTable(tableSpec.body, tableSpec.columns, rows);
 }

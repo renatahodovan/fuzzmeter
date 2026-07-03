@@ -14,7 +14,7 @@ import time
 
 from pathlib import Path
 
-from flask import Blueprint, abort, current_app, jsonify, render_template
+from flask import Blueprint, abort, current_app, jsonify, render_template, request
 
 from ..services.report_service import export_static_report, load_report_payload
 
@@ -31,7 +31,7 @@ def _runs_root() -> Path:
 def run_page(run_id: str):
     '''Render the live report shell for a run id without validating it yet.'''
 
-    return render_template('report.html', run_id=run_id)
+    return render_template('report.html', run_id=run_id, view_id=request.args.get('view') or None)
 
 
 @bp.get('/compare/<view_id>')
