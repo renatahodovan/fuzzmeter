@@ -17,6 +17,7 @@ import shutil
 import subprocess
 
 from ..config import CampaignConfig, implementation_fuzzer
+from ..composite.collect import collect_records, save_records
 from ..docker import DockerRuntime, fuzzer_source_dirs, generate_run_bake_hcl
 from ..docker.bake import INSTRUMENTATION_PROFILES
 from ..paths import ExternalRoots, docker_resources, entrypoint_resources, instrumentation_resources
@@ -203,6 +204,10 @@ def prepare_artifacts(
     '''Build images, extract binaries, prepare seeds, and measure seed baselines.'''
     _build_images(campaign_config=campaign_config, run_dir=run_dir, external_roots=external_roots)
     fuzz_binaries = extract_fuzz_binaries(campaign_config=campaign_config, run_dir=run_dir)
+    save_records(
+        db_path,
+        collect_records(run_id=run_id, campaign_config=campaign_config, external_roots=external_roots),
+    )
     prepare_seed_corpora(campaign_config=campaign_config, run_dir=run_dir)
     measure_seed_baselines(
         campaign_config=campaign_config,

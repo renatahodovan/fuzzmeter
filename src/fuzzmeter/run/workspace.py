@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from ..config import CampaignConfig
+from ..composite.collect import collect_records, save_records
 from ..db import ensure_schema, open_db
 from ..db import runs as db_runs
 
@@ -22,7 +23,7 @@ def initialize_run_dir(*, run_dir: Path, run_id: str, config_src: str, campaign_
     '''Initialize run metadata, config files, and database schema.'''
     (Path(run_dir) / 'config.yaml').write_text(config_src, encoding='utf-8')
     _initialize_db(run_dir=run_dir, run_id=run_id, config_src=config_src)
-    _write_run_entries(run_dir=run_dir, campaign_config=campaign_config)
+    _write_run_entries(run_dir=run_dir, run_id=run_id, campaign_config=campaign_config)
 
 
 def _initialize_db(*, run_dir: Path, run_id: str, config_src: str) -> None:
@@ -31,7 +32,7 @@ def _initialize_db(*, run_dir: Path, run_id: str, config_src: str) -> None:
         db_runs.upsert_run(db, run_id=run_id, created_ts=int(time.time()), config_src=config_src)
 
 
-def _write_run_entries(*, run_dir: Path, campaign_config: CampaignConfig) -> None:
+def _write_run_entries(*, run_dir: Path, run_id: str, campaign_config: CampaignConfig) -> None:
     (Path(run_dir) / 'benchmark_config.json').write_text(
         json.dumps(
             [
@@ -50,4 +51,8 @@ def _write_run_entries(*, run_dir: Path, campaign_config: CampaignConfig) -> Non
             sort_keys=True,
         ),
         encoding='utf-8',
+    )
+    save_records(
+        Path(run_dir) / 'fuzzmeter.db',
+        collect_records(run_id=run_id, campaign_config=campaign_config),
     )

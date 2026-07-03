@@ -368,7 +368,7 @@ class DatabaseBehaviorTest(unittest.TestCase):
         self.assertEqual('config', counts['config_src'])
 
     def test_metadata_rows_are_replaceable(self) -> None:
-        '''Reusable metadata rows are keyed by run, fuzzer, and target.'''
+        '''Composite descriptor rows are keyed by run, fuzzer, and target.'''
         with _open_test_db() as db:
             db_metadata.upsert_metadata(
                 db,
@@ -377,9 +377,11 @@ class DatabaseBehaviorTest(unittest.TestCase):
                     fuzzer='fz',
                     benchmark='bench',
                     fuzz_target='target',
-                    schema_version=1,
                     repetitions=1,
                     runtime_seconds=60,
+                    environment_digest='env1',
+                    config_digest='cfg1',
+                    source_digest='src1',
                     metadata={'a': 1},
                     created_at=100,
                 ),
@@ -391,9 +393,11 @@ class DatabaseBehaviorTest(unittest.TestCase):
                     fuzzer='fz',
                     benchmark='bench',
                     fuzz_target='target',
-                    schema_version=1,
                     repetitions=2,
                     runtime_seconds=120,
+                    environment_digest='env2',
+                    config_digest='cfg2',
+                    source_digest='src2',
                     metadata={'b': [1, 2]},
                     created_at=200,
                 ),
@@ -404,6 +408,9 @@ class DatabaseBehaviorTest(unittest.TestCase):
         self.assertEqual(1, len(rows))
         self.assertEqual(2, rows[0].repetitions)
         self.assertEqual(120, rows[0].runtime_seconds)
+        self.assertEqual('env2', rows[0].environment_digest)
+        self.assertEqual('cfg2', rows[0].config_digest)
+        self.assertEqual('src2', rows[0].source_digest)
         self.assertEqual({'b': [1, 2]}, rows[0].metadata)
 
     def test_current_schema_rejects_orphan_child_rows_and_cascades_owned_rows(self) -> None:
