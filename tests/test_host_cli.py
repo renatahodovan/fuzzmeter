@@ -55,6 +55,7 @@ class HostCliTest(unittest.TestCase):
                 self.assertEqual(0, cli.main(['--log-level', 'CRITICAL', 'serve', '--root', str(out_root)]))
 
             self.assertEqual(runs_root.resolve(), webapp.RUNS_ROOT)
+            self.assertEqual(runs_root.resolve(), webapp.app.config['COMPOSITE_REGISTRY'].runs_root.resolve())
             self.assertEqual(str(runs_root.resolve()), os.environ['FM_RUNS_ROOT'])
             app_run.assert_called_once()
 

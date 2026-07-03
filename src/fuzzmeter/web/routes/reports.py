@@ -34,6 +34,13 @@ def run_page(run_id: str):
     return render_template('report.html', run_id=run_id)
 
 
+@bp.get('/compare/<view_id>')
+def compare_page(view_id: str):
+    '''Render the report shell for a temporary composite view.'''
+
+    return render_template('report.html', run_id=None, view_id=view_id)
+
+
 @bp.get('/api/run/<run_id>/data')
 def api_run_data(run_id: str):
     '''Return live report data for an existing run.'''

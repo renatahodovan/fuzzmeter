@@ -1,0 +1,241 @@
+# Copyright (c) 2026 Renata Hodovan, Akos Kiss.
+#
+# Licensed under the BSD 3-Clause License
+# <LICENSE.rst or https://opensource.org/licenses/BSD-3-Clause>.
+# This file may not be copied, modified, or distributed except
+# according to those terms.
+
+'''Serve composite measurement discovery, view state, and report payloads.'''
+
+from __future__ import annotations
+
+import logging
+
+from pathlib import Path
+from typing import Any
+
+from ...composite import COMPOSITE_ORIGIN_FRESH, COMPOSITE_ORIGIN_HISTORICAL, compare_metadata
+from ...composite.discovery import read_measurements
+from ...composite.models import CompositeMeasurement, CompositeMeasurementKey, CompositeSelection
+from ...composite.registry import CompositeRegistry, CompositeViewStore, selection_from_key
+from ...reporting import build_composite_payload
+from .file_service import require_run_dir
+
+LOG = logging.getLogger(__name__)
+
+
+def list_measurements(registry: CompositeRegistry) -> dict[str, Any]:
+    '''Return discoverable measurements and invalid sources.'''
+    return {
+        'runs_root': str(registry.runs_root.resolve()),
+        'measurements': [measurement.to_json() for measurement in registry.measurements()],
+        'invalid_sources': [source.to_json() for source in registry.invalid_sources()],
+    }
+
+
+def refresh_sources(registry: CompositeRegistry) -> dict[str, Any]:
+    '''Refresh the serve-lifetime descriptor registry.'''
+    registry.refresh()
+    return list_measurements(registry)
+
+
+def create_view(store: CompositeViewStore, data: dict[str, Any]) -> dict[str, Any]:
+    '''Create a composite view from posted selections.'''
+    view = store.create(_selections_from_payload(data, default_origin=COMPOSITE_ORIGIN_HISTORICAL))
+    return view.to_json()
+
+
+def create_view_from_run(runs_root: Path, store: CompositeViewStore, run_id: str) -> dict[str, Any]:
+    '''Create a composite view seeded with all measurements from an active run.'''
+    measurements = _run_measurements(runs_root, run_id)
+    selections = [
+        selection_from_key(measurement.key, origin=COMPOSITE_ORIGIN_FRESH)
+        for measurement in measurements
+    ]
+    return store.create(selections).to_json()
+
+
+def add_measurements(store: CompositeViewStore, view_id: str, data: dict[str, Any]) -> dict[str, Any]:
+    '''Add measurements to a composite view.'''
+    return store.add(view_id, _selections_from_payload(data, default_origin=COMPOSITE_ORIGIN_HISTORICAL)).to_json()
+
+
+def remove_measurement(store: CompositeViewStore, view_id: str, selection_id: str) -> dict[str, Any]:
+    '''Remove one selected measurement from a composite view.'''
+    return store.remove(view_id, selection_id).to_json()
+
+
+def view_summary(runs_root: Path, registry: CompositeRegistry, store: CompositeViewStore, view_id: str) -> dict[str, Any]:
+    '''Return selected measurements and compatibility summaries for one view.'''
+    view = _require_view(store, view_id)
+    resolved = _resolve_summary_entries(runs_root, registry, view.selections)
+    entries = [(selection, measurement) for selection, measurement in resolved if measurement is not None]
+    return {
+        **view.to_json(),
+        'sources': [
+            _missing_source_summary(selection) if measurement is None
+            else _source_summary(selection, measurement, _compatibility_for(entries, measurement))
+            for selection, measurement in resolved
+        ],
+    }
+
+
+def view_report_data(runs_root: Path, registry: CompositeRegistry, store: CompositeViewStore, view_id: str) -> dict[str, Any]:
+    '''Build the full report payload for a composite view.'''
+    view = _require_view(store, view_id)
+    entries = _resolve_entries(runs_root, registry, view.selections)
+    payload = build_composite_payload(entries)
+    payload['meta']['view_id'] = view.view_id
+    measurements_by_selection = {selection.selection_id: measurement for selection, measurement in entries}
+    for source in payload.get('sources') or []:
+        measurement = measurements_by_selection.get(source.get('selection_id'))
+        if measurement is not None:
+            source['compatibility'] = _compatibility_for(entries, measurement)
+    return payload
+
+
+def _selections_from_payload(data: dict[str, Any], *, default_origin: str) -> list[CompositeSelection]:
+    raw = data.get('measurements', data.get('selections', []))
+    if not isinstance(raw, list):
+        raise ValueError('measurements must be a list.')
+    selections: list[CompositeSelection] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError('measurement selection must be an object.')
+        key_data = item.get('key') if isinstance(item.get('key'), dict) else item
+        key = CompositeMeasurementKey.from_json(key_data)
+        _validate_key(key)
+        origin = str(item.get('origin') or default_origin)
+        display_fuzzer = item.get('display_fuzzer')
+        selection_id = item.get('selection_id') or item.get('id')
+        selections.append(
+            selection_from_key(
+                key,
+                origin=origin,
+                display_fuzzer=str(display_fuzzer) if display_fuzzer else None,
+                selection_id=str(selection_id) if selection_id else None,
+            )
+        )
+    return selections
+
+
+def _resolve_entries(
+    runs_root: Path,
+    registry: CompositeRegistry,
+    selections: tuple[CompositeSelection, ...],
+) -> list[tuple[CompositeSelection, CompositeMeasurement]]:
+    entries: list[tuple[CompositeSelection, CompositeMeasurement]] = []
+    for selection in selections:
+        measurement = registry.get(selection.key)
+        if measurement is None:
+            measurement = _read_run_measurement(runs_root, selection.key)
+        if measurement is None:
+            raise FileNotFoundError(f'Measurement not found: {selection.key.as_id()}')
+        entries.append((selection, measurement))
+    return entries
+
+
+def _resolve_summary_entries(
+    runs_root: Path,
+    registry: CompositeRegistry,
+    selections: tuple[CompositeSelection, ...],
+) -> list[tuple[CompositeSelection, CompositeMeasurement | None]]:
+    entries: list[tuple[CompositeSelection, CompositeMeasurement | None]] = []
+    for selection in selections:
+        try:
+            measurement = registry.get(selection.key) or _read_run_measurement(runs_root, selection.key)
+        except Exception as exc:
+            LOG.warning('Could not resolve composite selection %s: %s', selection.selection_id, exc)
+            measurement = None
+        entries.append((selection, measurement))
+    return entries
+
+
+def _run_measurements(runs_root: Path, run_id: str) -> list[CompositeMeasurement]:
+    run_dir = require_run_dir(runs_root, run_id)
+    return read_measurements(run_dir / 'fuzzmeter.db', run_id)
+
+
+def _read_run_measurement(runs_root: Path, key: CompositeMeasurementKey) -> CompositeMeasurement | None:
+    run_dir = Path(runs_root).resolve() / key.source_id
+    if not run_dir.is_dir():
+        return None
+    for measurement in read_measurements(run_dir / 'fuzzmeter.db', key.source_id):
+        if measurement.key == key:
+            return measurement
+    return None
+
+
+def _compatibility_for(
+    entries: list[tuple[CompositeSelection, CompositeMeasurement]],
+    measurement: CompositeMeasurement,
+) -> dict[str, Any]:
+    reference = _reference_for(entries, measurement)
+    if reference is None or reference is measurement:
+        return {'level': 'compatible', 'issues': []}
+    return compare_metadata(reference.metadata, measurement.metadata).to_json()
+
+
+def _reference_for(
+    entries: list[tuple[CompositeSelection, CompositeMeasurement]],
+    measurement: CompositeMeasurement,
+) -> CompositeMeasurement | None:
+    for _, candidate in entries:
+        if (
+            candidate.key.benchmark == measurement.key.benchmark
+            and candidate.key.fuzz_target == measurement.key.fuzz_target
+        ):
+            return candidate
+    return None
+
+
+def _source_summary(
+    selection: CompositeSelection,
+    measurement: CompositeMeasurement,
+    compatibility: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        'selection_id': selection.selection_id,
+        'key': measurement.key.to_json(),
+        'origin': selection.origin,
+        'source_id': measurement.key.source_id,
+        'run_id': measurement.key.run_id,
+        'fuzzer': measurement.key.fuzzer,
+        'benchmark': measurement.key.benchmark,
+        'fuzz_target': measurement.key.fuzz_target,
+        'runtime_seconds': measurement.runtime_seconds,
+        'repetitions': measurement.repetitions,
+        'metadata': measurement.metadata.to_json(),
+        'display_fuzzer': selection.display_fuzzer or measurement.key.fuzzer,
+        'status': 'ok',
+        'compatibility': compatibility,
+    }
+
+
+def _missing_source_summary(selection: CompositeSelection) -> dict[str, Any]:
+    return {
+        'selection_id': selection.selection_id,
+        'key': selection.key.to_json(),
+        'origin': selection.origin,
+        'source_id': selection.key.source_id,
+        'run_id': selection.key.run_id,
+        'fuzzer': selection.key.fuzzer,
+        'benchmark': selection.key.benchmark,
+        'fuzz_target': selection.key.fuzz_target,
+        'display_fuzzer': selection.display_fuzzer or selection.key.fuzzer,
+        'status': 'missing',
+        'error': f'Measurement not found: {selection.key.as_id()}',
+        'compatibility': {'level': 'incompatible', 'issues': []},
+    }
+
+
+def _validate_key(key: CompositeMeasurementKey) -> None:
+    if not all((key.source_id, key.run_id, key.fuzzer, key.benchmark, key.fuzz_target)):
+        raise ValueError('measurement key must include source_id, run_id, fuzzer, benchmark, and fuzz_target.')
+
+
+def _require_view(store: CompositeViewStore, view_id: str):
+    view = store.get(view_id)
+    if view is None:
+        raise KeyError(str(view_id))
+    return view

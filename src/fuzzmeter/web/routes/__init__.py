@@ -7,8 +7,9 @@
 
 '''Publish the Flask blueprints owned by the web route package.'''
 
+from .composite import bp as composite_bp
 from .files import bp as files_bp
 from .reports import bp as reports_bp
 from .runs import bp as runs_bp
 
-__all__ = ['files_bp', 'reports_bp', 'runs_bp']
+__all__ = ['composite_bp', 'files_bp', 'reports_bp', 'runs_bp']

@@ -338,8 +338,11 @@
 
 <script>
   window.FM_RUN_ID = {{ (run_id or '')|tojson }};
+  window.FM_VIEW_ID = {{ (view_id or '')|tojson }};
   if (window.FM_RUN_ID) {
     window.FM_DATA_URL = "/api/run/" + window.FM_RUN_ID + "/data";
+  } else if (window.FM_VIEW_ID) {
+    window.FM_DATA_URL = "/api/composite/views/" + window.FM_VIEW_ID + "/data";
   }
 </script>
 

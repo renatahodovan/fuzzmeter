@@ -215,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
 
         try:
             root = args.root.expanduser().resolve()
-            webapp.RUNS_ROOT = (root / 'runs').resolve() if (root / 'runs').is_dir() else root
+            webapp.configure_runs_root(root)
             if not webapp.RUNS_ROOT.is_dir():
                 raise NotADirectoryError(f'Runs root is not a directory: {webapp.RUNS_ROOT}')
         except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:

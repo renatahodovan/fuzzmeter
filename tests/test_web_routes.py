@@ -16,7 +16,11 @@ from pathlib import Path
 try:
     from flask import Flask
 
-    from fuzzmeter.web.routes import files_bp, reports_bp, runs_bp
+    from fuzzmeter.composite import CompositeRegistry, CompositeViewStore
+    from fuzzmeter.db import ensure_schema, metadata as db_metadata, open_db
+    from fuzzmeter.db import runs as db_runs
+    from fuzzmeter.web.app import resolve_runs_root
+    from fuzzmeter.web.routes import composite_bp, files_bp, reports_bp, runs_bp
 except ModuleNotFoundError as exc:
     FLASK_IMPORT_ERROR = exc
 else:
@@ -98,14 +102,116 @@ class WebRoutesTest(unittest.TestCase):
 
         self.assertEqual(404, response.status_code)
 
+    def test_composite_view_create_and_get(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            client = _app(Path(tmp_dir)).test_client()
+
+            created = client.post(
+                '/api/composite/views',
+                json={
+                    'measurements': [
+                        {
+                            'source_id': 'source',
+                            'run_id': 'run',
+                            'fuzzer': 'fz',
+                            'benchmark': 'bench',
+                            'fuzz_target': 'target',
+                        }
+                    ]
+                },
+            )
+            loaded = client.get(f'/api/composite/views/{created.json["view_id"]}')
+
+        self.assertEqual(200, created.status_code)
+        self.assertEqual(200, loaded.status_code)
+        self.assertEqual('source', loaded.json['selections'][0]['key']['source_id'])
+        self.assertEqual('missing', loaded.json['sources'][0]['status'])
+
+    def test_composite_measurements_endpoint_has_nested_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            _write_measurement_db(root / 'run-a')
+            response = _app(root).test_client().get('/api/composite/measurements')
+
+        self.assertEqual(200, response.status_code)
+        measurement = response.json['measurements'][0]
+        self.assertEqual('run-a', measurement['key']['source_id'])
+        self.assertEqual('bench', measurement['key']['benchmark'])
+        self.assertEqual(str(root.resolve()), response.json['runs_root'])
+
+    def test_composite_measurements_rebinds_stale_registry_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            stale_root = root / 'stale'
+            runs_root = root / 'runs'
+            stale_root.mkdir()
+            _write_measurement_db(runs_root / 'run-a')
+            app = _app(stale_root)
+            app.config['RUNS_ROOT_PROVIDER'] = lambda: runs_root
+
+            response = app.test_client().post('/api/composite/sources/refresh')
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(str(runs_root.resolve()), response.json['runs_root'])
+        self.assertEqual(1, len(response.json['measurements']))
+
+    def test_resolve_runs_root_accepts_output_runs_and_single_run_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            runs_root = root / 'runs'
+            run_dir = runs_root / 'run-a'
+            run_dir.mkdir(parents=True)
+            (run_dir / 'fuzzmeter.db').write_text('', encoding='utf-8')
+
+            self.assertEqual(runs_root.resolve(), resolve_runs_root(root))
+            self.assertEqual(runs_root.resolve(), resolve_runs_root(runs_root))
+            self.assertEqual(runs_root.resolve(), resolve_runs_root(run_dir))
+
+    def test_composite_expired_view_returns_not_found(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            response = _app(Path(tmp_dir)).test_client().get('/api/composite/views/missing')
+
+        self.assertEqual(404, response.status_code)
+
 
 def _app(runs_root: Path) -> Flask:
     app = Flask(__name__)
     app.config['RUNS_ROOT_PROVIDER'] = lambda: runs_root
+    app.config['COMPOSITE_REGISTRY'] = CompositeRegistry(runs_root)
+    app.config['COMPOSITE_VIEW_STORE'] = CompositeViewStore()
     app.register_blueprint(runs_bp)
     app.register_blueprint(reports_bp)
+    app.register_blueprint(composite_bp)
     app.register_blueprint(files_bp)
     return app
+
+
+def _write_measurement_db(run_dir: Path) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with open_db(run_dir / 'fuzzmeter.db') as db:
+        ensure_schema(db)
+        db_runs.upsert_run(db, run_id='run-a', created_ts=100, config_src='config')
+        db_metadata.upsert_metadata(
+            db,
+            db_metadata.MetadataRecord(
+                run_id='run-a',
+                fuzzer='fz',
+                benchmark='bench',
+                fuzz_target='target',
+                repetitions=1,
+                runtime_seconds=60,
+                environment_digest='env',
+                config_digest='cfg',
+                source_digest='src',
+                metadata={
+                    'environment': {},
+                    'config': {'benchmark': 'bench', 'fuzz_target': 'target'},
+                    'source': {},
+                    'digests': {'environment': 'env', 'config': 'cfg', 'source': 'src'},
+                },
+                created_at=100,
+            ),
+        )
 
 
 if __name__ == '__main__':
