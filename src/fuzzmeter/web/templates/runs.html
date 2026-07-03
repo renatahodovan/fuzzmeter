@@ -55,6 +55,26 @@
         <div class="muted small" id="statusLine"></div>
       </div>
     </section>
+
+    <section class="panel">
+      <div class="panel-h">
+        <div>
+          <div class="panel-title">Composite report view</div>
+          <div class="panel-sub">Select measurements from discovered run databases and open them together without copying data.</div>
+        </div>
+        <div class="panel-actions">
+          <span class="muted small" id="compositeSelectedCount">0 selected</span>
+          <button class="btn" id="btnCreateComposite" disabled>Create view</button>
+        </div>
+      </div>
+      <div class="panel-b">
+        <div class="runs-toolbar">
+          <div class="runs-toolbar-left muted small" id="compositePreview">Runtime, repetitions, environment, and source info are shown as context only.</div>
+        </div>
+        <div id="measurementsList" class="measurements-list"></div>
+        <div class="muted small" id="measurementsStatusLine"></div>
+      </div>
+    </section>
   </main>
 </div>
 

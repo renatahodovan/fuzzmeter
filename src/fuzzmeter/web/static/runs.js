@@ -11,10 +11,23 @@
  * Run list page state, rendering, and browser actions.
  */
 
+import {
+  formatSourceFacts,
+  invalidSourceText,
+  measurementId,
+  measurementKey,
+  measurementSelection,
+  measurementTitle,
+} from './report/composite-shared.js';
+
 export const RUNS_STATE = {
   runs: [],
+  measurements: [],
+  invalidSources: [],
+  compositeRunsRoot: '',
   filterText: '',
   selectedRuns: new Set(),
+  selectedMeasurements: new Set(),
 };
 
 export async function fetchJSON(url, opts = {}) {
@@ -57,9 +70,18 @@ export function selectedRunIds(state = RUNS_STATE) {
   return Array.from(state.selectedRuns);
 }
 
+export function selectedMeasurementIds(state = RUNS_STATE) {
+  return Array.from(state.selectedMeasurements);
+}
+
 export function toggleRunSelection(state, runId) {
   if (state.selectedRuns.has(runId)) state.selectedRuns.delete(runId);
   else state.selectedRuns.add(runId);
+}
+
+export function toggleMeasurementSelection(state, measurementId) {
+  if (state.selectedMeasurements.has(measurementId)) state.selectedMeasurements.delete(measurementId);
+  else state.selectedMeasurements.add(measurementId);
 }
 
 export function normalizedStatusCounts(run) {
@@ -124,9 +146,17 @@ export function toggleVisibleSelection(state, runIds) {
 
 function updateSelectionUi(state = RUNS_STATE) {
   const selected = selectedRunIds(state);
+  const selectedMeasurements = selectedMeasurementIds(state);
   document.querySelectorAll('.run-card').forEach((card) => {
     card.classList.toggle('selected', state.selectedRuns.has(card.dataset.runId));
   });
+  document.querySelectorAll('.measurement-row').forEach((row) => {
+    row.classList.toggle('selected', state.selectedMeasurements.has(row.dataset.measurementId));
+  });
+  const createButton = document.getElementById('btnCreateComposite');
+  const selectedCount = document.getElementById('compositeSelectedCount');
+  if (createButton) createButton.disabled = selectedMeasurements.length === 0;
+  if (selectedCount) selectedCount.textContent = `${selectedMeasurements.length} selected`;
   document.getElementById('btnDeleteSelected').disabled = selected.length === 0;
 }
 
@@ -275,6 +305,64 @@ function renderRuns(state = RUNS_STATE) {
   updateSelectionUi(state);
 }
 
+function renderCompatibilityPreview(measurements) {
+  if (measurements.length <= 1) return 'Single measurement';
+  const targets = new Set(measurements.map((measurement) => {
+    const key = measurementKey(measurement);
+    return `${key.benchmark || ''}\n${key.fuzz_target || ''}`;
+  }));
+  return targets.size === 1 ? 'Same target' : `${targets.size} targets`;
+}
+
+function renderCompositeMeasurements(state = RUNS_STATE) {
+  const list = document.getElementById('measurementsList');
+  const status = document.getElementById('measurementsStatusLine');
+  if (!list || !status) return;
+  list.textContent = '';
+
+  const measurements = [...(state.measurements || [])].sort((left, right) => (
+    measurementTitle(left).localeCompare(measurementTitle(right))
+    || String(measurementKey(left).source_id || '').localeCompare(String(measurementKey(right).source_id || ''))
+  ));
+  if (!measurements.length) {
+    list.appendChild(el(
+      'div',
+      'run-empty',
+      'No measurements with composite metadata found. Runs created before composite descriptors were introduced appear as invalid sources.',
+    ));
+  }
+
+  measurements.forEach((measurement) => {
+    const id = measurementId(measurement);
+    const row = el('button', 'measurement-row');
+    row.type = 'button';
+    row.dataset.measurementId = id;
+    row.addEventListener('click', () => {
+      toggleMeasurementSelection(state, id);
+      updateSelectionUi(state);
+    });
+    const key = measurementKey(measurement);
+    const main = el('div', 'measurement-main');
+    main.appendChild(el('div', 'measurement-title', measurementTitle(measurement)));
+    main.appendChild(el('div', 'measurement-subtitle', `Run ${key.run_id || '—'} · Source ${key.source_id || '—'}`));
+    row.appendChild(main);
+    const meta = el('div', 'measurement-meta');
+    meta.appendChild(makeBadge('static', formatSourceFacts(measurement, formatDuration, fmtInt)));
+    row.appendChild(meta);
+    list.appendChild(row);
+  });
+
+  const invalid = state.invalidSources || [];
+  if (invalid.length) {
+    const invalidList = el('div', 'invalid-source-list');
+    invalid.forEach((source) => invalidList.appendChild(el('div', 'invalid-source-row', invalidSourceText(source))));
+    list.appendChild(invalidList);
+  }
+  const rootText = state.compositeRunsRoot ? ` Scanned: ${state.compositeRunsRoot}.` : '';
+  status.textContent = `${measurements.length} measurements. ${invalid.length} invalid source(s).${rootText}`;
+  updateSelectionUi(state);
+}
+
 async function deleteSelectedRuns(state = RUNS_STATE) {
   const runIds = selectedRunIds(state);
   if (!runIds.length) return;
@@ -287,14 +375,52 @@ async function deleteSelectedRuns(state = RUNS_STATE) {
   await refresh(state);
 }
 
-async function refresh(state = RUNS_STATE) {
+async function createCompositeView(state = RUNS_STATE) {
+  const selected = new Set(selectedMeasurementIds(state));
+  const measurements = (state.measurements || []).filter((measurement) => selected.has(measurementId(measurement)));
+  if (!measurements.length) return;
+  const button = document.getElementById('btnCreateComposite');
+  const preview = document.getElementById('compositePreview');
+  const original = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Creating…';
+  }
+  if (preview) preview.textContent = renderCompatibilityPreview(measurements);
+  try {
+    const view = await fetchJSON('/api/composite/views', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        measurements: measurements.map((measurement) => measurementSelection(measurement, 'historical')),
+      }),
+    });
+    location.href = `/compare/${encodeURIComponent(view.view_id)}`;
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  }
+}
+
+export async function refresh(state = RUNS_STATE) {
   const status = document.getElementById('statusLine');
   status.textContent = 'Loading runs…';
-  const data = await fetchJSON('/api/runs');
+  const [data, composite] = await Promise.all([
+    fetchJSON('/api/runs'),
+    fetchJSON('/api/composite/sources/refresh', { method: 'POST' }),
+  ]);
   state.runs = data.runs || [];
+  state.measurements = composite.measurements || [];
+  state.invalidSources = composite.invalid_sources || [];
+  state.compositeRunsRoot = composite.runs_root || '';
   const runIds = new Set(state.runs.map((run) => run.run_id));
   state.selectedRuns = new Set(Array.from(state.selectedRuns).filter((runId) => runIds.has(runId)));
+  const measurementIds = new Set(state.measurements.map((measurement) => measurementId(measurement)));
+  state.selectedMeasurements = new Set(Array.from(state.selectedMeasurements).filter((id) => measurementIds.has(id)));
   renderRuns(state);
+  renderCompositeMeasurements(state);
 }
 
 export function installRunsPage(state = RUNS_STATE) {
@@ -309,6 +435,7 @@ export function installRunsPage(state = RUNS_STATE) {
   };
 
   document.getElementById('btnDeleteSelected').onclick = () => deleteSelectedRuns(state);
+  document.getElementById('btnCreateComposite').onclick = () => createCompositeView(state);
   document.getElementById('btnRefresh').onclick = () => refresh(state);
   refresh(state);
 }
