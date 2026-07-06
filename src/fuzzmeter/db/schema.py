@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from .base import DB
 
-
 _SCHEMA = [
     """
     CREATE TABLE IF NOT EXISTS runs(
@@ -175,6 +174,7 @@ _SCHEMA = [
       fuzzer TEXT NOT NULL,
       benchmark TEXT NOT NULL,
       fuzz_target TEXT NOT NULL,
+      metadata_schema_version INTEGER NOT NULL DEFAULT 1,
       repetitions INTEGER NOT NULL,
       runtime_seconds INTEGER NOT NULL,
       environment_digest TEXT,
@@ -197,4 +197,11 @@ def ensure_schema(db: DB) -> None:
     '''Create the current run database schema.'''
     for stmt in _SCHEMA:
         db.exec(stmt)
+    _ensure_metadata_schema_version_column(db)
     db.commit()
+
+
+def _ensure_metadata_schema_version_column(db: DB) -> None:
+    columns = {str(row['name']) for row in db.q('PRAGMA table_info(metadata)')}
+    if columns and 'metadata_schema_version' not in columns:
+        db.exec('ALTER TABLE metadata ADD COLUMN metadata_schema_version INTEGER NOT NULL DEFAULT 1')

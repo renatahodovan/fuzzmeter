@@ -259,6 +259,223 @@ class ReportFrontendTest(unittest.TestCase):
             check=True,
         )
 
+    def test_report_source_compatibility_helpers_render_modal_details(self) -> None:
+        script = r"""
+            import assert from 'node:assert/strict';
+
+            class Node {
+              constructor(tag = 'div') {
+                this.tag = tag;
+                this.children = [];
+                this.dataset = {};
+                this.hidden = false;
+                this.title = '';
+                this.type = '';
+                this._text = '';
+                this.classes = new Set();
+                this.classList = {
+                  add: (...names) => names.forEach((name) => this.classes.add(name)),
+                  remove: (...names) => names.forEach((name) => this.classes.delete(name)),
+                  toggle: (name, force) => {
+                    if (force === false) this.classes.delete(name);
+                    else this.classes.add(name);
+                  },
+                };
+              }
+              appendChild(child) {
+                this.children.push(child);
+                return child;
+              }
+              addEventListener() {}
+              set className(value) {
+                this.classes = new Set(String(value || '').split(/\s+/).filter(Boolean));
+              }
+              get className() {
+                return Array.from(this.classes).join(' ');
+              }
+              set textContent(value) {
+                this._text = String(value || '');
+                if (value === '') this.children = [];
+              }
+              get textContent() {
+                return this._text;
+              }
+            }
+
+            function textOf(node) {
+              return [node.textContent, ...node.children.map(textOf)].join(' ');
+            }
+
+            const elements = new Map([
+              ['compatibilityModal', new Node()],
+              ['compatibilityModalTitle', new Node()],
+              ['compatibilityModalSubtitle', new Node()],
+              ['compatibilityModalBody', new Node()],
+              ['compatibilityModalClose', new Node('button')],
+            ]);
+            elements.get('compatibilityModal').classList.add('hidden');
+            globalThis.document = {
+              addEventListener() {},
+              createElement(tag) { return new Node(tag); },
+              getElementById(id) { return elements.get(id) || null; },
+            };
+
+            const {
+              openCompatibilityModal,
+              shouldShowCompatibilityColumn,
+              shouldShowSourceColumn,
+            } = await import('./src/fuzzmeter/web/static/report/page.js');
+
+            const target = {
+              benchmark: 'bench',
+              fuzz_target: 'target',
+              fuzzers: [
+                { fuzzer: 'fresh-fz', origin: 'fresh', compatibility: { level: 'compatible' } },
+                {
+                  fuzzer: 'hist-fz',
+                  origin: 'historical',
+                  source_id: 'run-b',
+                  source_run_id: 'run',
+                  source_fuzzer: 'fz',
+                  compatibility: {
+                    level: 'risky',
+                    comparison_note: '',
+                    reference: { origin: 'fresh', source_id: 'run-a', run_id: 'run', fuzzer: 'fz' },
+                    diffs: [
+                      {
+                        domain: 'environment',
+                        path: 'host.kernel',
+                        reference: '6.8',
+                        candidate: '6.9',
+                        message: 'Environment metadata differs.',
+                      },
+                    ],
+                  },
+                },
+              ],
+            };
+
+            assert.equal(shouldShowSourceColumn(target, { targets: [target] }), true);
+            assert.equal(shouldShowCompatibilityColumn(target), true);
+            assert.equal(shouldShowSourceColumn({
+              fuzzers: [
+                { fuzzer: 'fresh-a', origin: 'fresh' },
+                { fuzzer: 'fresh-b', origin: 'fresh' },
+              ],
+            }, { sources: [{ origin: 'historical' }] }), false);
+            assert.equal(shouldShowCompatibilityColumn({
+              fuzzers: [
+                { fuzzer: 'fresh-a', origin: 'fresh' },
+                { fuzzer: 'fresh-b', origin: 'fresh' },
+              ],
+            }), false);
+            openCompatibilityModal(target, target.fuzzers[1]);
+
+            assert.equal(elements.get('compatibilityModal').classes.has('hidden'), false);
+            assert.match(elements.get('compatibilityModalTitle').textContent, /hist-fz compatibility: risky/);
+            const bodyText = textOf(elements.get('compatibilityModalBody'));
+            assert.match(bodyText, /Environment/);
+            assert.match(bodyText, /host\.kernel/);
+            assert.match(bodyText, /6\.8/);
+            assert.match(bodyText, /6\.9/);
+        """
+        subprocess.run(
+            ['node', '--no-warnings', '--input-type=module', '-e', script],
+            cwd=REPO_ROOT,
+            check=True,
+        )
+
+    def test_fuzzer_detail_modal_renders_metadata_tab(self) -> None:
+        script = r"""
+            import assert from 'node:assert/strict';
+
+            class Node {
+              constructor(tag = 'div') {
+                this.tag = tag;
+                this.children = [];
+                this.dataset = {};
+                this.disabled = false;
+                this.attributes = {};
+                this._text = '';
+                this.classes = new Set();
+                this.classList = {
+                  add: (...names) => names.forEach((name) => this.classes.add(name)),
+                  remove: (...names) => names.forEach((name) => this.classes.delete(name)),
+                  toggle: (name, force) => {
+                    if (force === false) this.classes.delete(name);
+                    else this.classes.add(name);
+                  },
+                };
+              }
+              appendChild(child) {
+                this.children.push(child);
+                return child;
+              }
+              addEventListener() {}
+              setAttribute(name, value) {
+                this.attributes[name] = String(value);
+              }
+              set className(value) {
+                this.classes = new Set(String(value || '').split(/\s+/).filter(Boolean));
+              }
+              get className() {
+                return Array.from(this.classes).join(' ');
+              }
+              set textContent(value) {
+                this._text = String(value || '');
+                if (value === '') this.children = [];
+              }
+              get textContent() {
+                return this._text;
+              }
+            }
+
+            const elements = new Map([
+              ['configModal', new Node()],
+              ['configModalTitle', new Node()],
+              ['configModalBody', new Node('pre')],
+              ['configModalRuntimeTab', new Node('button')],
+              ['configModalMetadataTab', new Node('button')],
+              ['configModalClose', new Node('button')],
+            ]);
+            elements.get('configModal').classList.add('hidden');
+            globalThis.document = {
+              addEventListener() {},
+              createElement(tag) { return new Node(tag); },
+              getElementById(id) { return elements.get(id) || null; },
+            };
+            globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+            globalThis.window = { matchMedia() { return { matches: false }; } };
+
+            const { openConfigModal } = await import('./src/fuzzmeter/web/static/report/ui.js');
+
+            openConfigModal({
+              fuzzer: 'hist-fz',
+              metadata: {
+                source: {
+                  fuzzer_version: {
+                    status: 'ok',
+                    data: { revision: 'fuzzer-abc' },
+                  },
+                },
+                environment: { host: { machine: 'arm64' } },
+                digests: { source: 'digest' },
+              },
+            });
+
+            assert.equal(elements.get('configModal').classes.has('hidden'), false);
+            assert.equal(elements.get('configModalTitle').textContent, 'hist-fz details');
+            assert.equal(elements.get('configModalRuntimeTab').disabled, true);
+            assert.equal(elements.get('configModalMetadataTab').classes.has('active'), true);
+            assert.match(elements.get('configModalBody').textContent, /fuzzer-abc/);
+            assert.match(elements.get('configModalBody').textContent, /arm64/);
+        """
+        subprocess.run(
+            ['node', '--no-warnings', '--input-type=module', '-e', script],
+            cwd=REPO_ROOT,
+            check=True,
+        )
+
     def test_composite_reload_selects_new_filter_entries(self) -> None:
         script = r"""
             import assert from 'node:assert/strict';

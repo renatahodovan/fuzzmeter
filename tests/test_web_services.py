@@ -10,12 +10,15 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
+from fuzzmeter.composite import CompositeMeasurement, CompositeMeasurementKey, CompositeViewStore, MetadataTriplet
+from fuzzmeter.composite.registry import selection_from_key
 from fuzzmeter.db import DB, ensure_schema
+from fuzzmeter.web.services import composite_service
 from fuzzmeter.web.services.file_service import (
     require_run_dir,
     require_run_file,
@@ -205,6 +208,154 @@ class WebReportServiceTest(unittest.TestCase):
         write_report.assert_called_once_with(run_dir.resolve(), out_dir=run_dir.resolve() / 'report')
 
 
+class WebCompositeServiceTest(unittest.TestCase):
+    def test_composite_source_id_path_traversal_is_rejected(self) -> None:
+        '''Composite selections cannot escape the configured runs root.'''
+        with self.assertRaises(ValueError):
+            composite_service.create_view(
+                CompositeViewStore(),
+                {
+                    'measurements': [
+                        {
+                            'source_id': '../outside',
+                            'run_id': 'run',
+                            'fuzzer': 'fz',
+                            'benchmark': 'bench',
+                            'fuzz_target': 'target',
+                        }
+                    ]
+                },
+            )
+
+    def test_view_report_data_skips_compatibility_for_all_fresh_views(self) -> None:
+        first = _composite_measurement('run-a', environment={'host': {'kernel': '6.8'}})
+        second = _composite_measurement('run-b', environment={'host': {'kernel': '6.9'}})
+        registry = _CompositeRegistryStub([first, second])
+        store = CompositeViewStore()
+        view = store.create([
+            selection_from_key(first.key, origin='fresh'),
+            selection_from_key(second.key, origin='fresh', display_fuzzer='fz #2'),
+        ])
+        payload = {
+            'meta': {},
+            'sources': [
+                _source_payload(first, fuzzer='fz', origin='fresh'),
+                _source_payload(second, fuzzer='fz #2', origin='fresh'),
+            ],
+            'targets': [{
+                'benchmark': 'bench',
+                'fuzz_target': 'target',
+                'fuzzers': [
+                    {'fuzzer': 'fz', 'origin': 'fresh', 'source_id': 'run-a', 'source_run_id': 'run'},
+                    {'fuzzer': 'fz #2', 'origin': 'fresh', 'source_id': 'run-b', 'source_run_id': 'run'},
+                ],
+            }],
+        }
+
+        with patch('fuzzmeter.web.services.composite_service.build_composite_payload', return_value=payload):
+            result = composite_service.view_report_data(Path('/runs'), registry, store, view.view_id)
+
+        self.assertNotIn('compatibility', result['sources'][0])
+        self.assertNotIn('compatibility', result['targets'][0]['fuzzers'][0])
+
+    def test_view_report_data_attaches_source_compatibility_to_fuzzer_rows(self) -> None:
+        first = _composite_measurement('run-a', environment={'host': {'kernel': '6.8'}})
+        second = _composite_measurement('run-b', environment={'host': {'kernel': '6.9'}})
+        registry = _CompositeRegistryStub([first, second])
+        store = CompositeViewStore()
+        view = store.create([
+            selection_from_key(first.key, origin='fresh'),
+            selection_from_key(second.key, origin='historical', display_fuzzer='fz #2'),
+        ])
+        payload = {
+            'meta': {},
+            'sources': [
+                _source_payload(first, fuzzer='fz'),
+                _source_payload(second, fuzzer='fz #2'),
+            ],
+            'targets': [
+                {
+                    'benchmark': 'bench',
+                    'fuzz_target': 'target',
+                    'fuzzers': [
+                        {
+                            'fuzzer': 'fz',
+                            'origin': 'fresh',
+                            'selection_id': first.key.as_id(),
+                            'source_id': 'run-a',
+                            'source_run_id': 'run',
+                            'source_fuzzer': 'fz',
+                        },
+                        {
+                            'fuzzer': 'fz #2',
+                            'origin': 'historical',
+                            'selection_id': second.key.as_id(),
+                            'source_id': 'run-b',
+                            'source_run_id': 'run',
+                            'source_fuzzer': 'fz',
+                            'source_detail': {'source_id': 'run-b', 'repetitions': 3},
+                        },
+                    ],
+                }
+            ],
+        }
+
+        with patch('fuzzmeter.web.services.composite_service.build_composite_payload', return_value=payload):
+            result = composite_service.view_report_data(Path('/runs'), registry, store, view.view_id)
+
+        fuzzer = result['targets'][0]['fuzzers'][1]
+        self.assertNotIn('compatibility', result['sources'][0])
+        self.assertNotIn('compatibility', result['targets'][0]['fuzzers'][0])
+        self.assertEqual('risky', fuzzer['compatibility']['level'])
+        self.assertEqual('run-a', fuzzer['compatibility']['reference']['source_id'])
+        self.assertEqual('run-b', fuzzer['source_detail']['source_id'])
+        self.assertEqual(3, fuzzer['source_detail']['repetitions'])
+
+    def test_view_report_data_warns_about_shorter_historical_policy(self) -> None:
+        first = _composite_measurement(
+            'run-a',
+            environment={'host': {'kernel': '6.8'}},
+            runtime_seconds=7200,
+            repetitions=5,
+        )
+        second = _composite_measurement(
+            'run-b',
+            environment={'host': {'kernel': '6.8'}},
+            runtime_seconds=3600,
+            repetitions=3,
+        )
+        registry = _CompositeRegistryStub([first, second])
+        store = CompositeViewStore()
+        view = store.create([
+            selection_from_key(first.key, origin='fresh'),
+            selection_from_key(second.key, origin='historical', display_fuzzer='fz #2'),
+        ])
+        payload = {
+            'meta': {},
+            'sources': [
+                _source_payload(first, fuzzer='fz'),
+                _source_payload(second, fuzzer='fz #2'),
+            ],
+            'targets': [
+                {
+                    'benchmark': 'bench',
+                    'fuzz_target': 'target',
+                    'fuzzers': [
+                        {'fuzzer': 'fz', 'origin': 'fresh', 'selection_id': first.key.as_id()},
+                        {'fuzzer': 'fz #2', 'origin': 'historical', 'selection_id': second.key.as_id()},
+                    ],
+                }
+            ],
+        }
+
+        with patch('fuzzmeter.web.services.composite_service.build_composite_payload', return_value=payload):
+            result = composite_service.view_report_data(Path('/runs'), registry, store, view.view_id)
+
+        compatibility = result['targets'][0]['fuzzers'][1]['compatibility']
+        self.assertEqual('risky', compatibility['level'])
+        self.assertEqual(['repetitions', 'runtime_seconds'], [row['path'] for row in compatibility['diffs']])
+
+
 def _touch(path: Path, ts: int) -> None:
     if path.suffix:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -262,6 +413,60 @@ def _build_run_db(
         db.commit()
     finally:
         db.close()
+
+
+class _CompositeRegistryStub:
+    def __init__(self, measurements: list[CompositeMeasurement]):
+        self.measurements = {measurement.key: measurement for measurement in measurements}
+
+    def get(self, key: CompositeMeasurementKey) -> CompositeMeasurement | None:
+        return self.measurements.get(key)
+
+
+def _composite_measurement(
+    source_id: str,
+    *,
+    environment: dict,
+    runtime_seconds: int = 3600,
+    repetitions: int = 3,
+) -> CompositeMeasurement:
+    key = CompositeMeasurementKey(
+        source_id=source_id,
+        run_id='run',
+        fuzzer='fz',
+        benchmark='bench',
+        fuzz_target='target',
+    )
+    return CompositeMeasurement(
+        key=key,
+        source_path=Path('/runs') / source_id,
+        db_path=Path('/runs') / source_id / 'fuzzmeter.db',
+        metadata=MetadataTriplet(
+            environment=environment,
+            config={'benchmark': 'bench', 'fuzz_target': 'target'},
+            source={
+                'target_source': {'status': 'ok', 'data': {'revision': 'target'}},
+                'fuzzer_version': {'status': 'ok', 'data': {'revision': 'fuzzer'}},
+            },
+        ),
+        runtime_seconds=runtime_seconds,
+        repetitions=repetitions,
+    )
+
+
+def _source_payload(measurement: CompositeMeasurement, *, fuzzer: str, origin: str | None = None) -> dict:
+    return {
+        'selection_id': measurement.key.as_id(),
+        'origin': origin or ('fresh' if measurement.key.source_id == 'run-a' else 'historical'),
+        'source_id': measurement.key.source_id,
+        'run_id': measurement.key.run_id,
+        'fuzzer': fuzzer,
+        'source_fuzzer': measurement.key.fuzzer,
+        'benchmark': measurement.key.benchmark,
+        'fuzz_target': measurement.key.fuzz_target,
+        'runtime_seconds': measurement.runtime_seconds,
+        'repetitions': measurement.repetitions,
+    }
 
 
 if __name__ == '__main__':

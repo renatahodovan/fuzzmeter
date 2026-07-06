@@ -74,10 +74,23 @@ function createReportBlock({ title, subtitle = '', bodyClass = '' }) {
 function createFuzzerTable(section) {
   const { target } = section;
   const table = part(section.el, 'fuzzer-table');
+  const sourceHead = part(section.el, 'source-head');
+  let compatibilityHead = table.querySelector('[data-compatibility-head]');
+  if (!compatibilityHead && sourceHead) {
+    compatibilityHead = headerCell(
+      'Compatibility',
+      null,
+      'Compatibility against the selected target reference metadata.',
+    );
+    compatibilityHead.dataset.compatibilityHead = '1';
+    sourceHead.after(compatibilityHead);
+  }
   return {
     table,
     tbody: part(section.el, 'fuzzer-body'),
     coverageHead: part(section.el, 'coverage-head'),
+    sourceHead,
+    compatibilityHead,
     target,
   };
 }
@@ -219,12 +232,145 @@ function installTargetTableSorting(section) {
   });
 }
 
+export function shouldShowSourceColumn(target) {
+  return (target?.fuzzers || []).some((fuzzer) => fuzzer?.origin === 'historical');
+}
+
+export function shouldShowCompatibilityColumn(target) {
+  return (target?.fuzzers || []).some((fuzzer) => compatibilityLevel(fuzzer) !== 'compatible');
+}
+
+function compatibilityLevel(fuzzer) {
+  return String(fuzzer?.compatibility?.level || 'compatible');
+}
+
+function sourceDetailText(fuzzer) {
+  const detail = fuzzer?.source_detail || {};
+  const facts = [
+    ['Source', detail.source_id || fuzzer?.source_id],
+    ['Run', detail.run_id || fuzzer?.source_run_id],
+    ['Original fuzzer', detail.source_fuzzer || fuzzer?.source_fuzzer],
+    ['Runtime', detail.runtime_seconds == null ? null : formatDuration(detail.runtime_seconds)],
+    ['Repetitions', detail.repetitions == null ? null : fmtInt(detail.repetitions)],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== '');
+  return facts.map(([label, value]) => `${label}: ${value}`).join('\n');
+}
+
+function appendSourceCell(tr, fuzzer, showSource) {
+  if (!showSource) return;
+  const cell = el('td', null, fuzzer.origin || 'fresh');
+  cell.title = sourceDetailText(fuzzer);
+  tr.appendChild(cell);
+}
+
+function appendCompatibilityCell(tr, target, fuzzer, showCompatibility) {
+  if (!showCompatibility) return;
+  const cell = el('td');
+  if (!fuzzer?.compatibility) {
+    cell.textContent = '—';
+    tr.appendChild(cell);
+    return;
+  }
+  const level = compatibilityLevel(fuzzer);
+  const button = el('button', `compatibility-btn compatibility-${level}`, level);
+  button.type = 'button';
+  button.title = 'Show compatibility details';
+  button.addEventListener('click', () => openCompatibilityModal(target, fuzzer));
+  cell.appendChild(button);
+  tr.appendChild(cell);
+}
+
+function identityLabel(identity) {
+  if (!identity) return 'none';
+  return `${identity.origin || 'source'} ${identity.fuzzer || identity.source_fuzzer || '-'} (${identity.source_id || '-'} / ${identity.run_id || '-'})`;
+}
+
+function ensureCompatibilityModal() {
+  const modal = byId('compatibilityModal');
+  const title = byId('compatibilityModalTitle');
+  const subtitle = byId('compatibilityModalSubtitle');
+  const body = byId('compatibilityModalBody');
+  const close = byId('compatibilityModalClose');
+  if (!modal || !title || !subtitle || !body || !close) return null;
+  if (modal.dataset.bound) return { modal, title, subtitle, body };
+  const hide = () => modal.classList.add('hidden');
+  close.addEventListener('click', hide);
+  modal.addEventListener('click', (event) => { if (event.target === modal) hide(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') hide(); });
+  modal.dataset.bound = '1';
+  return { modal, title, subtitle, body };
+}
+
+export function openCompatibilityModal(target, fuzzer) {
+  const refs = ensureCompatibilityModal();
+  if (!refs) return;
+  const valueText = (value) => {
+    if (value === null || value === undefined || value === '') return '—';
+    return typeof value === 'object' ? JSON.stringify(value) : String(value);
+  };
+  const labels = { config: 'Target/config', source: 'Target source metadata', environment: 'Environment' };
+  const groups = new Map();
+  const compatibility = fuzzer?.compatibility || { level: 'compatible', diffs: [] };
+  refs.title.textContent = `${fuzzer?.fuzzer || 'Fuzzer'} compatibility: ${compatibility.level || 'compatible'}`;
+  refs.subtitle.textContent = [
+    `${target?.benchmark || '-'} / ${target?.fuzz_target || target?.key || '-'}`,
+    `Candidate: ${identityLabel({
+      origin: fuzzer?.origin || 'fresh',
+      source_id: fuzzer?.source_id,
+      run_id: fuzzer?.source_run_id,
+      fuzzer: fuzzer?.fuzzer,
+      source_fuzzer: fuzzer?.source_fuzzer,
+    })}`,
+    `Reference: ${identityLabel(compatibility.reference)}`,
+  ].join(' · ');
+  refs.body.textContent = '';
+  if (compatibility.comparison_note) {
+    refs.body.appendChild(el('div', 'compatibility-note', compatibility.comparison_note));
+  }
+  (compatibility.diffs || []).forEach((row) => {
+    const label = labels[row.domain] || String(row.domain || 'Other');
+    groups.set(label, [...(groups.get(label) || []), row]);
+  });
+  if (!groups.size) {
+    refs.body.appendChild(el('div', 'matrix-empty', 'No differences found.'));
+  }
+  groups.forEach((rows, label) => {
+    const section = el('section', 'compatibility-section');
+    section.appendChild(el('div', 'compatibility-section-title', label));
+    const table = el('table', 'table compatibility-diff-table');
+    const thead = el('thead');
+    const head = el('tr');
+    ['Field', 'Reference', 'Candidate', 'Impact'].forEach((text) => head.appendChild(el('th', null, text)));
+    thead.appendChild(head);
+    table.appendChild(thead);
+    const tbody = el('tbody');
+    rows.forEach((row) => {
+      const tr = el('tr');
+      [
+        [row.path || '—', 'mono'],
+        [valueText(row.reference), null],
+        [valueText(row.candidate), null],
+        [row.message || row.severity || '—', null],
+      ].forEach(([value, cls]) => tr.appendChild(el('td', cls, value)));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    section.appendChild(table);
+    refs.body.appendChild(section);
+  });
+  refs.modal.classList.remove('hidden');
+}
+
 function renderFuzzerTable(section) {
   const { target, fuzzerTable } = section;
   const metric = 'branches';
   const mode = 'abs';
   fuzzerTable.coverageHead.textContent = 'Branches';
   fuzzerTable.tbody.textContent = '';
+  const showSource = shouldShowSourceColumn(target);
+  const showCompatibility = shouldShowCompatibilityColumn(target);
+  if (fuzzerTable.sourceHead) fuzzerTable.sourceHead.hidden = !showSource;
+  if (fuzzerTable.compatibilityHead) fuzzerTable.compatibilityHead.hidden = !showCompatibility;
 
   const rows = (target.fuzzers || []).map((fuzzer) => {
     const branch10kValues = (fuzzer.trials || []).map((trial) => per10kExec(trial.branches_cov, trial.execs_done));
@@ -265,7 +411,8 @@ function renderFuzzerTable(section) {
     nameRow.appendChild(textWrap);
     nameCell.appendChild(nameRow);
     tr.appendChild(nameCell);
-    tr.appendChild(el('td', null, fuzzer.origin || 'fresh'));
+    appendSourceCell(tr, fuzzer, showSource);
+    appendCompatibilityCell(tr, target, fuzzer, showCompatibility);
 
     const branchUnionValue = fuzzer.aggregate?.branches_covered;
     appendCustomAggregateCell(

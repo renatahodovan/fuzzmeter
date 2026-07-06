@@ -10,13 +10,12 @@
 from __future__ import annotations
 
 import json
-
 from pathlib import Path
 from typing import Any
 
 from flask import Blueprint, abort, current_app, jsonify, request
 
-from ...composite import CompositeRegistry
+from ...composite import CompositeRegistry, CompositeViewExpired
 from ..services import composite_service
 
 bp = Blueprint('composite', __name__)
@@ -40,7 +39,7 @@ def _store():
     return current_app.config['COMPOSITE_VIEW_STORE']
 
 
-@bp.errorhandler(KeyError)
+@bp.errorhandler(CompositeViewExpired)
 def api_composite_missing_view(_exc):
     '''Return a stable expired-view response for missing temporary views.'''
     return jsonify({'status': 'expired', 'error': 'Composite view expired; recreate the comparison.'}), 404
@@ -90,7 +89,10 @@ def api_composite_add_measurements(view_id: str):
 @bp.delete('/api/composite/views/<view_id>/measurements/<selection_id>')
 def api_composite_remove_measurement(view_id: str, selection_id: str):
     '''Remove one selected measurement from a temporary composite view.'''
-    return jsonify(composite_service.remove_measurement(_store(), view_id, selection_id))
+    try:
+        return jsonify(composite_service.remove_measurement(_store(), view_id, selection_id))
+    except ValueError as exc:
+        abort(400, description=str(exc))
 
 
 @bp.get('/api/composite/views/<view_id>')
@@ -100,6 +102,8 @@ def api_composite_view(view_id: str):
         return jsonify(composite_service.view_summary(_runs_root(), _registry(), _store(), view_id))
     except FileNotFoundError as exc:
         abort(404, description=str(exc))
+    except ValueError as exc:
+        abort(400, description=str(exc))
 
 
 @bp.get('/api/composite/views/<view_id>/data')
@@ -109,6 +113,8 @@ def api_composite_view_data(view_id: str):
         return jsonify(composite_service.view_report_data(_runs_root(), _registry(), _store(), view_id))
     except FileNotFoundError as exc:
         abort(404, description=str(exc))
+    except ValueError as exc:
+        abort(400, description=str(exc))
 
 
 def _json_object_payload() -> dict[str, Any]:

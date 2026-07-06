@@ -9,14 +9,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
-
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 SOURCE_HOOK_TIMEOUT = 10
@@ -66,14 +65,14 @@ def run_source_hook(path: Path, context: dict[str, Any], scope: str) -> SourceHo
     except subprocess.TimeoutExpired:
         return SourceHookResult(status='timeout', error='Source hook timed out.')
     except OSError as exc:
-        return SourceHookResult(status='error', error=str(exc))
+        return SourceHookResult(status='error', error=redact_source_info(str(exc)))
 
     if result.returncode != 0:
-        return SourceHookResult(status='error', error=result.stderr.strip())
+        return SourceHookResult(status='error', error=redact_source_info(result.stderr.strip()))
     try:
         data = json.loads(result.stdout or '{}')
     except json.JSONDecodeError as exc:
-        return SourceHookResult(status='error', error=str(exc))
+        return SourceHookResult(status='error', error=redact_source_info(str(exc)))
     if not isinstance(data, dict):
         return SourceHookResult(status='error', error='Source hook must write a JSON object.')
     return SourceHookResult(status='ok', data=redact_source_info(data))

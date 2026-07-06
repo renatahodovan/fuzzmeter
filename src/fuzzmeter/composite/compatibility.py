@@ -13,7 +13,8 @@ from typing import Any
 
 from .models import COMPATIBLE, INCOMPATIBLE, RISKY, CompatibilityIssue, CompatibilityResult, MetadataTriplet
 
-TARGET_CONFIG_KEYS = {'benchmark', 'fuzz_target'}
+TARGET_CONFIG_KEYS = {'benchmark', 'fuzz_target', 'input_mode', 'timeout'}
+TARGET_SOURCE_SCOPE = 'target_source'
 
 
 def compare_metadata(reference: MetadataTriplet, candidate: MetadataTriplet) -> CompatibilityResult:
@@ -29,13 +30,14 @@ def compare_metadata(reference: MetadataTriplet, candidate: MetadataTriplet) -> 
             CompatibilityIssue(
                 domain='config',
                 severity='error',
-                message='Benchmark or fuzz target differs.',
+                message='Target measurement configuration differs.',
                 details=target_diff,
             )
         )
         return CompatibilityResult(
             level=INCOMPATIBLE,
             issues=tuple(issues),
+            diffs=_diff_rows_for_issues(issues),
             environment_diff=environment_diff,
             config_diff=config_diff,
             source_diff=source_diff,
@@ -72,6 +74,7 @@ def compare_metadata(reference: MetadataTriplet, candidate: MetadataTriplet) -> 
     return CompatibilityResult(
         level=level_from_diffs(issues),
         issues=tuple(issues),
+        diffs=_diff_rows_for_issues(issues),
         environment_diff=environment_diff,
         config_diff=config_diff,
         source_diff=source_diff,
@@ -80,7 +83,11 @@ def compare_metadata(reference: MetadataTriplet, candidate: MetadataTriplet) -> 
 
 def diff_environment(reference: MetadataTriplet, candidate: MetadataTriplet) -> dict[str, Any]:
     '''Return a field-level environment diff.'''
-    if reference.environment_digest and candidate.environment_digest and reference.environment_digest == candidate.environment_digest:
+    if (
+        reference.environment_digest
+        and candidate.environment_digest
+        and reference.environment_digest == candidate.environment_digest
+    ):
         return {}
     return _diff_dict(reference.environment, candidate.environment)
 
@@ -103,12 +110,9 @@ def split_config_diff(config_diff: dict[str, Any]) -> tuple[dict[str, Any], dict
 
 
 def diff_source(reference: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
-    '''Return a field-level source metadata diff.'''
-    ref_missing = not _has_source_data(reference)
-    cand_missing = not _has_source_data(candidate)
-    if ref_missing or cand_missing:
-        return {'missing': {'reference': ref_missing, 'candidate': cand_missing}}
-    return _diff_dict(reference, candidate)
+    '''Return a field-level target source metadata diff.'''
+    target_diff = _diff_source_scope(reference, candidate, TARGET_SOURCE_SCOPE)
+    return {TARGET_SOURCE_SCOPE: target_diff} if target_diff else {}
 
 
 def level_from_diffs(issues: list[CompatibilityIssue]) -> str:
@@ -120,10 +124,14 @@ def level_from_diffs(issues: list[CompatibilityIssue]) -> str:
     return COMPATIBLE
 
 
-def _has_source_data(value: dict[str, Any]) -> bool:
-    target = value.get('target_source')
-    fuzzer = value.get('fuzzer_version')
-    return _scope_has_data(target) or _scope_has_data(fuzzer)
+def _diff_source_scope(reference: dict[str, Any], candidate: dict[str, Any], scope: str) -> dict[str, Any]:
+    ref_scope = reference.get(scope)
+    cand_scope = candidate.get(scope)
+    ref_missing = not _scope_has_data(ref_scope)
+    cand_missing = not _scope_has_data(cand_scope)
+    if ref_missing or cand_missing:
+        return {'metadata': {'reference': _presence_label(ref_missing), 'candidate': _presence_label(cand_missing)}}
+    return _diff_dict(_scope_data(ref_scope), _scope_data(cand_scope))
 
 
 def _scope_has_data(value: Any) -> bool:
@@ -133,6 +141,54 @@ def _scope_has_data(value: Any) -> bool:
         return False
     data = value.get('data')
     return isinstance(data, dict) and bool(data)
+
+
+def _scope_data(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    data = value.get('data')
+    return data if isinstance(data, dict) else {}
+
+
+def _presence_label(missing: bool) -> str:
+    return 'missing' if missing else 'present'
+
+
+def _diff_rows_for_issues(issues: list[CompatibilityIssue]) -> tuple[dict[str, Any], ...]:
+    rows: list[dict[str, Any]] = []
+    for issue in issues:
+        rows.extend(_diff_rows(issue.domain, issue.severity, issue.message, issue.details))
+    return tuple(rows)
+
+
+def _diff_rows(
+    domain: str,
+    severity: str,
+    message: str,
+    diff: dict[str, Any],
+    prefix: str = '',
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for key, value in diff.items():
+        path = f'{prefix}.{key}' if prefix else str(key)
+        if _is_leaf_diff(value):
+            rows.append(
+                {
+                    'domain': domain,
+                    'path': path,
+                    'severity': severity,
+                    'message': message,
+                    'reference': value.get('reference'),
+                    'candidate': value.get('candidate'),
+                }
+            )
+        elif isinstance(value, dict):
+            rows.extend(_diff_rows(domain, severity, message, value, path))
+    return rows
+
+
+def _is_leaf_diff(value: Any) -> bool:
+    return isinstance(value, dict) and set(value) == {'reference', 'candidate'}
 
 
 def _diff_dict(reference: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:

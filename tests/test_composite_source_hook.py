@@ -9,11 +9,11 @@
 
 from __future__ import annotations
 
-import unittest
-
 from dataclasses import dataclass, field
 from pathlib import Path
+import tempfile
 from typing import Any
+import unittest
 
 from fuzzmeter.composite.source_hook import redact_source_info, run_source_hook, source_hook_context
 
@@ -63,6 +63,20 @@ class CompositeSourceHookTest(unittest.TestCase):
         self.assertEqual('zlib', ctx['benchmark'])
         self.assertEqual('<redacted>', ctx['build_config']['token'])
         self.assertEqual('ok', ctx['build_config']['safe'])
+
+    def test_error_stderr_redacts_private_paths(self) -> None:
+        '''Hook error text is sanitized before it is stored in metadata.'''
+        with tempfile.TemporaryDirectory() as tmp:
+            hook = Path(tmp) / 'source-info.py'
+            hook.write_text(
+                'import sys\nsys.stderr.write("/Users/alice/project/source_info.py failed")\nsys.exit(2)\n',
+                encoding='utf-8',
+            )
+
+            result = run_source_hook(hook, {}, 'target_source')
+
+        self.assertEqual('error', result.status)
+        self.assertEqual('<private>/project/source_info.py failed', result.error)
 
 
 if __name__ == '__main__':

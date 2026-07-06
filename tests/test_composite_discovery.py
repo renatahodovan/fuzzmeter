@@ -9,14 +9,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
-import sqlite3
-
-from pathlib import Path
 
 from fuzzmeter.composite.discovery import discover_measurements
-from fuzzmeter.db import ensure_schema, metadata as db_metadata, open_db
+from fuzzmeter.db import ensure_schema, open_db
+from fuzzmeter.db import metadata as db_metadata
 from fuzzmeter.db import runs as db_runs
 
 
@@ -58,6 +58,21 @@ class CompositeDiscoveryTest(unittest.TestCase):
         self.assertEqual(1, len(discovery.invalid_sources))
         self.assertIn('Incompatible metadata table', discovery.invalid_sources[0].error)
         self.assertIn('re-run the measurement', discovery.invalid_sources[0].error)
+
+    def test_unsupported_metadata_schema_version_is_invalid_source(self) -> None:
+        '''Unsupported explicit metadata versions are reported instead of guessed from columns.'''
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_run_db(root / 'future-run', source_id='future-run')
+            with sqlite3.connect(root / 'future-run' / 'fuzzmeter.db') as con:
+                con.execute('UPDATE metadata SET metadata_schema_version=?', (999,))
+                con.commit()
+
+            discovery = discover_measurements(root)
+
+        self.assertEqual((), discovery.measurements)
+        self.assertEqual(1, len(discovery.invalid_sources))
+        self.assertIn('Unsupported composite metadata schema version: 999', discovery.invalid_sources[0].error)
 
 
 def _write_run_db(run_dir: Path, *, source_id: str, fuzzer: str = 'libfuzzer') -> None:

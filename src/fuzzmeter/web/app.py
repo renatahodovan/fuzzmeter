@@ -5,7 +5,7 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-"""Create and configure the dynamic Fuzzmeter Flask application."""
+'''Create and configure the dynamic Fuzzmeter Flask application.'''
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from .routes import composite_bp, files_bp, reports_bp, runs_bp
 
 
 def resolve_runs_root(path: Path) -> Path:
-    """Return the run-directory root for an output root, runs root, or run directory."""
+    '''Return the run-directory root for an output root, runs root, or run directory.'''
     root = Path(path).resolve()
     if (root / 'fuzzmeter.db').is_file():
         return root.parent
@@ -28,15 +28,15 @@ def resolve_runs_root(path: Path) -> Path:
     return root
 
 
-_env_runs_root = os.environ.get("FM_RUNS_ROOT")
+_env_runs_root = os.environ.get('FM_RUNS_ROOT')
 if _env_runs_root:
     RUNS_ROOT = resolve_runs_root(Path(_env_runs_root))
 else:
-    RUNS_ROOT = resolve_runs_root(Path(os.environ.get("FM_OUT", "/tmp/fuzzmeter/out")))
+    RUNS_ROOT = resolve_runs_root(Path(os.environ.get('FM_OUT', '/tmp/fuzzmeter/out')))
 
 
 def configure_runs_root(path: Path, flask_app: Flask | None = None) -> Path:
-    """Bind the dynamic web app and composite registry to a runs root."""
+    '''Bind the dynamic web app and composite registry to a runs root.'''
     runs_root = resolve_runs_root(path)
     globals()['RUNS_ROOT'] = runs_root
     target_app = flask_app or globals().get('app')
@@ -47,9 +47,9 @@ def configure_runs_root(path: Path, flask_app: Flask | None = None) -> Path:
 
 
 def create_app() -> Flask:
-    """Create the dynamic web app bound to the current runs root."""
-    app = Flask(__name__, template_folder="templates", static_folder="static")
-    app.config["RUNS_ROOT_PROVIDER"] = lambda: RUNS_ROOT
+    '''Create the dynamic web app bound to the current runs root.'''
+    app = Flask(__name__, template_folder='templates', static_folder='static')
+    app.config['RUNS_ROOT_PROVIDER'] = lambda: RUNS_ROOT
     app.config['COMPOSITE_REGISTRY'] = CompositeRegistry(RUNS_ROOT)
     app.config['COMPOSITE_VIEW_STORE'] = CompositeViewStore()
     app.register_blueprint(runs_bp)
@@ -62,5 +62,5 @@ def create_app() -> Flask:
 app = create_app()
 
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=True)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8000, debug=True)

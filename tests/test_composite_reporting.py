@@ -9,10 +9,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import tempfile
 import unittest
-
-from pathlib import Path
 
 from fuzzmeter.composite import (
     COMPOSITE_ORIGIN_FRESH,
@@ -51,11 +50,47 @@ class CompositeReportingTest(unittest.TestCase):
 
         self.assertEqual(1, len(payload['targets']))
         self.assertEqual(['fz', 'fz #2'], [entry['fuzzer'] for entry in payload['targets'][0]['fuzzers']])
+        self.assertEqual('run-b', payload['targets'][0]['fuzzers'][1]['source_detail']['source_id'])
+        self.assertIn('metadata', payload['targets'][0]['fuzzers'][1])
         self.assertEqual(['fresh', 'historical'], [source['origin'] for source in payload['sources']])
         self.assertNotIn('source', payload['sources'][0])
         self.assertEqual(first.key.as_id(), payload['sources'][0]['selection_id'])
         self.assertEqual(['run-a:1', 'run-b:1'], [trial['trial_id'] for trial in payload['trials']])
         self.assertTrue(payload['targets'][0]['relbug_matrix']['has_data'] is False)
+
+    def test_missing_source_fuzzer_is_reported_as_skipped_source(self) -> None:
+        '''Descriptors whose report data is incomplete stay visible as skipped sources.'''
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / 'run-a'
+            run_dir.mkdir()
+            _build_run_fixture(run_dir)
+            measurement = _measurement(run_dir, source_id='run-a')
+            missing_fuzzer = CompositeMeasurement(
+                key=CompositeMeasurementKey(
+                    source_id='run-a',
+                    run_id='run',
+                    fuzzer='missing',
+                    benchmark='bench',
+                    fuzz_target='target',
+                ),
+                source_path=run_dir,
+                db_path=run_dir / 'fuzzmeter.db',
+                metadata=MetadataTriplet(config={'benchmark': 'bench', 'fuzz_target': 'target'}),
+                runtime_seconds=60,
+                repetitions=1,
+            )
+
+            payload = build_composite_payload(
+                [
+                    (selection_from_key(measurement.key, origin=COMPOSITE_ORIGIN_FRESH), measurement),
+                    (selection_from_key(missing_fuzzer.key, origin=COMPOSITE_ORIGIN_HISTORICAL), missing_fuzzer),
+                ]
+            )
+
+        skipped = payload['sources'][1]
+        self.assertEqual('skipped', skipped['status'])
+        self.assertIn('Fuzzer data not found', skipped['error'])
+        self.assertEqual('missing', skipped['source_fuzzer'])
 
 
 def _measurement(run_dir: Path, *, source_id: str) -> CompositeMeasurement:

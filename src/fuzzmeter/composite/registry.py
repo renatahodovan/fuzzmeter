@@ -9,12 +9,12 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 import logging
+from pathlib import Path
+import threading
 import time
 import uuid
-
-from collections import OrderedDict
-from pathlib import Path
 
 from .discovery import discover_measurements
 from .models import (
@@ -25,6 +25,7 @@ from .models import (
     CompositeSelection,
     CompositeSource,
     CompositeView,
+    CompositeViewExpired,
 )
 
 DEFAULT_MAX_VIEWS = 50
@@ -70,61 +71,67 @@ class CompositeViewStore:
     def __init__(self, *, max_views: int = DEFAULT_MAX_VIEWS):
         self.max_views = int(max_views)
         self._views: OrderedDict[str, CompositeView] = OrderedDict()
+        self._lock = threading.RLock()
 
     def create(self, selections: list[CompositeSelection]) -> CompositeView:
         '''Create a new temporary composite view.'''
-        now = int(time.time())
-        view = CompositeView(
-            view_id=_new_view_id(),
-            selections=tuple(selections),
-            created_at=now,
-            updated_at=now,
-        )
-        self._views[view.view_id] = view
-        self._enforce_limit()
-        return view
+        with self._lock:
+            now = int(time.time())
+            view = CompositeView(
+                view_id=_new_view_id(),
+                selections=tuple(selections),
+                created_at=now,
+                updated_at=now,
+            )
+            self._views[view.view_id] = view
+            self._enforce_limit()
+            return view
 
     def get(self, view_id: str) -> CompositeView | None:
         '''Return one view and mark it as recently used.'''
-        view = self._views.get(view_id)
-        if view is None:
-            return None
-        self._views.move_to_end(view_id)
-        return view
+        with self._lock:
+            view = self._views.get(view_id)
+            if view is None:
+                return None
+            self._views.move_to_end(view_id)
+            return view
 
     def replace(self, view_id: str, selections: list[CompositeSelection]) -> CompositeView:
         '''Replace all selections in an existing view.'''
-        current = self._require(view_id)
-        view = CompositeView(
-            view_id=current.view_id,
-            selections=tuple(selections),
-            created_at=current.created_at,
-            updated_at=int(time.time()),
-        )
-        self._views[view.view_id] = view
-        self._views.move_to_end(view.view_id)
-        return view
+        with self._lock:
+            current = self._require(view_id)
+            view = CompositeView(
+                view_id=current.view_id,
+                selections=tuple(selections),
+                created_at=current.created_at,
+                updated_at=int(time.time()),
+            )
+            self._views[view.view_id] = view
+            self._views.move_to_end(view.view_id)
+            return view
 
     def add(self, view_id: str, selections: list[CompositeSelection]) -> CompositeView:
         '''Add selections to an existing view, replacing duplicate selection ids.'''
-        current = self._require(view_id)
-        by_id = {selection.selection_id: selection for selection in current.selections}
-        for selection in selections:
-            by_id[selection.selection_id] = selection
-        return self.replace(view_id, list(by_id.values()))
+        with self._lock:
+            current = self._require(view_id)
+            by_id = {selection.selection_id: selection for selection in current.selections}
+            for selection in selections:
+                by_id[selection.selection_id] = selection
+            return self.replace(view_id, list(by_id.values()))
 
     def remove(self, view_id: str, selection_id: str) -> CompositeView:
         '''Remove one selection from a view.'''
-        current = self._require(view_id)
-        return self.replace(
-            view_id,
-            [selection for selection in current.selections if selection.selection_id != selection_id],
-        )
+        with self._lock:
+            current = self._require(view_id)
+            return self.replace(
+                view_id,
+                [selection for selection in current.selections if selection.selection_id != selection_id],
+            )
 
     def _require(self, view_id: str) -> CompositeView:
         view = self.get(view_id)
         if view is None:
-            raise KeyError(view_id)
+            raise CompositeViewExpired(view_id)
         return view
 
     def _enforce_limit(self) -> None:

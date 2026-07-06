@@ -473,38 +473,62 @@ h3{ margin:10px 0 8px 0; font-size:14px; }
 .badge.strong{ color:var(--text); }
 .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
 
-.source-panel{
-  display:grid;
-  gap:10px;
+.compatibility-btn{
+  display:inline-flex;
+  align-items:center;
+  min-height:24px;
+  padding:0 10px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background:var(--panel-3);
+  color:var(--text);
+  font:inherit;
+  font-size:12px;
+  font-weight:700;
+  cursor:pointer;
 }
-.source-list{
+.compatibility-btn:hover{
+  border-color:var(--accent);
+}
+.compatibility-compatible{
+  color:var(--muted);
+}
+.compatibility-risky{
+  border-color:color-mix(in srgb, #f59e0b 54%, var(--border));
+  background:color-mix(in srgb, #f59e0b 12%, var(--panel-3));
+}
+.compatibility-incompatible{
+  border-color:color-mix(in srgb, #ef4444 54%, var(--border));
+  background:color-mix(in srgb, #ef4444 12%, var(--panel-3));
+}
+.compatibility-dialog{
+  width:min(960px, calc(100vw - 32px));
+}
+.compatibility-body{
+  display:grid;
+  gap:14px;
+}
+.compatibility-note{
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px 12px;
+  background:var(--panel-3);
+  color:var(--muted);
+}
+.compatibility-section{
   display:grid;
   gap:8px;
 }
-.source-row{
-  border:1px solid var(--border);
-  border-radius:12px;
-  padding:10px 12px;
-  display:flex;
-  gap:12px;
-  align-items:flex-start;
-  justify-content:space-between;
-  background:var(--panel-3);
+.compatibility-section-title{
+  color:var(--text);
+  font-size:13px;
+  font-weight:800;
+  text-transform:uppercase;
 }
-.source-main{
-  min-width:0;
-  display:grid;
-  gap:3px;
-}
-.source-title{
-  font-weight:700;
+.compatibility-diff-table td{
+  max-width:260px;
   overflow-wrap:anywhere;
-}
-.source-badges{
-  display:flex;
-  gap:6px;
-  flex-wrap:wrap;
-  justify-content:flex-end;
+  vertical-align:top;
 }
 .composite-options{
   display:grid;
@@ -957,6 +981,32 @@ details summary{ cursor:pointer; color:var(--muted); }
   border-bottom:1px solid var(--border);
 }
 .modal-title{ font-weight:700; }
+.modal-tabs{
+  display:flex;
+  gap:6px;
+  padding:10px 16px 0;
+}
+.modal-tab{
+  min-height:30px;
+  padding:0 12px;
+  border:1px solid var(--border);
+  border-radius:8px 8px 0 0;
+  background:var(--panel-3);
+  color:var(--muted);
+  font:inherit;
+  font-size:13px;
+  font-weight:700;
+  cursor:pointer;
+}
+.modal-tab.active{
+  color:var(--text);
+  border-bottom-color:var(--panel);
+  background:var(--panel);
+}
+.modal-tab:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
 .modal-body{
   margin:0;
   padding:16px;

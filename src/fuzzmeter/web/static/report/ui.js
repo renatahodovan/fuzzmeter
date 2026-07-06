@@ -39,8 +39,10 @@ export function ensureConfigModal() {
   const modal = byId('configModal');
   const title = byId('configModalTitle');
   const body = byId('configModalBody');
+  const runtimeTab = byId('configModalRuntimeTab');
+  const metadataTab = byId('configModalMetadataTab');
   const close = byId('configModalClose');
-  if (!modal || !title || !body || !close) return null;
+  if (!modal || !title || !body || !runtimeTab || !metadataTab || !close) return null;
   if (!modal.dataset.bound) {
     close.addEventListener('click', () => modal.classList.add('hidden'));
     modal.addEventListener('click', (event) => {
@@ -51,14 +53,39 @@ export function ensureConfigModal() {
     });
     modal.dataset.bound = '1';
   }
-  return { modal, title, body };
+  return { modal, title, body, runtimeTab, metadataTab };
 }
 
-export function openConfigModal(fuzzerName, versions) {
+function metadataPayload(fuzzer) {
+  const metadata = fuzzer?.metadata || {};
+  const payload = {};
+  const fuzzerSource = metadata.source?.fuzzer_version;
+  if (fuzzerSource) payload.fuzzer_source = fuzzerSource;
+  if (metadata.environment && Object.keys(metadata.environment).length) payload.environment = metadata.environment;
+  if (metadata.digests && Object.keys(metadata.digests).length) payload.digests = metadata.digests;
+  return Object.keys(payload).length ? payload : null;
+}
+
+function setConfigModalTab(refs, tabName, runtimePayload, sourcePayload) {
+  const isRuntime = tabName === 'runtime';
+  refs.runtimeTab.classList.toggle('active', isRuntime);
+  refs.metadataTab.classList.toggle('active', !isRuntime);
+  refs.runtimeTab.setAttribute('aria-selected', String(isRuntime));
+  refs.metadataTab.setAttribute('aria-selected', String(!isRuntime));
+  refs.body.textContent = JSON.stringify((isRuntime ? runtimePayload : sourcePayload) || {}, null, 2);
+}
+
+export function openConfigModal(fuzzer) {
   const refs = ensureConfigModal();
   if (!refs) return;
-  refs.title.textContent = `${fuzzerName} config`;
-  refs.body.textContent = JSON.stringify(configPayload(versions) || {}, null, 2);
+  const runtimePayload = configPayload(fuzzer?.versions);
+  const sourcePayload = metadataPayload(fuzzer);
+  refs.title.textContent = `${fuzzer?.fuzzer || 'Fuzzer'} details`;
+  refs.runtimeTab.disabled = !runtimePayload;
+  refs.metadataTab.disabled = !sourcePayload;
+  refs.runtimeTab.onclick = () => setConfigModalTab(refs, 'runtime', runtimePayload, sourcePayload);
+  refs.metadataTab.onclick = () => setConfigModalTab(refs, 'metadata', runtimePayload, sourcePayload);
+  setConfigModalTab(refs, runtimePayload ? 'runtime' : 'metadata', runtimePayload, sourcePayload);
   refs.modal.classList.remove('hidden');
 }
 
@@ -67,16 +94,17 @@ export function createConfigLink(fuzzer) {
   if (!payload) return document.createTextNode('—');
   const link = el('button', 'link-btn', 'view');
   link.type = 'button';
-  link.addEventListener('click', () => openConfigModal(fuzzer.fuzzer, fuzzer.versions));
+  link.addEventListener('click', () => openConfigModal(fuzzer));
   return link;
 }
 
 export function createFuzzerNameButton(fuzzer) {
-  const payload = configPayload(fuzzer.versions);
-  if (!payload) return el('div', null, fuzzer.fuzzer);
+  const runtimePayload = configPayload(fuzzer.versions);
+  const sourcePayload = metadataPayload(fuzzer);
+  if (!runtimePayload && !sourcePayload) return el('div', null, fuzzer.fuzzer);
   const button = el('button', 'link-btn fuzzer-name-btn', fuzzer.fuzzer);
   button.type = 'button';
-  button.addEventListener('click', () => openConfigModal(fuzzer.fuzzer, fuzzer.versions));
+  button.addEventListener('click', () => openConfigModal(fuzzer));
   return button;
 }
 

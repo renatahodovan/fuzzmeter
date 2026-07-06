@@ -9,9 +9,21 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import unittest
 
-from fuzzmeter.composite import COMPATIBLE, INCOMPATIBLE, RISKY, MetadataTriplet, compare_metadata
+from fuzzmeter.composite import (
+    COMPATIBLE,
+    COMPOSITE_ORIGIN_FRESH,
+    INCOMPATIBLE,
+    RISKY,
+    CompositeMeasurement,
+    CompositeMeasurementKey,
+    MetadataTriplet,
+    compare_metadata,
+)
+from fuzzmeter.composite.registry import selection_from_key
+from fuzzmeter.web.services.composite_service import _compatibility_for
 
 
 class CompositeCompatibilityTest(unittest.TestCase):
@@ -43,13 +55,99 @@ class CompositeCompatibilityTest(unittest.TestCase):
 
         self.assertEqual(RISKY, result.level)
         self.assertEqual('source', result.issues[0].domain)
+        self.assertEqual('present', result.diffs[0]['candidate'])
 
     def test_target_mismatch_is_incompatible(self) -> None:
-        '''Different benchmark or fuzz target is the hard incompatibility.'''
+        '''Different target identity is a hard incompatibility.'''
         result = compare_metadata(_metadata(), _metadata(config={'benchmark': 'zlib', 'fuzz_target': 'inflate'}))
 
         self.assertEqual(INCOMPATIBLE, result.level)
         self.assertEqual('config', result.issues[0].domain)
+
+    def test_target_runtime_config_mismatch_is_incompatible(self) -> None:
+        '''Different input mode or per-test timeout is a hard incompatibility.'''
+        cases = [
+            {'benchmark': 'zlib', 'fuzz_target': 'compress', 'input_mode': 'stdin', 'timeout': 1.0},
+            {'benchmark': 'zlib', 'fuzz_target': 'compress', 'input_mode': 'file', 'timeout': 2.0},
+        ]
+
+        for config in cases:
+            with self.subTest(config=config):
+                result = compare_metadata(_metadata(), _metadata(config=config))
+
+                self.assertEqual(INCOMPATIBLE, result.level)
+                self.assertEqual('config', result.issues[0].domain)
+
+    def test_fuzzer_source_metadata_is_not_a_compatibility_input(self) -> None:
+        '''Different fuzzer source metadata alone is provenance, not risk.'''
+        result = compare_metadata(
+            _metadata(source=_source(target_revision='abc', fuzzer_revision='afl')),
+            _metadata(source=_source(target_revision='abc', fuzzer_revision='grafl')),
+        )
+
+        self.assertEqual(COMPATIBLE, result.level)
+
+    def test_target_source_metadata_is_compared(self) -> None:
+        '''Target source metadata differences are visible risk signals.'''
+        result = compare_metadata(
+            _metadata(source=_source(target_revision='abc', fuzzer_revision='same')),
+            _metadata(source=_source(target_revision='def', fuzzer_revision='same')),
+        )
+
+        self.assertEqual(RISKY, result.level)
+        self.assertEqual('source', result.issues[0].domain)
+        self.assertEqual('target_source.revision', result.diffs[0]['path'])
+
+    def test_fresh_target_reference_is_preferred(self) -> None:
+        '''Fresh measurements are the target reference for historical rows.'''
+        fresh = _measurement('fresh', origin=COMPOSITE_ORIGIN_FRESH, environment={'host': {'kernel': '6.8'}})
+        historical = _measurement('hist', environment={'host': {'kernel': '6.9'}})
+
+        result = _compatibility_for(_entries(fresh, historical), historical)
+
+        self.assertEqual(RISKY, result['level'])
+        self.assertEqual('fresh', result['reference']['source_id'])
+        self.assertEqual('environment', result['diffs'][0]['domain'])
+
+    def test_historical_target_reference_falls_back_to_first_selection(self) -> None:
+        '''Historical-only comparisons use the first same-target selection as reference.'''
+        first = _measurement('hist-a', environment={'host': {'kernel': '6.8'}})
+        second = _measurement('hist-b', environment={'host': {'kernel': '6.9'}})
+
+        result = _compatibility_for(_entries(first, second), second)
+
+        self.assertEqual(RISKY, result['level'])
+        self.assertEqual('hist-a', result['reference']['source_id'])
+
+    def test_cross_fuzzer_source_metadata_does_not_make_candidate_risky(self) -> None:
+        '''Fuzzer metadata differences do not create risk signals.'''
+        fresh = _measurement(
+            'fresh',
+            origin=COMPOSITE_ORIGIN_FRESH,
+            fuzzer='afl',
+            source=_source(target_revision='abc', fuzzer_revision='afl'),
+        )
+        historical = _measurement(
+            'hist',
+            fuzzer='grafl',
+            source=_source(target_revision='abc', fuzzer_revision='grafl'),
+        )
+
+        result = _compatibility_for(_entries(fresh, historical), historical)
+
+        self.assertEqual(COMPATIBLE, result['level'])
+        self.assertNotIn('fuzzer_reference', result)
+        self.assertEqual('', result['comparison_note'])
+
+    def test_no_external_reference_is_reported_as_note(self) -> None:
+        '''A single measurement has no external comparison basis.'''
+        measurement = _measurement('only')
+
+        result = _compatibility_for(_entries(measurement), measurement)
+
+        self.assertEqual(COMPATIBLE, result['level'])
+        self.assertIsNone(result['reference'])
+        self.assertEqual('No external comparison reference.', result['comparison_note'])
 
 
 def _metadata(
@@ -68,6 +166,51 @@ def _metadata(
             'fuzzer_version': {'status': 'ok', 'data': {'revision': 'def'}},
         },
     )
+
+
+def _source(*, target_revision: str = 'abc', fuzzer_revision: str = 'def') -> dict:
+    return {
+        'target_source': {'status': 'ok', 'data': {'revision': target_revision}},
+        'fuzzer_version': {'status': 'ok', 'data': {'revision': fuzzer_revision}},
+    }
+
+
+def _measurement(
+    source_id: str,
+    *,
+    origin: str = 'historical',
+    fuzzer: str = 'fz',
+    environment: dict | None = None,
+    source: dict | None = None,
+) -> CompositeMeasurement:
+    key = CompositeMeasurementKey(
+        source_id=source_id,
+        run_id='run',
+        fuzzer=fuzzer,
+        benchmark='bench',
+        fuzz_target='target',
+    )
+    return CompositeMeasurement(
+        key=key,
+        source_path=Path('/tmp') / source_id,
+        db_path=Path('/tmp') / source_id / 'fuzzmeter.db',
+        metadata=_metadata(
+            environment=environment or {'host': {'kernel': '6.8'}},
+            config={'benchmark': 'bench', 'fuzz_target': 'target', 'input_mode': 'file', 'timeout': 1.0},
+            source=source or _source(),
+        ),
+        tags=(origin,),
+    )
+
+
+def _entries(*measurements: CompositeMeasurement):
+    return [
+        (
+            selection_from_key(measurement.key, origin=measurement.tags[0] if measurement.tags else 'historical'),
+            measurement,
+        )
+        for measurement in measurements
+    ]
 
 
 if __name__ == '__main__':

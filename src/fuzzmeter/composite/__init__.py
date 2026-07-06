@@ -13,19 +13,21 @@ from .canonical import canonical_digest, canonical_json, canonical_value
 from .compatibility import compare_metadata
 from .discovery import discover_measurements, discover_sources
 from .models import (
+    COMPATIBLE,
     COMPOSITE_ORIGIN_FRESH,
     COMPOSITE_ORIGIN_HISTORICAL,
-    COMPATIBLE,
     INCOMPATIBLE,
+    METADATA_JSON_SCHEMA_VERSION,
     RISKY,
+    CompatibilityIssue,
+    CompatibilityResult,
+    CompositeDiscovery,
     CompositeMeasurement,
     CompositeMeasurementKey,
     CompositeSelection,
-    CompositeDiscovery,
     CompositeSource,
     CompositeView,
-    CompatibilityIssue,
-    CompatibilityResult,
+    CompositeViewExpired,
     MetadataTriplet,
 )
 from .registry import CompositeRegistry, CompositeViewStore, selection_from_key
@@ -35,6 +37,7 @@ __all__ = [
     'COMPOSITE_ORIGIN_HISTORICAL',
     'COMPATIBLE',
     'INCOMPATIBLE',
+    'METADATA_JSON_SCHEMA_VERSION',
     'RISKY',
     'CompositeMeasurement',
     'CompositeMeasurementKey',
@@ -42,6 +45,7 @@ __all__ = [
     'CompositeDiscovery',
     'CompositeSource',
     'CompositeView',
+    'CompositeViewExpired',
     'CompositeRegistry',
     'CompositeViewStore',
     'CompatibilityIssue',

@@ -168,29 +168,6 @@ async function addSelectedMeasurements() {
   }
 }
 
-function sourceRow(source) {
-  const row = el('div', 'source-row');
-  const main = el('div', 'source-main');
-  main.appendChild(el('div', 'source-title', `${source.fuzzer || '-'} · ${source.benchmark || '-'} / ${source.fuzz_target || '-'}`));
-  main.appendChild(el('div', 'muted small', `Run ${source.run_id || '-'} · Source ${source.source_id || '-'} · ${formatSourceFacts(source, formatDuration, fmtInt)}`));
-  row.appendChild(main);
-  const badges = el('div', 'source-badges');
-  badges.appendChild(el('span', `badge ${source.origin === 'fresh' ? 'strong' : ''}`.trim(), source.origin || 'historical'));
-  if (source.compatibility?.level) badges.appendChild(el('span', 'badge', source.compatibility.level));
-  row.appendChild(badges);
-  return row;
-}
-
-export function renderSourceSummary(data) {
-  const panel = byId('sourcePanel');
-  const list = byId('sourceList');
-  if (!panel || !list) return;
-  const sources = data?.sources || [];
-  panel.hidden = !sources.length;
-  list.textContent = '';
-  sources.forEach((source) => list.appendChild(sourceRow(source)));
-}
-
 export function installCompositeControls(reloadReport) {
   COMPOSITE_STATE.reloadReport = reloadReport;
   const button = byId('compositeAddToggle');

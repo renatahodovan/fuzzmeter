@@ -11,11 +11,10 @@ from __future__ import annotations
 
 import copy
 import datetime
-
 from pathlib import Path
 from typing import Any
 
-from ..composite import COMPOSITE_ORIGIN_FRESH, CompositeMeasurement, CompositeSelection
+from ..composite import CompositeMeasurement, CompositeSelection
 from .analyzers import coverage_matrices
 from .analyzers.bug_analysis import BugAnalysis
 from .data.coverage_data import CoverageData
@@ -43,8 +42,10 @@ def build_composite_payload(
             )
             run_payloads[cache_key] = run_payload
         display_fuzzer = _display_fuzzer(selection, measurement, used_names)
-        _merge_measurement(payload, run_payload, selection, measurement, display_fuzzer)
-        source_dirs[(measurement.key.benchmark, measurement.key.fuzz_target, display_fuzzer)] = measurement.source_path
+        merged = _merge_measurement(payload, run_payload, selection, measurement, display_fuzzer)
+        if merged:
+            source_key = (measurement.key.benchmark, measurement.key.fuzz_target, display_fuzzer)
+            source_dirs[source_key] = measurement.source_path
     _recompute_matrices(payload, source_dirs)
     return payload
 
@@ -90,13 +91,27 @@ def _merge_measurement(
     selection: CompositeSelection,
     measurement: CompositeMeasurement,
     display_fuzzer: str,
-) -> None:
+) -> bool:
     source_target = _find_target(run_payload, measurement.key.benchmark, measurement.key.fuzz_target)
     if source_target is None:
-        return
+        _append_skipped_source(
+            payload,
+            selection,
+            measurement,
+            display_fuzzer,
+            'Target data not found in source report payload.',
+        )
+        return False
     source_fuzzer = _find_fuzzer(source_target, measurement.key.fuzzer)
     if source_fuzzer is None:
-        return
+        _append_skipped_source(
+            payload,
+            selection,
+            measurement,
+            display_fuzzer,
+            'Fuzzer data not found in source report payload.',
+        )
+        return False
 
     target = _find_target(payload, measurement.key.benchmark, measurement.key.fuzz_target)
     if target is None:
@@ -110,6 +125,7 @@ def _merge_measurement(
     _append_trials(payload, run_payload, selection, measurement, display_fuzzer)
     _append_bugs(payload, run_payload, selection, measurement, display_fuzzer)
     _append_source(payload, selection, measurement, display_fuzzer)
+    return True
 
 
 def _mark_origin(
@@ -120,10 +136,19 @@ def _mark_origin(
 ) -> None:
     original_fuzzer = entry.get('fuzzer')
     entry['fuzzer'] = display_fuzzer
+    entry['selection_id'] = selection.selection_id
     entry['origin'] = selection.origin
     entry['source_id'] = measurement.key.source_id
     entry['source_run_id'] = measurement.key.run_id
     entry['source_fuzzer'] = original_fuzzer
+    entry['source_detail'] = {
+        'source_id': measurement.key.source_id,
+        'run_id': measurement.key.run_id,
+        'source_fuzzer': original_fuzzer,
+        'runtime_seconds': measurement.runtime_seconds,
+        'repetitions': measurement.repetitions,
+    }
+    entry['metadata'] = measurement.metadata.to_json()
     for key in ('trials', 'curve', 'bugs'):
         for item in entry.get(key) or []:
             if isinstance(item, dict):
@@ -191,6 +216,32 @@ def _append_source(
             'runtime_seconds': measurement.runtime_seconds,
             'repetitions': measurement.repetitions,
             'metadata': measurement.metadata.to_json(),
+        }
+    )
+
+
+def _append_skipped_source(
+    payload: dict[str, Any],
+    selection: CompositeSelection,
+    measurement: CompositeMeasurement,
+    display_fuzzer: str,
+    error: str,
+) -> None:
+    payload['sources'].append(
+        {
+            'selection_id': selection.selection_id,
+            'origin': selection.origin,
+            'source_id': measurement.key.source_id,
+            'run_id': measurement.key.run_id,
+            'fuzzer': display_fuzzer,
+            'source_fuzzer': measurement.key.fuzzer,
+            'benchmark': measurement.key.benchmark,
+            'fuzz_target': measurement.key.fuzz_target,
+            'runtime_seconds': measurement.runtime_seconds,
+            'repetitions': measurement.repetitions,
+            'metadata': measurement.metadata.to_json(),
+            'status': 'skipped',
+            'error': error,
         }
     )
 

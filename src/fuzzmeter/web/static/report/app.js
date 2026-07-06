@@ -42,7 +42,6 @@ import {
 } from './filters.js';
 import {
   installCompositeControls,
-  renderSourceSummary,
 } from './composite.js';
 import { createTargetSection } from './page.js';
 
@@ -439,7 +438,6 @@ async function render() {
 
   window.addEventListener('resize', debounce(() => FM_APP.redrawAll(), 120));
   applyTheme(preferredTheme());
-  renderSourceSummary(data);
   installCompositeControls(async () => {
     const previous = FM_APP.rawData;
     const next = await fetchJSON(window.FM_DATA_URL && window.FM_DATA_URL.length ? window.FM_DATA_URL : 'data.json');
@@ -447,7 +445,6 @@ async function render() {
     FM_APP.rawData = next;
     assignFuzzerColors(next);
     renderFromState();
-    renderSourceSummary(next);
   });
 }
 

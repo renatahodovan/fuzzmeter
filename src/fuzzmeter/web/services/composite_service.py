@@ -10,16 +10,22 @@
 from __future__ import annotations
 
 import logging
-
 from pathlib import Path
 from typing import Any
 
-from ...composite import COMPOSITE_ORIGIN_FRESH, COMPOSITE_ORIGIN_HISTORICAL, compare_metadata
+from ...composite import (
+    COMPATIBLE,
+    COMPOSITE_ORIGIN_FRESH,
+    COMPOSITE_ORIGIN_HISTORICAL,
+    RISKY,
+    CompositeViewExpired,
+    compare_metadata,
+)
 from ...composite.discovery import read_measurements
 from ...composite.models import CompositeMeasurement, CompositeMeasurementKey, CompositeSelection
 from ...composite.registry import CompositeRegistry, CompositeViewStore, selection_from_key
 from ...reporting import build_composite_payload
-from .file_service import require_run_dir
+from .file_service import require_run_dir, resolve_run_dir
 
 LOG = logging.getLogger(__name__)
 
@@ -65,32 +71,43 @@ def remove_measurement(store: CompositeViewStore, view_id: str, selection_id: st
     return store.remove(view_id, selection_id).to_json()
 
 
-def view_summary(runs_root: Path, registry: CompositeRegistry, store: CompositeViewStore, view_id: str) -> dict[str, Any]:
-    '''Return selected measurements and compatibility summaries for one view.'''
+def view_summary(
+    runs_root: Path,
+    registry: CompositeRegistry,
+    store: CompositeViewStore,
+    view_id: str,
+) -> dict[str, Any]:
+    '''Return selected measurement summaries for one view.'''
     view = _require_view(store, view_id)
     resolved = _resolve_summary_entries(runs_root, registry, view.selections)
-    entries = [(selection, measurement) for selection, measurement in resolved if measurement is not None]
     return {
         **view.to_json(),
         'sources': [
             _missing_source_summary(selection) if measurement is None
-            else _source_summary(selection, measurement, _compatibility_for(entries, measurement))
+            else _source_summary(selection, measurement)
             for selection, measurement in resolved
         ],
     }
 
 
-def view_report_data(runs_root: Path, registry: CompositeRegistry, store: CompositeViewStore, view_id: str) -> dict[str, Any]:
+def view_report_data(
+    runs_root: Path,
+    registry: CompositeRegistry,
+    store: CompositeViewStore,
+    view_id: str,
+) -> dict[str, Any]:
     '''Build the full report payload for a composite view.'''
     view = _require_view(store, view_id)
     entries = _resolve_entries(runs_root, registry, view.selections)
     payload = build_composite_payload(entries)
     payload['meta']['view_id'] = view.view_id
-    measurements_by_selection = {selection.selection_id: measurement for selection, measurement in entries}
-    for source in payload.get('sources') or []:
-        measurement = measurements_by_selection.get(source.get('selection_id'))
-        if measurement is not None:
-            source['compatibility'] = _compatibility_for(entries, measurement)
+    if _has_historical(entries):
+        measurements_by_selection = {selection.selection_id: measurement for selection, measurement in entries}
+        for source in payload.get('sources') or []:
+            measurement = measurements_by_selection.get(source.get('selection_id'))
+            if measurement is not None and source.get('origin') == COMPOSITE_ORIGIN_HISTORICAL:
+                source['compatibility'] = _compatibility_for(entries, measurement)
+    _attach_fuzzer_source_metadata(payload)
     return payload
 
 
@@ -157,7 +174,7 @@ def _run_measurements(runs_root: Path, run_id: str) -> list[CompositeMeasurement
 
 
 def _read_run_measurement(runs_root: Path, key: CompositeMeasurementKey) -> CompositeMeasurement | None:
-    run_dir = Path(runs_root).resolve() / key.source_id
+    run_dir = resolve_run_dir(runs_root, key.source_id)
     if not run_dir.is_dir():
         return None
     for measurement in read_measurements(run_dir / 'fuzzmeter.db', key.source_id):
@@ -170,29 +187,145 @@ def _compatibility_for(
     entries: list[tuple[CompositeSelection, CompositeMeasurement]],
     measurement: CompositeMeasurement,
 ) -> dict[str, Any]:
-    reference = _reference_for(entries, measurement)
-    if reference is None or reference is measurement:
-        return {'level': 'compatible', 'issues': []}
-    return compare_metadata(reference.metadata, measurement.metadata).to_json()
+    target_reference = _reference_for(entries, measurement)
+    if target_reference is None:
+        return {
+            'level': COMPATIBLE,
+            'issues': [],
+            'diffs': [],
+            'reference': None,
+            'comparison_note': 'No external comparison reference.',
+        }
+    if target_reference[1] is measurement:
+        result = {
+            'level': COMPATIBLE,
+            'issues': [],
+            'diffs': [],
+            'reference': _source_identity(*target_reference),
+            'comparison_note': 'Target reference source.',
+        }
+    else:
+        comparison = compare_metadata(target_reference[1].metadata, measurement.metadata)
+        result = comparison.to_json()
+        result['reference'] = _source_identity(*target_reference)
+        result['comparison_note'] = ''
+        if target_reference[0].origin == COMPOSITE_ORIGIN_FRESH:
+            _attach_policy_warnings(result, target_reference[1], measurement)
+    return result
+
+
+def _has_historical(entries: list[tuple[CompositeSelection, CompositeMeasurement]]) -> bool:
+    return any(selection.origin == COMPOSITE_ORIGIN_HISTORICAL for selection, _ in entries)
 
 
 def _reference_for(
     entries: list[tuple[CompositeSelection, CompositeMeasurement]],
     measurement: CompositeMeasurement,
-) -> CompositeMeasurement | None:
-    for _, candidate in entries:
+) -> tuple[CompositeSelection, CompositeMeasurement] | None:
+    candidates = [
+        (selection, candidate)
+        for selection, candidate in entries
         if (
             candidate.key.benchmark == measurement.key.benchmark
             and candidate.key.fuzz_target == measurement.key.fuzz_target
-        ):
-            return candidate
-    return None
+        )
+    ]
+    if len(candidates) == 1 and candidates[0][1] is measurement:
+        return None
+    for selection, candidate in candidates:
+        if selection.origin == COMPOSITE_ORIGIN_FRESH:
+            return selection, candidate
+    return candidates[0] if candidates else None
+
+
+def _source_identity(selection: CompositeSelection, measurement: CompositeMeasurement) -> dict[str, Any]:
+    return {
+        'selection_id': selection.selection_id,
+        'origin': selection.origin,
+        'source_id': measurement.key.source_id,
+        'run_id': measurement.key.run_id,
+        'fuzzer': selection.display_fuzzer or measurement.key.fuzzer,
+        'source_fuzzer': measurement.key.fuzzer,
+        'benchmark': measurement.key.benchmark,
+        'fuzz_target': measurement.key.fuzz_target,
+    }
+
+
+def _attach_policy_warnings(
+    result: dict[str, Any],
+    reference: CompositeMeasurement,
+    candidate: CompositeMeasurement,
+) -> None:
+    if candidate.repetitions and reference.repetitions and candidate.repetitions < reference.repetitions:
+        _append_policy_warning(
+            result,
+            'Historical measurement has fewer repetitions than the target reference.',
+            'repetitions',
+            reference.repetitions,
+            candidate.repetitions,
+        )
+    runtime_is_shorter = (
+        candidate.runtime_seconds
+        and reference.runtime_seconds
+        and candidate.runtime_seconds < reference.runtime_seconds
+    )
+    if runtime_is_shorter:
+        _append_policy_warning(
+            result,
+            'Historical measurement runtime is shorter than the target reference.',
+            'runtime_seconds',
+            reference.runtime_seconds,
+            candidate.runtime_seconds,
+        )
+
+
+def _append_policy_warning(
+    result: dict[str, Any],
+    message: str,
+    path: str,
+    reference: int,
+    candidate: int,
+) -> None:
+    result.setdefault('issues', []).append(
+        {
+            'domain': 'policy',
+            'severity': 'warning',
+            'message': message,
+            'details': {path: {'reference': reference, 'candidate': candidate}},
+        }
+    )
+    result.setdefault('diffs', []).append(
+        {
+            'domain': 'policy',
+            'path': path,
+            'severity': 'warning',
+            'message': message,
+            'reference': reference,
+            'candidate': candidate,
+        }
+    )
+    if result.get('level') == COMPATIBLE:
+        result['level'] = RISKY
+
+
+def _attach_fuzzer_source_metadata(payload: dict[str, Any]) -> None:
+    sources = {
+        source.get('selection_id'): source
+        for source in payload.get('sources') or []
+        if isinstance(source, dict) and source.get('compatibility') is not None
+    }
+    if not sources:
+        return
+    for target in payload.get('targets') or []:
+        for fuzzer in target.get('fuzzers') or []:
+            source = sources.get(fuzzer.get('selection_id'))
+            if source:
+                fuzzer['compatibility'] = source.get('compatibility')
 
 
 def _source_summary(
     selection: CompositeSelection,
     measurement: CompositeMeasurement,
-    compatibility: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         'selection_id': selection.selection_id,
@@ -208,7 +341,6 @@ def _source_summary(
         'metadata': measurement.metadata.to_json(),
         'display_fuzzer': selection.display_fuzzer or measurement.key.fuzzer,
         'status': 'ok',
-        'compatibility': compatibility,
     }
 
 
@@ -232,10 +364,16 @@ def _missing_source_summary(selection: CompositeSelection) -> dict[str, Any]:
 def _validate_key(key: CompositeMeasurementKey) -> None:
     if not all((key.source_id, key.run_id, key.fuzzer, key.benchmark, key.fuzz_target)):
         raise ValueError('measurement key must include source_id, run_id, fuzzer, benchmark, and fuzz_target.')
+    if _has_path_separator(key.source_id) or key.source_id in {'.', '..'}:
+        raise ValueError('measurement key source_id must be a direct run directory name.')
+
+
+def _has_path_separator(value: str) -> bool:
+    return '/' in value or '\\' in value
 
 
 def _require_view(store: CompositeViewStore, view_id: str):
     view = store.get(view_id)
     if view is None:
-        raise KeyError(str(view_id))
+        raise CompositeViewExpired(str(view_id))
     return view

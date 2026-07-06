@@ -19,6 +19,11 @@ INCOMPATIBLE = 'incompatible'
 
 COMPOSITE_ORIGIN_FRESH = 'fresh'
 COMPOSITE_ORIGIN_HISTORICAL = 'historical'
+METADATA_JSON_SCHEMA_VERSION = 1
+
+
+class CompositeViewExpired(LookupError):
+    '''Raised when a temporary composite report view no longer exists.'''
 
 
 @dataclass(frozen=True)
@@ -85,6 +90,7 @@ class MetadataTriplet:
     def to_json(self) -> dict[str, Any]:
         '''Return a JSON-compatible representation.'''
         return {
+            'schema_version': METADATA_JSON_SCHEMA_VERSION,
             'environment': self.environment,
             'config': self.config,
             'source': self.source,
@@ -193,6 +199,7 @@ class CompatibilityResult:
 
     level: str
     issues: tuple[CompatibilityIssue, ...] = ()
+    diffs: tuple[dict[str, Any], ...] = ()
     environment_diff: dict[str, Any] = field(default_factory=dict)
     config_diff: dict[str, Any] = field(default_factory=dict)
     source_diff: dict[str, Any] = field(default_factory=dict)
@@ -202,6 +209,7 @@ class CompatibilityResult:
         return {
             'level': self.level,
             'issues': [issue.to_json() for issue in self.issues],
+            'diffs': list(self.diffs),
             'environment_diff': self.environment_diff,
             'config_diff': self.config_diff,
             'source_diff': self.source_diff,
