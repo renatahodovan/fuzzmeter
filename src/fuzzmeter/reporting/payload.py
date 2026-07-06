@@ -238,6 +238,24 @@ class _PayloadBuilder:
             for metric in COV_METRICS
         }
 
+    def _trial_coverage_sets_by_metric(
+        self,
+        trials: list[dict[str, Any]],
+        fuzzers: list[str],
+        benchmark: str,
+        fuzz_target: str,
+    ) -> dict[str, dict[str, list[set[str]]]]:
+        return {
+            metric: self._coverage_data.trial_coverage_sets_by_fuzzer(
+                trials=trials,
+                fuzzers=fuzzers,
+                benchmark=benchmark,
+                fuzz_target=fuzz_target,
+                metric=metric,
+            )
+            for metric in COV_METRICS
+        }
+
     def collect_trials(self) -> list[dict[str, Any]]:
         '''Collect per-trial report rows.'''
 
@@ -313,11 +331,17 @@ class _PayloadBuilder:
             })
             if benchmark and fuzz_target and len(fuzzers) > 1:
                 coverage_sets_by_metric = self._coverage_sets_by_metric(fuzzers, benchmark, fuzz_target)
+                trial_coverage_sets_by_metric = self._trial_coverage_sets_by_metric(
+                    trials,
+                    fuzzers,
+                    benchmark,
+                    fuzz_target,
+                )
                 target['unique_matrix'] = self.compute_unique_matrix(
                     trials, benchmark, fuzz_target, coverage_sets_by_metric
                 )
                 target['relcov_matrix'], target['relcov_score_by_fuzzer'] = self.compute_relcov_matrix(
-                    trials, benchmark, fuzz_target, coverage_sets_by_metric
+                    trials, benchmark, fuzz_target, trial_coverage_sets_by_metric
                 )
                 target['branch_mwu_matrix'], target['branch_a12_matrix'] = self.compute_branch_stat_matrices(
                     trials,
@@ -365,7 +389,7 @@ class _PayloadBuilder:
         trials: list[dict[str, Any]],
         benchmark: str,
         fuzz_target: str,
-        coverage_sets_by_metric: dict[str, dict[str, set[str]]],
+        trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str]]]],
     ) -> tuple[dict[str, Any], dict[str, float]]:
         '''Compute per-fuzzer relative coverage containment matrix and scores.'''
 
@@ -374,7 +398,7 @@ class _PayloadBuilder:
             trials=trials,
             benchmark=benchmark,
             fuzz_target=fuzz_target,
-            coverage_sets_by_metric=coverage_sets_by_metric,
+            trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
         )
 
     def compute_branch_stat_matrices(

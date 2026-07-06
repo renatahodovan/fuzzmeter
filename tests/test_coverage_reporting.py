@@ -222,6 +222,29 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertAlmostEqual(1.0, a12['matrix'][0][1])
         self.assertAlmostEqual(0.0, a12['matrix'][1][0])
 
+    def test_relcov_matrix_uses_trial_median_against_column_union(self) -> None:
+        matrix_group, scores = coverage_matrices.compute_relcov_matrix(
+            cov_metrics=('branches',),
+            trials=[
+                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha'},
+                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha'},
+                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta'},
+            ],
+            benchmark='bench',
+            fuzz_target='target',
+            trial_coverage_sets_by_metric={
+                'branches': {
+                    'alpha': [{'a', 'b'}, set()],
+                    'beta': [{'a', 'b', 'c'}],
+                }
+            },
+        )
+
+        matrix = matrix_group['by_metric']['branches']
+        self.assertEqual(['alpha', 'beta'], matrix['fuzzers'])
+        self.assertEqual([[50.0, 33.333333333333336], [100.0, 100.0]], matrix['matrix'])
+        self.assertEqual({'alpha': 0.0, 'beta': 1.0}, scores)
+
     def test_overview_elapsed_uses_trial_time_not_snapshot_wall_time(self) -> None:
         builder = _PayloadBuilder.__new__(_PayloadBuilder)
         builder._overview_raw = {'created_ts': 50}

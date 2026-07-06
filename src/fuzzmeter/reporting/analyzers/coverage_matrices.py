@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..metrics import mann_whitney_u_pvalue, safe_int, vargha_delaney_a12
+from ..metrics import mann_whitney_u_pvalue, median, safe_int, vargha_delaney_a12
 from ..set_comparison import pairwise_matrix, unique_matrix
 
 
@@ -179,9 +179,9 @@ def compute_relcov_matrix(
     trials: list[dict[str, Any]],
     benchmark: str,
     fuzz_target: str,
-    coverage_sets_by_metric: dict[str, dict[str, set[str]]],
+    trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str]]]],
 ) -> tuple[dict[str, Any], dict[str, float]]:
-    '''Compute pairwise relative coverage containment and novelty-weighted branch scores.'''
+    '''Compute pairwise relative coverage and novelty-weighted branch scores.'''
 
     fuzzers = sorted(
         {
@@ -198,12 +198,15 @@ def compute_relcov_matrix(
         metric: _compute_relcov_matrix_for_metric(
             fuzzers=fuzzers,
             metric=metric,
-            coverage_sets=coverage_sets_by_metric.get(metric, {}),
+            trial_coverage_sets=trial_coverage_sets_by_metric.get(metric, {}),
         )
         for metric in cov_metrics
     }
-    branch_sets = coverage_sets_by_metric.get('branches', {})
-    score_by_fuzzer = _relcov_scores(fuzzers=fuzzers, coverage_sets=branch_sets)
+    branch_trial_sets = trial_coverage_sets_by_metric.get('branches', {})
+    score_by_fuzzer = _relcov_scores(
+        fuzzers=fuzzers,
+        trial_coverage_sets=branch_trial_sets,
+    )
     return (
         {
             'by_metric': by_metric,
@@ -218,36 +221,57 @@ def _compute_relcov_matrix_for_metric(
     *,
     fuzzers: list[str],
     metric: str,
-    coverage_sets: dict[str, set[str]],
+    trial_coverage_sets: dict[str, list[set[str]]],
 ) -> dict[str, Any]:
-    missing_any = len(coverage_sets) != len(fuzzers)
+    coverage_by_fuzzer = _coverage_by_fuzzer(fuzzers, trial_coverage_sets)
+    missing_any = len(coverage_by_fuzzer) != len(fuzzers) or any(
+        not trial_coverage_sets.get(fuzzer)
+        for fuzzer in fuzzers
+    )
     matrix: list[list[float]] = []
     max_value = 0.0
     for row_fuzzer in fuzzers:
-        row_union = coverage_sets.get(row_fuzzer, set())
+        row_trials = coverage_by_fuzzer.get(row_fuzzer, [])
         row_vals = []
         for col_fuzzer in fuzzers:
-            col_union = coverage_sets.get(col_fuzzer, set())
+            col_union = set().union(*coverage_by_fuzzer.get(col_fuzzer, []))
             denominator = len(col_union)
-            value = 100.0 * len(row_union & col_union) / denominator if denominator > 0 else 0.0
+            values = [
+                100.0 * len(row_coverage & col_union) / denominator
+                for row_coverage in row_trials
+                if denominator > 0
+            ]
+            value = median(values) or 0.0
             row_vals.append(value)
             max_value = max(max_value, value)
         matrix.append(row_vals)
 
-    has_data = any(bool(values) for values in coverage_sets.values())
+    has_data = any(bool(values) for values in coverage_by_fuzzer.values())
     return {
         'fuzzers': fuzzers,
         'matrix': matrix,
-        'covered_counts': [len(coverage_sets.get(fuzzer, set())) for fuzzer in fuzzers],
+        'covered_counts': [len(set().union(*coverage_by_fuzzer.get(fuzzer, []))) for fuzzer in fuzzers],
         'has_data': has_data,
         'note': (
-            'Compact coverage sets missing for one or more fuzzers; '
+            'Trial compact coverage sets missing for one or more fuzzers; '
             'relative coverage may be partial.'
         ) if missing_any else None,
         'max_value': max_value,
         'format': 'pct',
-        'aggregation': f'per-fuzzer aggregate compact {metric} coverage sets',
+        'aggregation': f'per-trial median compact {metric} coverage sets',
     }
+
+
+def _coverage_by_fuzzer(
+    fuzzers: list[str],
+    trial_coverage_sets: dict[str, list[set[str]]],
+) -> dict[str, list[set[str]]]:
+    out: dict[str, list[set[str]]] = {}
+    for fuzzer in fuzzers:
+        trial_sets = [set(value) for value in trial_coverage_sets.get(fuzzer, [])]
+        if trial_sets:
+            out[fuzzer] = trial_sets
+    return out
 
 
 def _single_metric_matrix_group(matrix: dict[str, Any]) -> dict[str, Any]:
@@ -283,21 +307,33 @@ def _branch_coverage_distributions(
     return distributions, missing_any
 
 
-def _relcov_scores(*, fuzzers: list[str], coverage_sets: dict[str, set[str]]) -> dict[str, float]:
-    '''Score each fuzzer by coverage edges that fewer peers cover.'''
+def _relcov_scores(
+    *,
+    fuzzers: list[str],
+    trial_coverage_sets: dict[str, list[set[str]]],
+) -> dict[str, float]:
+    '''Score each fuzzer by coverage elements that fewer peers cover.'''
 
-    fuzzer_count = len(fuzzers)
-    covered_by_fuzzers_count: dict[str, int] = {}
-    for edge in set().union(*(coverage_sets.get(fuzzer, set()) for fuzzer in fuzzers)):
-        covered_by_fuzzers_count[edge] = sum(
-            1
-            for fuzzer in fuzzers
-            if edge in coverage_sets.get(fuzzer, set())
-        )
-    return {
-        fuzzer: sum(
-            float(fuzzer_count - covered_by_fuzzers_count.get(edge, 0))
-            for edge in coverage_sets.get(fuzzer, set())
-        )
+    coverage_by_fuzzer = _coverage_by_fuzzer(fuzzers, trial_coverage_sets)
+    union_by_fuzzer = {
+        fuzzer: set().union(*coverage_by_fuzzer.get(fuzzer, []))
         for fuzzer in fuzzers
     }
+    all_edges = set().union(*union_by_fuzzer.values()) if union_by_fuzzer else set()
+    missing_approaches = {
+        edge: sum(1 for fuzzer in fuzzers if edge not in union_by_fuzzer.get(fuzzer, set()))
+        for edge in all_edges
+    }
+    scores: dict[str, float] = {}
+    for fuzzer in fuzzers:
+        trial_sets = coverage_by_fuzzer.get(fuzzer, [])
+        denominator = sum(1 for coverage in trial_sets if coverage)
+        if denominator <= 0:
+            continue
+        scores[fuzzer] = sum(
+            float(missing_approaches[edge])
+            * sum(1 for coverage in trial_sets if edge in coverage)
+            / denominator
+            for edge in all_edges
+        )
+    return scores

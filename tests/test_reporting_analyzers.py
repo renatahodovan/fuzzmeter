@@ -300,6 +300,9 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         builder._coverage_sets_by_metric = lambda fuzzers, benchmark, fuzz_target: {
             'branches': {'alpha': {'a', 'b'}, 'beta': {'b'}}
         }
+        builder._trial_coverage_sets_by_metric = lambda trials, fuzzers, benchmark, fuzz_target: {
+            'branches': {'alpha': [{'a', 'b'}], 'beta': [{'b'}]}
+        }
         target = {
             'benchmark': 'bench',
             'fuzz_target': 'target',

@@ -83,3 +83,30 @@ class CoverageData:
             if coverage_path is not None:
                 out[fuzzer] = self.covered_elements(coverage_path, metric)
         return out
+
+    def trial_coverage_sets_by_fuzzer(
+        self,
+        *,
+        trials: list[dict[str, Any]],
+        fuzzers: list[str],
+        benchmark: str,
+        fuzz_target: str,
+        metric: str,
+    ) -> dict[str, list[set[str]]]:
+        '''Return per-trial covered element sets for one target and metric.'''
+
+        out = {str(fuzzer): [] for fuzzer in fuzzers}
+        for trial in trials:
+            fuzzer = str(trial.get('fuzzer') or '')
+            if (
+                fuzzer not in out
+                or trial.get('benchmark') != benchmark
+                or trial.get('fuzz_target') != fuzz_target
+            ):
+                continue
+            coverage_path = self.coverage_sets_from_coverage_html_rel(
+                (trial.get('coverage') or {}).get('coverage_html_rel')
+            )
+            if coverage_path is not None:
+                out[fuzzer].append(self.covered_elements(coverage_path, metric))
+        return {fuzzer: sets for fuzzer, sets in out.items() if sets}

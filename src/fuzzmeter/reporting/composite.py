@@ -268,6 +268,7 @@ def _recompute_matrices(
         fuzz_target = str(target.get('fuzz_target') or '')
         trials = _target_trials(target, benchmark, fuzz_target)
         coverage_sets_by_metric = _coverage_sets_by_metric(target, source_dirs)
+        trial_coverage_sets_by_metric = _trial_coverage_sets_by_metric(target, source_dirs)
         target['unique_matrix'] = coverage_matrices.compute_unique_matrix(
             cov_metrics=COV_METRICS,
             trials=trials,
@@ -280,7 +281,7 @@ def _recompute_matrices(
             trials=trials,
             benchmark=benchmark,
             fuzz_target=fuzz_target,
-            coverage_sets_by_metric=coverage_sets_by_metric,
+            trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
         )
         target['branch_mwu_matrix'], target['branch_a12_matrix'] = coverage_matrices.compute_branch_stat_matrices(
             trials=trials,
@@ -343,6 +344,31 @@ def _coverage_sets_by_metric(
             continue
         for metric in COV_METRICS:
             out[metric][fuzzer] = coverage_data.covered_elements(coverage_path, metric)
+    return out
+
+
+def _trial_coverage_sets_by_metric(
+    target: dict[str, Any],
+    source_dirs: dict[tuple[str, str, str], Path],
+) -> dict[str, dict[str, list[set[str]]]]:
+    benchmark = str(target.get('benchmark') or '')
+    fuzz_target = str(target.get('fuzz_target') or '')
+    caches: dict[Path, CoverageData] = {}
+    out: dict[str, dict[str, list[set[str]]]] = {metric: {} for metric in COV_METRICS}
+    for entry in target.get('fuzzers') or []:
+        fuzzer = str(entry.get('fuzzer') or '')
+        source_dir = source_dirs.get((benchmark, fuzz_target, fuzzer))
+        if not fuzzer or source_dir is None:
+            continue
+        coverage_data = caches.setdefault(Path(source_dir), CoverageData(source_dir))
+        for trial in entry.get('trials') or []:
+            coverage_path = coverage_data.coverage_sets_from_coverage_html_rel(
+                ((trial or {}).get('coverage') or {}).get('coverage_html_rel')
+            )
+            if coverage_path is None:
+                continue
+            for metric in COV_METRICS:
+                out[metric].setdefault(fuzzer, []).append(coverage_data.covered_elements(coverage_path, metric))
     return out
 
 
