@@ -41,7 +41,7 @@ from fuzzmeter.trial.models import ReplayTrialInstance, TrialConfig, TrialImages
 def _trial_config(root: Path, *, rep_idx: int = 0, replay_dir: Path | None = None) -> TrialConfig:
     return TrialConfig(
         fuzzer='aflplusplus',
-        fuzzer_base='aflplusplus',
+        fuzzer_impl='aflplusplus',
         benchmark='bench',
         fuzz_target='target',
         fuzz_target_bin=root / f'target-{rep_idx}',
@@ -55,7 +55,7 @@ def _trial_config(root: Path, *, rep_idx: int = 0, replay_dir: Path | None = Non
         ),
         trial_timeout=300,
         snapshot_preprocess=None,
-        images=TrialImages(fuzzer_name='aflplusplus', target_id='bench-target'),
+        images=TrialImages(fuzzer_name='aflplusplus', target_key='bench-target'),
         replay_dir=replay_dir,
     )
 

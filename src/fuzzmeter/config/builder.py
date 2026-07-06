@@ -18,7 +18,7 @@ from typing import Any
 import yaml
 
 from ..paths import ExternalRoots
-from .models import CampaignCase, CampaignConfig, CampaignSettings
+from .models import CampaignCase, CampaignConfig, CampaignSettings, target_key
 
 IDENTIFIER_RE = re.compile(r'^[a-zA-Z0-9_.-]+$')
 INPUT_MODE_OPTIONS = ('in_process', 'file', 'stdin')
@@ -116,7 +116,6 @@ def _load_target_config(path: Path, requested_fuzz_target: str) -> dict[str, Any
         'fuzz_target': fuzz_target,
         'input_mode': input_mode,
         'timeout_s': timeout_s,
-        'target_id': f'{benchmark}-{fuzz_target}',
         'config_path': str(path),
         'fuzzers': target_data.get('fuzzers'),
     }
@@ -259,7 +258,7 @@ def _load_target_configs(data: dict[str, Any], targets_root: Path) -> dict[str, 
                 if not all(isinstance(override, dict) for override in fuzzer_overrides.values()):
                     raise ValueError('Fuzzer overrides in benchmark configs must be mappings.')
 
-            targets[target_config['target_id']] = {
+            targets[target_key(target_config['benchmark'], target_config['fuzz_target'])] = {
                 'target_config': target_config,
                 'fuzzer_configs': fuzzer_overrides,
             }
@@ -291,12 +290,10 @@ def _build_campaign_case(
         replay_trials = (*replay_trials, *tuple(fuzzer_config.get('replay_trials') or ()))
 
     return CampaignCase(
-        fuzzer_base=fuzzer_chain[1] if len(fuzzer_chain) > 1 else fuzzer_chain[0],
         fuzzer_name=fuzzer_name,
         fuzzer_chain=fuzzer_chain,
         benchmark=target_config['benchmark'],
         fuzz_target=target_config['fuzz_target'],
-        target_id=target_config['target_id'],
         input_mode=target_config['input_mode'],
         target_timeout_s=target_config['timeout_s'],
         build_config=build_config,

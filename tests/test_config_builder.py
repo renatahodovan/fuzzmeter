@@ -11,15 +11,23 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from dataclasses import fields
 
 from pathlib import Path
 
-from fuzzmeter.config import load_campaign_config
+from fuzzmeter.config import CampaignCase, load_campaign_config
 from fuzzmeter.paths import ExternalRoots
 
 
 class ConfigBuilderTest(unittest.TestCase):
     """Verify campaign config expansion rules."""
+
+    def test_campaign_case_does_not_store_derived_identity_fields(self) -> None:
+        """Verify target and implementation helpers stay outside the model."""
+        field_names = {field.name for field in fields(CampaignCase)}
+
+        self.assertNotIn('target_id', field_names)
+        self.assertNotIn('fuzzer_base', field_names)
 
     def test_repository_curl_target_config_loads(self) -> None:
         """Verify that the repository curl target config loads as-is."""

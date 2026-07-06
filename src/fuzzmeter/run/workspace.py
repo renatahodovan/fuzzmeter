@@ -36,7 +36,6 @@ def _write_run_entries(*, run_dir: Path, campaign_config: CampaignConfig) -> Non
         json.dumps(
             [
                 {
-                    'fuzzer_base': entry.fuzzer_base,
                     'fuzzer_name': entry.fuzzer_name,
                     'fuzzer_chain': list(entry.fuzzer_chain),
                     'benchmark': entry.benchmark,

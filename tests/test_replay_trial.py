@@ -31,7 +31,7 @@ class _DockerRuntimeStub:
 def _trial_config(root: Path, *, replay_dir: Path) -> TrialConfig:
     return TrialConfig(
         fuzzer='aflplusplus_replay',
-        fuzzer_base='aflplusplus',
+        fuzzer_impl='aflplusplus',
         benchmark='jerryscript',
         fuzz_target='jerry',
         fuzz_target_bin=root / 'target.bin',
@@ -46,7 +46,7 @@ def _trial_config(root: Path, *, replay_dir: Path) -> TrialConfig:
         ),
         trial_timeout=7_200,
         snapshot_preprocess=None,
-        images=TrialImages(fuzzer_name='aflplusplus', target_id='jerryscript-jerry'),
+        images=TrialImages(fuzzer_name='aflplusplus', target_key='jerryscript-jerry'),
         replay_dir=replay_dir,
     )
 

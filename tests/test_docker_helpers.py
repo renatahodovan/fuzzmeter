@@ -100,12 +100,10 @@ class DockerHelperTest(unittest.TestCase):
                 targets_root=targets_root,
                 entries=[
                     CampaignCase(
-                        fuzzer_base='libfuzzer',
                         fuzzer_name='libfuzzer',
                         fuzzer_chain=('libfuzzer',),
                         benchmark='bench',
                         fuzz_target='target',
-                        target_id='bench-target',
                         input_mode='file',
                     )
                 ],
@@ -160,12 +158,10 @@ class DockerHelperTest(unittest.TestCase):
                 targets_root=targets_root,
                 entries=[
                     CampaignCase(
-                        fuzzer_base='libfuzzer',
                         fuzzer_name='libfuzzer',
                         fuzzer_chain=('libfuzzer',),
                         benchmark='bench',
                         fuzz_target='target',
-                        target_id='bench-target',
                         input_mode='file',
                     )
                 ],

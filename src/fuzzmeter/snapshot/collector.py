@@ -335,7 +335,7 @@ def _read_stats(trial: TrialInstance, *, tick_ts: int) -> dict[str, Any]:
     try:
         stats = (
             FuzzerLoader(trial.fuzzers_root)
-            .load(trial.config.fuzzer_base)
+            .load(trial.config.fuzzer_impl)
             .stats(trial.layout.trial_dir, cutoff_elapsed_s=tick_ts - trial.start_ts)
             or {}
         )
@@ -343,7 +343,7 @@ def _read_stats(trial: TrialInstance, *, tick_ts: int) -> dict[str, Any]:
     except Exception as exc:
         LOG.warning(
             'Failed to get stats from %s adapter for trial_row_id=%s: %s',
-            trial.config.fuzzer_base,
+            trial.config.fuzzer_impl,
             trial.db_id,
             exc,
         )

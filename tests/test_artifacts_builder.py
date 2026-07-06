@@ -36,12 +36,10 @@ class ArtifactBuilderTest(unittest.TestCase):
                         settings=CampaignSettings(),
                         cases=[
                             CampaignCase(
-                                fuzzer_base='plain',
                                 fuzzer_name='plain',
                                 fuzzer_chain=('plain',),
                                 benchmark='bench',
                                 fuzz_target='target',
-                                target_id='bench-target',
                                 input_mode='file',
                             ),
                         ],

@@ -14,7 +14,7 @@ import os
 
 from pathlib import Path
 
-from ..config import CampaignConfig
+from ..config import CampaignConfig, implementation_fuzzer, target_key
 from ..docker import DockerRuntime
 from ..fuzzers import FuzzerLoader
 from ..repro.coverage_baseline import SeedBaselineJob, measure_seed_baseline
@@ -31,9 +31,10 @@ def prepare_seed_corpora(*, campaign_config: CampaignConfig, run_dir: Path) -> N
 
     LOG.info('Preparing shared seed corpora...')
     for entry in campaign_config.cases:
+        target = target_key(entry.benchmark, entry.fuzz_target)
         runner_image = TrialImages(
             fuzzer_name=entry.fuzzer_name,
-            target_id=entry.target_id,
+            target_key=target,
         ).runner
         extracted = extract_seed_corpus_from_image(
             image=runner_image,
@@ -95,7 +96,10 @@ def _collect_seed_baseline_jobs(
         seed_root = Path(run_dir) / 'seed_corpora' / seed_dir_name / 'corpus'
         if not seed_root.exists() or not any(seed_root.iterdir()):
             continue
-        images = TrialImages(fuzzer_name=entry.fuzzer_name, target_id=entry.target_id)
+        images = TrialImages(
+            fuzzer_name=entry.fuzzer_name,
+            target_key=target_key(entry.benchmark, entry.fuzz_target),
+        )
         jobs.append(
             SeedBaselineJob(
                 fuzzer=entry.fuzzer_name,
@@ -105,7 +109,9 @@ def _collect_seed_baseline_jobs(
                 timeout_s=entry.target_timeout_s,
                 runner_image=images.runner,
                 coverage_image=images.coverage,
-                snapshot_preprocess_script=fuzzer_loader.load(entry.fuzzer_base).snapshot_preprocess_script(),
+                snapshot_preprocess_script=fuzzer_loader.load(
+                    implementation_fuzzer(entry.fuzzer_chain)
+                ).snapshot_preprocess_script(),
                 seed_root=seed_root,
             )
         )

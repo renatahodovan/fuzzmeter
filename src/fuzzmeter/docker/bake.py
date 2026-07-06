@@ -18,7 +18,7 @@ import shlex
 
 import yaml
 
-from ..config import CampaignCase
+from ..config import CampaignCase, implementation_fuzzer, target_key
 
 INSTRUMENTATION_PROFILES = (
     ('coverage', 'coverage_runner', 'coverage-runner'),
@@ -253,7 +253,7 @@ def generate_run_bake_hcl(
     fuzzmeter_resources_arg = _escape(str(Path(fuzzmeter_resources).resolve()))
     campaign_dockerfile = f'{docker_resources_arg}/campaign.Dockerfile'
 
-    entry_fuzzers = sorted({entry.fuzzer_base for entry in entries})
+    entry_fuzzers = sorted({implementation_fuzzer(entry.fuzzer_chain) for entry in entries})
     campaign_fuzzers = _fuzzers_with_parents(fuzzers_root, entry_fuzzers)
     build_fuzzers = list(campaign_fuzzers)
     benchmark_workdirs = {
@@ -402,16 +402,18 @@ def generate_run_bake_hcl(
         )
 
     for entry in entries:
+        fuzzer_impl = implementation_fuzzer(entry.fuzzer_chain)
+        target = target_key(entry.benchmark, entry.fuzz_target)
         benchmark_workdir = benchmark_workdirs[entry.benchmark]
-        fuzzer_source_dirs = _fuzzer_source_dirs(fuzzers_root, entry.fuzzer_base)
-        runner_base = _runner_base_target(fuzzers_root, entry.fuzzer_base)
+        fuzzer_source_dirs = _fuzzer_source_dirs(fuzzers_root, fuzzer_impl)
+        runner_base = _runner_base_target(fuzzers_root, fuzzer_impl)
         build_config_json = json.dumps(entry.build_config, sort_keys=True)
-        fuzzer_build_sources_arg = _context_path(fuzzer_build_sources, entry.fuzzer_base, 'fuzzer build')
-        fuzzer_run_sources_arg = _context_path(fuzzer_run_sources, entry.fuzzer_base, 'fuzzer run')
+        fuzzer_build_sources_arg = _context_path(fuzzer_build_sources, fuzzer_impl, 'fuzzer build')
+        fuzzer_run_sources_arg = _context_path(fuzzer_run_sources, fuzzer_impl, 'fuzzer run')
 
-        runner_name = f'runner_{entry.fuzzer_name}_{entry.target_id}'
+        runner_name = f'runner_{entry.fuzzer_name}_{target}'
         runner_depends = [
-            f'fuzzer_builder_{entry.fuzzer_base}',
+            f'fuzzer_builder_{fuzzer_impl}',
             f'benchmark_{entry.benchmark}',
             'build_base',
             'runtime_base',
@@ -419,7 +421,7 @@ def generate_run_bake_hcl(
         if runner_base != 'runtime_base':
             runner_depends.append(runner_base)
         runner_args_lines = _entry_args(
-            fuzzer=entry.fuzzer_base,
+            fuzzer=fuzzer_impl,
             build_config_json=build_config_json,
             fuzzer_source_dirs=fuzzer_source_dirs,
             benchmark=entry.benchmark,
@@ -436,10 +438,10 @@ def generate_run_bake_hcl(
                     'target     = "runner"',
                     f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
                     f'memory     = "{_escape(campaign_memory_limit)}"',
-                    f'tags       = ["fuzzmeter/runner-{entry.fuzzer_name}-{entry.target_id}:dev"]',
+                    f'tags       = ["fuzzmeter/runner-{entry.fuzzer_name}-{target}:dev"]',
                     docker_output_line,
                     'contexts = {',
-                    f'  builder = "target:fuzzer_builder_{entry.fuzzer_base}"',
+                    f'  builder = "target:fuzzer_builder_{fuzzer_impl}"',
                     f'  benchmark = "target:benchmark_{entry.benchmark}"',
                     '  build_base = "target:build_base"',
                     '  runtime_base = "target:runtime_base"',
@@ -454,10 +456,11 @@ def generate_run_bake_hcl(
         )
         group_targets.append(runner_name)
 
-    target_entries = {entry.target_id: entry for entry in entries}
+    target_entries = {target_key(entry.benchmark, entry.fuzz_target): entry for entry in entries}
 
     for internal_fuzzer, stage_name, image_prefix in INSTRUMENTATION_PROFILES:
         for entry in target_entries.values():
+            target = target_key(entry.benchmark, entry.fuzz_target)
             instrumentation_builder = f'instrumentation_builder_{internal_fuzzer}'
             instrumentation_build_sources_arg = _context_path(
                 instrumentation_build_sources,
@@ -480,7 +483,7 @@ def generate_run_bake_hcl(
                 target_name=entry.fuzz_target,
             )
 
-            final_name = f'{stage_name}_{entry.target_id}'
+            final_name = f'{stage_name}_{target}'
             hcl_parts.append(
                 _hcl_block(
                     final_name,
@@ -490,7 +493,7 @@ def generate_run_bake_hcl(
                         f'target     = "{stage_name}"',
                         f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
                         f'memory     = "{_escape(campaign_memory_limit)}"',
-                        f'tags       = ["fuzzmeter/{image_prefix}-{entry.target_id}:dev"]',
+                        f'tags       = ["fuzzmeter/{image_prefix}-{target}:dev"]',
                         docker_output_line,
                         'contexts = {',
                         f'  builder = "target:instrumentation_builder_{internal_fuzzer}"',

@@ -25,10 +25,10 @@ FUZZER_LOG = Path('logs/fuzzer.log')
 class TrialImages:
     '''Build docker image names for one fuzzer and target pair.'''
 
-    def __init__(self, *, fuzzer_name: str, target_id: str) -> None:
-        self.runner = f'fuzzmeter/runner-{fuzzer_name}-{target_id}:dev'
-        self.coverage = f'fuzzmeter/coverage-runner-{target_id}:dev'
-        self.asan = f'fuzzmeter/asan-runner-{target_id}:dev'
+    def __init__(self, *, fuzzer_name: str, target_key: str) -> None:
+        self.runner = f'fuzzmeter/runner-{fuzzer_name}-{target_key}:dev'
+        self.coverage = f'fuzzmeter/coverage-runner-{target_key}:dev'
+        self.asan = f'fuzzmeter/asan-runner-{target_key}:dev'
 
 
 @dataclass(frozen=True)
@@ -36,7 +36,7 @@ class TrialConfig:
     '''Describe one logical trial independent of its run directory.'''
 
     fuzzer: str
-    fuzzer_base: str
+    fuzzer_impl: str
     benchmark: str
     fuzz_target: str
     fuzz_target_bin: Path

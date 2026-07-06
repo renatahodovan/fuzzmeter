@@ -111,7 +111,7 @@ class TrialContainer:
             'FM_INPUT': str(input_corpus_dir),
             'FM_OUTPUT': str(fuzz_dir),
             'FM_TIME_SECONDS': str(self.cfg.trial_timeout),
-            'FUZZER': self.cfg.fuzzer_base,
+            'FUZZER': self.cfg.fuzzer_impl,
             'FM_FUZZER_RUNTIME_CONFIG_JSON': json.dumps(self.cfg.runtime_config, sort_keys=True),
             'FM_LOG': str(fuzzer_log_in_container),
             'FM_LOG_LEVEL': str(logging.getLevelName(LOG.getEffectiveLevel())),

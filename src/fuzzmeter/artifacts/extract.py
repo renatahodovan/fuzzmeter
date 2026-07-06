@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..config import CampaignCase, CampaignConfig
+from ..config import CampaignCase, CampaignConfig, target_key
 from ..docker import DockerClient
 from ..trial.models import TrialImages
 
@@ -29,33 +29,36 @@ def extract_fuzz_binaries(*, campaign_config: CampaignConfig, run_dir: Path) -> 
     docker = DockerClient()
     fuzz_binaries: dict[tuple[str, str], Path] = {}
     for entry in campaign_config.cases:
+        target = target_key(entry.benchmark, entry.fuzz_target)
         runner_image = TrialImages(
             fuzzer_name=entry.fuzzer_name,
-            target_id=entry.target_id,
+            target_key=target,
         ).runner
-        fuzz_binaries[(entry.fuzzer_name, entry.target_id)] = _extract_named_binary_from_image(
+        fuzz_binaries[(entry.fuzzer_name, target)] = _extract_named_binary_from_image(
             docker=docker,
             image=runner_image,
             binary_name=entry.fuzz_target,
-            dst_dir=fuzz_root / entry.fuzzer_name / entry.target_id,
+            dst_dir=fuzz_root / entry.fuzzer_name / target,
         )
 
-    cases_by_target: dict[str, CampaignCase] = {case.target_id: case for case in campaign_config.cases}
+    cases_by_target: dict[str, CampaignCase] = {
+        target_key(case.benchmark, case.fuzz_target): case for case in campaign_config.cases
+    }
 
-    for target_id, owner_entry in cases_by_target.items():
-        images = TrialImages(fuzzer_name=owner_entry.fuzzer_name, target_id=target_id)
+    for target, owner_entry in cases_by_target.items():
+        images = TrialImages(fuzzer_name=owner_entry.fuzzer_name, target_key=target)
         _extract_named_binary_from_image(
             docker=docker,
             image=images.coverage,
             binary_name=owner_entry.fuzz_target,
-            dst_dir=coverage_root / target_id,
+            dst_dir=coverage_root / target,
         )
 
         _extract_named_binary_from_image(
             docker=docker,
             image=images.asan,
             binary_name=owner_entry.fuzz_target,
-            dst_dir=asan_root / target_id,
+            dst_dir=asan_root / target,
         )
 
     return fuzz_binaries

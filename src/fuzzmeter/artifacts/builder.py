@@ -16,7 +16,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
-from ..config import CampaignConfig
+from ..config import CampaignConfig, implementation_fuzzer
 from ..docker import DockerRuntime, fuzzer_source_dirs, generate_run_bake_hcl
 from ..docker.bake import INSTRUMENTATION_PROFILES
 from ..paths import ExternalRoots, docker_resources, entrypoint_resources, instrumentation_resources
@@ -106,7 +106,7 @@ def _prepare_fuzzer_contexts(
         else:
             root.mkdir(parents=True, exist_ok=True)
 
-    fuzzer_impls = sorted({entry.fuzzer_base for entry in campaign_config.cases})
+    fuzzer_impls = sorted({implementation_fuzzer(entry.fuzzer_chain) for entry in campaign_config.cases})
     build_by_fuzzer: dict[str, Path] = {}
     run_by_fuzzer: dict[str, Path] = {}
     for fuzzer in fuzzer_impls:

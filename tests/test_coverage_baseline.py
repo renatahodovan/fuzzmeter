@@ -118,12 +118,10 @@ class CoverageBaselineTest(unittest.TestCase):
 
 def _case(*, fuzzer_name: str, timeout_s: float) -> CampaignCase:
     return CampaignCase(
-        fuzzer_base='plain',
         fuzzer_name=fuzzer_name,
         fuzzer_chain=('plain',),
         benchmark='bench',
         fuzz_target='target',
-        target_id=f'bench-target-{fuzzer_name}',
         input_mode='file',
         target_timeout_s=timeout_s,
     )

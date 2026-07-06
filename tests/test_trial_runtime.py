@@ -39,7 +39,7 @@ class _DockerRuntimeStub:
 def _trial_config(root: Path) -> TrialConfig:
     return TrialConfig(
         fuzzer='aflplusplus',
-        fuzzer_base='aflplusplus',
+        fuzzer_impl='aflplusplus',
         benchmark='sqlite3',
         fuzz_target='sqlite',
         fuzz_target_bin=root / 'targets' / 'sqlite',
@@ -53,7 +53,7 @@ def _trial_config(root: Path) -> TrialConfig:
         ),
         trial_timeout=3600,
         snapshot_preprocess=None,
-        images=TrialImages(fuzzer_name='aflplusplus', target_id='sqlite3-sqlite'),
+        images=TrialImages(fuzzer_name='aflplusplus', target_key='sqlite3-sqlite'),
     )
 
 

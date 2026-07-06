@@ -24,7 +24,7 @@ from fuzzmeter.trial.models import TrialConfig, TrialImages, TrialInstance, Tria
 def _active_trial(root: Path, *, db_id: int = 1) -> TrialInstance:
     config = TrialConfig(
         fuzzer='aflplusplus',
-        fuzzer_base='aflplusplus',
+        fuzzer_impl='aflplusplus',
         benchmark='bench',
         fuzz_target='target',
         fuzz_target_bin=root / 'target_bin',
@@ -38,7 +38,7 @@ def _active_trial(root: Path, *, db_id: int = 1) -> TrialInstance:
         ),
         trial_timeout=300,
         snapshot_preprocess=None,
-        images=TrialImages(fuzzer_name='aflplusplus', target_id='bench-target'),
+        images=TrialImages(fuzzer_name='aflplusplus', target_key='bench-target'),
     )
     layout = TrialLayout.from_config(trial_dir=root / 'trial', cfg=config)
     layout.fuzz_dir.mkdir(parents=True, exist_ok=True)

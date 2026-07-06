@@ -36,11 +36,10 @@ def load_fuzzer_plugin_candidates(run_dir: Path, fuzzers_root: Path) -> tuple[di
         fuzzer_name = str(entry.get('fuzzer_name') or '').strip()
         if not fuzzer_name:
             continue
-        fuzzer_base = str(entry.get('fuzzer_base') or '').strip()
-        if fuzzer_base:
-            base_by_name[fuzzer_name] = fuzzer_base
         chain = [str(name).strip() for name in entry.get('fuzzer_chain') or [] if str(name).strip()]
-        candidates_by_name[fuzzer_name] = expand_reporting_candidates(fuzzers_root, chain or [fuzzer_name, fuzzer_base])
+        if chain:
+            base_by_name[fuzzer_name] = chain[1] if len(chain) > 1 else chain[0]
+        candidates_by_name[fuzzer_name] = expand_reporting_candidates(fuzzers_root, chain or [fuzzer_name])
     return candidates_by_name, base_by_name
 
 

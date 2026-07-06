@@ -14,16 +14,26 @@ from pathlib import Path
 from typing import Any
 
 
+def target_key(benchmark: str, fuzz_target: str) -> str:
+    '''Return the internal key used for target-specific artifacts.'''
+    return f'{benchmark}-{fuzz_target}'
+
+
+def implementation_fuzzer(fuzzer_chain: tuple[str, ...]) -> str:
+    '''Return the fuzzer implementation that owns build/run adapters.'''
+    if not fuzzer_chain:
+        raise ValueError('Fuzzer chain must not be empty.')
+    return fuzzer_chain[1] if len(fuzzer_chain) > 1 else fuzzer_chain[0]
+
+
 @dataclass(frozen=True)
 class CampaignCase:
     '''Describe one fuzzer-target combination in a campaign.'''
 
-    fuzzer_base: str
     fuzzer_name: str
     fuzzer_chain: tuple[str, ...]
     benchmark: str
     fuzz_target: str
-    target_id: str
     input_mode: str
     target_timeout_s: float = 1.0
     build_config: dict[str, Any] = field(default_factory=dict)

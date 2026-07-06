@@ -41,8 +41,8 @@ class _TrialBuilderTest(unittest.TestCase):
     def test_plan_trials_orders_live_repetitions_by_rep_first(self) -> None:
         '''Verify that every case gets rep0 before any rep1 trial is scheduled.'''
         cases = [
-            _campaign_case(fuzzer='fuzzer_a', target_id='bench-target_a', fuzz_target='target_a'),
-            _campaign_case(fuzzer='fuzzer_b', target_id='bench-target_b', fuzz_target='target_b'),
+            _campaign_case(fuzzer='fuzzer_a', fuzz_target='target_a'),
+            _campaign_case(fuzzer='fuzzer_b', fuzz_target='target_b'),
         ]
         config = CampaignConfig(settings=CampaignSettings(repetitions=3), cases=cases)
 
@@ -69,14 +69,12 @@ class _TrialBuilderTest(unittest.TestCase):
         )
 
 
-def _campaign_case(*, fuzzer: str, target_id: str, fuzz_target: str) -> CampaignCase:
+def _campaign_case(*, fuzzer: str, fuzz_target: str) -> CampaignCase:
     return CampaignCase(
-        fuzzer_base=fuzzer,
         fuzzer_name=fuzzer,
         fuzzer_chain=(fuzzer,),
         benchmark='bench',
         fuzz_target=fuzz_target,
-        target_id=target_id,
         input_mode='file',
     )
 

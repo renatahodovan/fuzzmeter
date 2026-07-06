@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..config import CampaignConfig
+from ..config import CampaignConfig, implementation_fuzzer, target_key
 from ..fuzzers import FuzzerLoader
 from .models import TrialConfig, TrialImages
 
@@ -30,25 +30,27 @@ def plan_trials(
     configs_by_rep: dict[int, list[TrialConfig]] = {}
 
     for campaign_case in campaign_config.cases:
-        fuzzer_module = fuzzer_loader.load(campaign_case.fuzzer_base)
-        images = TrialImages(fuzzer_name=campaign_case.fuzzer_name, target_id=campaign_case.target_id)
+        fuzzer_impl = implementation_fuzzer(campaign_case.fuzzer_chain)
+        target = target_key(campaign_case.benchmark, campaign_case.fuzz_target)
+        fuzzer_module = fuzzer_loader.load(fuzzer_impl)
+        images = TrialImages(fuzzer_name=campaign_case.fuzzer_name, target_key=target)
         output_paths = fuzzer_module.output_paths_relative()
         replay_trials = tuple(Path(path).resolve() for path in campaign_case.replay_trials)
         rep_specs = tuple(enumerate(replay_trials)) if replay_trials else tuple((rep, None) for rep in range(rep_count))
         snapshot_preprocess = fuzzer_module.snapshot_preprocess_script()
-        target_bin = fuzz_binaries[(campaign_case.fuzzer_name, campaign_case.target_id)]
+        target_bin = fuzz_binaries[(campaign_case.fuzzer_name, target)]
 
         for rep_idx, replay_dir in rep_specs:
             config = TrialConfig(
                 fuzzer=campaign_case.fuzzer_name,
-                fuzzer_base=campaign_case.fuzzer_base,
+                fuzzer_impl=fuzzer_impl,
                 benchmark=campaign_case.benchmark,
                 fuzz_target=campaign_case.fuzz_target,
                 fuzz_target_bin=target_bin,
                 fuzz_target_input_mode=campaign_case.input_mode,
                 fuzz_target_timeout=campaign_case.target_timeout_s,
                 rep_idx=rep_idx,
-                trial_key=f'{campaign_case.fuzzer_name}__{campaign_case.target_id}__rep{rep_idx}',
+                trial_key=f'{campaign_case.fuzzer_name}__{target}__rep{rep_idx}',
                 output_paths=output_paths,
                 trial_timeout=campaign_config.settings.time_seconds,
                 snapshot_preprocess=snapshot_preprocess,

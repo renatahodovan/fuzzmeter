@@ -60,7 +60,7 @@ class SnapshotCoverageTest(unittest.TestCase):
 def _trial_instance(root: Path) -> TrialInstance:
     config = TrialConfig(
         fuzzer='fuzzer',
-        fuzzer_base='fuzzer',
+        fuzzer_impl='fuzzer',
         benchmark='bench',
         fuzz_target='target',
         fuzz_target_bin=root / 'target',
@@ -74,7 +74,7 @@ def _trial_instance(root: Path) -> TrialInstance:
         ),
         trial_timeout=60,
         snapshot_preprocess=None,
-        images=TrialImages(fuzzer_name='fuzzer', target_id='bench-target'),
+        images=TrialImages(fuzzer_name='fuzzer', target_key='bench-target'),
     )
     layout = TrialLayout.from_config(trial_dir=root / 'trial', cfg=config)
     return TrialInstance(
