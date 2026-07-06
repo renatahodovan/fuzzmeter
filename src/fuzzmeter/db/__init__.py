@@ -10,7 +10,7 @@
 from .base import DB, open_db
 from .schema import ensure_schema
 
-from . import runs, trials, snapshot, bug, resource_telemetry
+from . import bug, metadata, resource_telemetry, runs, snapshot, trials
 
 __all__ = [
     'DB',
@@ -20,5 +20,6 @@ __all__ = [
     'trials',
     'snapshot',
     'bug',
+    'metadata',
     'resource_telemetry',
 ]

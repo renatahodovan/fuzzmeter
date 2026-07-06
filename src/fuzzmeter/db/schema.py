@@ -168,6 +168,26 @@ _SCHEMA = [
     CREATE INDEX IF NOT EXISTS idx_resource_telemetry_trial_idx
       ON resource_telemetry(trial_id, idx)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS metadata(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id TEXT NOT NULL,
+      fuzzer TEXT NOT NULL,
+      benchmark TEXT NOT NULL,
+      fuzz_target TEXT NOT NULL,
+      schema_version INTEGER NOT NULL,
+      repetitions INTEGER NOT NULL,
+      runtime_seconds INTEGER NOT NULL,
+      metadata_json TEXT NOT NULL,
+      created_at INTEGER,
+      UNIQUE(run_id, fuzzer, benchmark, fuzz_target),
+      FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_metadata_target
+      ON metadata(benchmark, fuzz_target, fuzzer)
+    """,
 ]
 
 

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.db import bug as db_bug
+from fuzzmeter.db import metadata as db_metadata
 from fuzzmeter.db import snapshot as db_snapshot
 from fuzzmeter.db import trials as db_trials
 from fuzzmeter.db.base import open_readonly_connection
@@ -365,6 +366,45 @@ class DatabaseBehaviorTest(unittest.TestCase):
         self.assertEqual(1, counts['fuzzer_count'])
         self.assertEqual({'done': 1}, counts['status_counts'])
         self.assertEqual('config', counts['config_src'])
+
+    def test_metadata_rows_are_replaceable(self) -> None:
+        '''Reusable metadata rows are keyed by run, fuzzer, and target.'''
+        with _open_test_db() as db:
+            db_metadata.upsert_metadata(
+                db,
+                db_metadata.MetadataRecord(
+                    run_id='run',
+                    fuzzer='fz',
+                    benchmark='bench',
+                    fuzz_target='target',
+                    schema_version=1,
+                    repetitions=1,
+                    runtime_seconds=60,
+                    metadata={'a': 1},
+                    created_at=100,
+                ),
+            )
+            db_metadata.upsert_metadata(
+                db,
+                db_metadata.MetadataRecord(
+                    run_id='run',
+                    fuzzer='fz',
+                    benchmark='bench',
+                    fuzz_target='target',
+                    schema_version=1,
+                    repetitions=2,
+                    runtime_seconds=120,
+                    metadata={'b': [1, 2]},
+                    created_at=200,
+                ),
+            )
+
+            rows = db_metadata.list_metadata(db)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual(2, rows[0].repetitions)
+        self.assertEqual(120, rows[0].runtime_seconds)
+        self.assertEqual({'b': [1, 2]}, rows[0].metadata)
 
     def test_current_schema_rejects_orphan_child_rows_and_cascades_owned_rows(self) -> None:
         '''Current foreign keys protect owned child rows.'''
