@@ -169,6 +169,10 @@ class ReportFrontendTest(unittest.TestCase):
             import assert from 'node:assert/strict';
             import { cleanFloats, cliffsDelta, median, quantile } from './src/fuzzmeter/web/static/report/stats.js';
             import {
+              distributionDensitySegments,
+              shouldDrawDistributionViolin,
+            } from './src/fuzzmeter/web/static/report/charts.js';
+            import {
               buildCurveSeries,
               distributionValues,
               finalMetricValue,
@@ -195,6 +199,14 @@ class ReportFrontendTest(unittest.TestCase):
             assert.deepEqual(buildCurveSeries([fuzzer], 'execs_done')[0].points, [
               { x: 10, y: 100, lo: 80, hi: 120, idx: 1, ts: null, tooltipLabel: null },
             ]);
+
+            const sparseSegments = distributionDensitySegments([16263, 16780], 15900, 20600, 18);
+            assert.equal(sparseSegments.length, 2);
+            assert.ok(sparseSegments.every((segment) => segment.length === 1));
+            assert.ok(sparseSegments.every((segment) => segment[0].low > 15900));
+            assert.ok(sparseSegments.every((segment) => segment[0].high < 20600));
+            assert.equal(shouldDrawDistributionViolin([1, 2, 3, 4]), false);
+            assert.equal(shouldDrawDistributionViolin([1, 2, 3, 4, 5]), true);
         """
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],

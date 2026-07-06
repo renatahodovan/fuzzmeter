@@ -33,6 +33,7 @@ const EXPORT_BORDER = 'rgba(148,163,184,.45)';
 const EXPORT_HEADER_BG = 'rgba(241,245,249,.95)';
 const EXPORT_TEXT = '#17212f';
 const EXPORT_MUTED_TEXT = 'rgba(23,33,47,.68)';
+export const MIN_DISTRIBUTION_VIOLIN_VALUES = 5;
 const CHART_PAD = {
   bar: [14, 16, 76, 56],
   distribution: [14, 16, 32, 56],
@@ -189,6 +190,42 @@ function normalizeDistributions(rows = []) {
     label: labelFor(row, index),
     values: (row.values || []).map(Number).filter(Number.isFinite).sort((left, right) => left - right),
   })).filter((row) => row.values.length);
+}
+
+export function distributionDensitySegments(values = [], yMin = 0, yMax = 1, bins = 18) {
+  const cleanValues = values.map(Number).filter(Number.isFinite);
+  const binCount = Math.max(1, Math.floor(number(bins, 18)));
+  const min = number(yMin, 0);
+  const span = number(yMax, min + 1) - min || 1;
+  const histogram = new Array(binCount).fill(0);
+  cleanValues.forEach((value) => {
+    const ratio = Math.max(0, Math.min(0.999999, (value - min) / span));
+    histogram[Math.floor(ratio * binCount)] += 1;
+  });
+  const peak = Math.max(...histogram, 1);
+  const segments = [];
+  let segment = [];
+  histogram.forEach((count, bin) => {
+    if (!count) {
+      if (segment.length) segments.push(segment);
+      segment = [];
+      return;
+    }
+    const low = min + (bin / binCount) * span;
+    const high = min + ((bin + 1) / binCount) * span;
+    segment.push({
+      density: count / peak,
+      high,
+      low,
+      value: (low + high) / 2,
+    });
+  });
+  if (segment.length) segments.push(segment);
+  return segments;
+}
+
+export function shouldDrawDistributionViolin(values = []) {
+  return values.map(Number).filter(Number.isFinite).length >= MIN_DISTRIBUTION_VIOLIN_VALUES;
 }
 
 function normalizeSpec(spec = {}) {
@@ -481,30 +518,30 @@ function drawDistribution(frame) {
     const median = quantile(row.values, 0.5);
     const q3 = quantile(row.values, 0.75);
     const bins = Math.max(18, Math.min(42, row.values.length * 2));
-    const histogram = new Array(bins).fill(0);
-    row.values.forEach((value) => {
-      const ratio = Math.max(0, Math.min(0.999999, (value - frame.yMin) / ((frame.yMax - frame.yMin) || 1)));
-      histogram[Math.floor(ratio * bins)] += 1;
-    });
-    const peak = Math.max(...histogram, 1);
     const maxHalfWidth = Math.max(16, Math.min(slot * 0.33, 40));
-    frame.ctx.fillStyle = withAlpha(row.color, 0.24);
-    frame.ctx.strokeStyle = withAlpha(row.color, 0.62);
-    frame.ctx.lineWidth = 1.2;
-    frame.ctx.beginPath();
-    for (let bin = 0; bin < bins; bin += 1) {
-      const y = frame.y(frame.yMin + ((bin + 0.5) / bins) * (frame.yMax - frame.yMin));
-      const half = histogram[bin] / peak * maxHalfWidth;
-      if (!bin) frame.ctx.moveTo(centerX - half, y);
-      else frame.ctx.lineTo(centerX - half, y);
+    if (shouldDrawDistributionViolin(row.values)) {
+      frame.ctx.fillStyle = withAlpha(row.color, 0.24);
+      frame.ctx.strokeStyle = withAlpha(row.color, 0.62);
+      frame.ctx.lineWidth = 1.2;
+      distributionDensitySegments(row.values, frame.yMin, frame.yMax, bins).forEach((segment) => {
+        const left = [];
+        const right = [];
+        segment.forEach((bin) => {
+          const half = bin.density * maxHalfWidth;
+          left.push([centerX - half, frame.y(bin.low)], [centerX - half, frame.y(bin.high)]);
+          right.push([centerX + half, frame.y(bin.low)], [centerX + half, frame.y(bin.high)]);
+        });
+        frame.ctx.beginPath();
+        left.forEach(([x, y], pointIndex) => {
+          if (!pointIndex) frame.ctx.moveTo(x, y);
+          else frame.ctx.lineTo(x, y);
+        });
+        right.reverse().forEach(([x, y]) => frame.ctx.lineTo(x, y));
+        frame.ctx.closePath();
+        frame.ctx.fill();
+        frame.ctx.stroke();
+      });
     }
-    for (let bin = bins - 1; bin >= 0; bin -= 1) {
-      const y = frame.y(frame.yMin + ((bin + 0.5) / bins) * (frame.yMax - frame.yMin));
-      frame.ctx.lineTo(centerX + histogram[bin] / peak * maxHalfWidth, y);
-    }
-    frame.ctx.closePath();
-    frame.ctx.fill();
-    frame.ctx.stroke();
     frame.ctx.fillStyle = withAlpha(row.color, 0.72);
     const lanes = Math.max(3, Math.ceil(Math.sqrt(row.values.length)));
     row.values.forEach((value, valueIndex) => {
