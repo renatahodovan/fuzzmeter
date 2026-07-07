@@ -85,7 +85,16 @@ class TrialAnalysisTest(unittest.TestCase):
         analysis = _trial_analysis()
 
         timeseries = analysis.collect_timeseries(
-            trials=[{'trial_id': 1, 'fuzzer': 'fz', 'benchmark': 'bench', 'fuzz_target': 'target', 'started_ts': 100, 'time_seconds': 50}],
+            trials=[
+                {
+                    'trial_id': 1,
+                    'fuzzer': 'fz',
+                    'benchmark': 'bench',
+                    'fuzz_target': 'target',
+                    'started_ts': 100,
+                    'time_seconds': 50,
+                }
+            ],
             snapshot_rows=[
                 {
                     'trial_id': 1,
@@ -167,7 +176,7 @@ class BugAnalysisBehaviorTest(unittest.TestCase):
         self.assertEqual({'total': 1, 'min': 0, 'max': 1, 'median': 0.5}, target['fuzzers'][0]['exclusive_bugs'])
         self.assertEqual({'total': 0, 'min': 0, 'max': 0, 'median': 0.0}, target['fuzzers'][1]['exclusive_bugs'])
 
-    def test_relative_bug_matrix_and_scores_use_trial_hit_rates(self) -> None:
+    def test_relative_bug_matrix_and_scores_use_trial_sets(self) -> None:
         matrix, scores = BugAnalysis.compute_rel_bug_matrix(
             {
                 'fuzzers': [
@@ -189,7 +198,7 @@ class BugAnalysisBehaviorTest(unittest.TestCase):
         )
 
         self.assertEqual(['alpha', 'beta'], matrix['fuzzers'])
-        self.assertEqual([[100.0, 100.0], [50.0, 100.0]], matrix['matrix'])
+        self.assertEqual([[75.0, 100.0], [50.0, 100.0]], matrix['matrix'])
         self.assertEqual({'alpha': 0.5, 'beta': 0.0}, scores)
 
     def test_integer_bug_median_matches_shared_metric_median_cases(self) -> None:
@@ -236,13 +245,33 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
                     'fuzz_target': 'target',
                     'rep': 0,
                     'elapsed_seconds': 10,
-                    'coverage': {'branches_covered': 10, 'branches_pct': 50.0, 'regions_covered': 5, 'regions_pct': 25.0},
+                    'coverage': {
+                        'branches_covered': 10,
+                        'branches_pct': 50.0,
+                        'regions_covered': 5,
+                        'regions_pct': 25.0,
+                    },
                 }
             ],
             points_by_trial={
                 1: [
-                    {'idx': 1, 'elapsed_s': 0, 'branches_cov': 4, 'branches_pct': 20.0, 'regions_cov': 2, 'regions_pct': 10.0},
-                    {'idx': 2, 'elapsed_s': 10, 'branches_cov': 10, 'branches_pct': 50.0, 'regions_cov': 5, 'regions_pct': 25.0, 'execs_done': 100},
+                    {
+                        'idx': 1,
+                        'elapsed_s': 0,
+                        'branches_cov': 4,
+                        'branches_pct': 20.0,
+                        'regions_cov': 2,
+                        'regions_pct': 10.0,
+                    },
+                    {
+                        'idx': 2,
+                        'elapsed_s': 10,
+                        'branches_cov': 10,
+                        'branches_pct': 50.0,
+                        'regions_cov': 5,
+                        'regions_pct': 25.0,
+                        'execs_done': 100,
+                    },
                 ]
             },
         )
@@ -291,7 +320,10 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
             fuzzer['aggregate'],
         )
         self.assertEqual({'branches_covered': 1}, fuzzer['seed_baseline'])
-        self.assertEqual({'fuzzer_image': 'image', 'build_config': {'opt': 'a'}, 'runtime_config': {'jobs': 1}}, fuzzer['versions'])
+        self.assertEqual(
+            {'fuzzer_image': 'image', 'build_config': {'opt': 'a'}, 'runtime_config': {'jobs': 1}},
+            fuzzer['versions'],
+        )
         self.assertEqual('bug', fuzzer['bugs'][0]['bug_key'])
 
     def test_create_matrices_attaches_coverage_then_bug_stats_to_shared_target(self) -> None:
@@ -350,6 +382,35 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         self.assertIn('exclusive_bugs', target['fuzzers'][0])
         self.assertTrue(target['unique_matrix']['has_data'])
         self.assertTrue(target['unique_bug_table']['has_data'])
+
+    def test_create_matrices_uses_aggregate_relcov_fallback_when_trial_sets_missing(self) -> None:
+        builder = _PayloadBuilder.__new__(_PayloadBuilder)
+        builder._bug_analysis = BugAnalysis()
+        builder._coverage_sets_by_metric = lambda fuzzers, benchmark, fuzz_target: {
+            'branches': {'alpha': {'a', 'b'}, 'beta': {'b', 'c'}}
+        }
+        builder._trial_coverage_sets_by_metric = lambda trials, fuzzers, benchmark, fuzz_target: {'branches': {}}
+        target = {
+            'benchmark': 'bench',
+            'fuzz_target': 'target',
+            'fuzzers': [
+                {'fuzzer': 'alpha', 'trials': [{'trial_id': 1}], 'bugs': []},
+                {'fuzzer': 'beta', 'trials': [{'trial_id': 2}], 'bugs': []},
+            ],
+        }
+
+        builder.create_matrices(
+            [target],
+            [
+                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha'},
+                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta'},
+            ],
+        )
+
+        relcov = target['relcov_matrix']['by_metric']['branches']
+        self.assertTrue(relcov['has_data'])
+        self.assertEqual([[100.0, 50.0], [50.0, 100.0]], relcov['matrix'])
+        self.assertEqual({'alpha': 1.0, 'beta': 1.0}, target['relcov_score_by_fuzzer'])
 
 
 def _trial_analysis() -> TrialAnalysis:

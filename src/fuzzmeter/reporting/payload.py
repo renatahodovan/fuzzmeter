@@ -382,6 +382,11 @@ class _PayloadBuilder:
                     benchmark,
                     fuzz_target,
                 )
+                trial_coverage_sets_by_metric = self._with_aggregate_trial_fallback(
+                    trial_coverage_sets_by_metric,
+                    coverage_sets_by_metric,
+                    fuzzers,
+                )
                 target['unique_matrix'] = self.compute_unique_matrix(
                     trials, benchmark, fuzz_target, coverage_sets_by_metric
                 )
@@ -411,6 +416,31 @@ class _PayloadBuilder:
                 target['relbug_matrix'] = empty_matrix
                 target['relbug_score_by_fuzzer'] = {}
         return targets
+
+    @staticmethod
+    def _with_aggregate_trial_fallback(
+        trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str]]]],
+        coverage_sets_by_metric: dict[str, dict[str, set[str]]],
+        fuzzers: list[str],
+    ) -> dict[str, dict[str, list[set[str]]]]:
+        '''Use final aggregate coverage sets when trial compact sets are unavailable.'''
+
+        out: dict[str, dict[str, list[set[str]]]] = {}
+        for metric in COV_METRICS:
+            trial_sets = trial_coverage_sets_by_metric.get(metric, {})
+            aggregate_sets = coverage_sets_by_metric.get(metric, {})
+            merged = {
+                fuzzer: [set(value) for value in values]
+                for fuzzer, values in trial_sets.items()
+            }
+            for fuzzer in fuzzers:
+                if merged.get(fuzzer):
+                    continue
+                aggregate_set = aggregate_sets.get(fuzzer)
+                if aggregate_set:
+                    merged[fuzzer] = [set(aggregate_set)]
+            out[metric] = merged
+        return out
 
     def compute_unique_matrix(
         self,

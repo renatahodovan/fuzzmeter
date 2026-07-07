@@ -13,6 +13,7 @@ import json
 from typing import Any
 
 from ..metrics import dt, median, safe_int
+from ..set_comparison import novelty_scores, relative_containment_matrix
 
 
 class BugAnalysis:
@@ -256,9 +257,7 @@ class BugAnalysis:
         '''Compute pairwise relative bug containment and novelty-weighted bug scores.'''
 
         fuzzers = sorted({entry.get('fuzzer') for entry in (target.get('fuzzers') or []) if entry.get('fuzzer')})
-        bug_sets: dict[str, set[str]] = {fuzzer: set() for fuzzer in fuzzers}
-        bug_trial_sets: dict[str, dict[str, set[int]]] = {fuzzer: {} for fuzzer in fuzzers}
-        trial_counts: dict[str, int] = {fuzzer: 0 for fuzzer in fuzzers}
+        trial_bug_sets_by_fuzzer: dict[str, dict[int, set[str]]] = {fuzzer: {} for fuzzer in fuzzers}
 
         for entry in target.get('fuzzers') or []:
             fuzzer = entry.get('fuzzer')
@@ -269,48 +268,35 @@ class BugAnalysis:
                 for trial in entry.get('trials') or []
                 if isinstance(trial.get('trial_id'), int)
             }
-            trial_counts[fuzzer] = len(trial_ids)
+            trial_bug_sets_by_fuzzer[fuzzer] = {trial_id: set() for trial_id in sorted(trial_ids)}
             for bug in entry.get('bugs') or []:
                 bug_key = bug.get('bug_key')
                 if not bug_key:
                     continue
                 key = str(bug_key)
-                bug_sets[fuzzer].add(key)
-                bug_trial_sets[fuzzer][key] = {int(trial_id) for trial_id in bug.get('trial_ids') or []}
+                for trial_id in bug.get('trial_ids') or []:
+                    if isinstance(trial_id, int) and trial_id in trial_bug_sets_by_fuzzer[fuzzer]:
+                        trial_bug_sets_by_fuzzer[fuzzer][trial_id].add(key)
 
-        matrix: list[list[float]] = []
-        max_value = 0.0
-        for row_fuzzer in fuzzers:
-            row_vals = []
-            row_set = bug_sets.get(row_fuzzer, set())
-            for col_fuzzer in fuzzers:
-                col_set = bug_sets.get(col_fuzzer, set())
-                denominator = len(col_set)
-                value = 100.0 * len(row_set & col_set) / denominator if denominator > 0 else 0.0
-                row_vals.append(value)
-                max_value = max(max_value, value)
-            matrix.append(row_vals)
-
-        score_by_fuzzer: dict[str, float] = {}
-        fuzzer_count = len(fuzzers)
-        for fuzzer in fuzzers:
-            score = 0.0
-            denominator = max(1, int(trial_counts.get(fuzzer) or 0))
-            for bug_key in bug_sets.get(fuzzer, set()):
-                covered_by_fuzzers = sum(1 for other in fuzzers if bug_key in bug_sets.get(other, set()))
-                missing_fuzzers = fuzzer_count - covered_by_fuzzers
-                hit_rate = len(bug_trial_sets.get(fuzzer, {}).get(bug_key, set())) / denominator
-                score += float(missing_fuzzers) * float(hit_rate)
-            score_by_fuzzer[fuzzer] = score
+        trial_bug_sets = {
+            fuzzer: list(trial_bug_sets_by_fuzzer.get(fuzzer, {}).values())
+            for fuzzer in fuzzers
+        }
+        missing_any = any(not trial_bug_sets.get(fuzzer) for fuzzer in fuzzers)
+        matrix = relative_containment_matrix(
+            fuzzers,
+            trial_bug_sets,
+            note=(
+                'Trial unique bug sets missing for one or more fuzzers; '
+                'relative bug coverage may be partial.'
+            ) if missing_any else None,
+        )
 
         return (
             {
-                'fuzzers': fuzzers,
-                'matrix': matrix,
-                'has_data': any(bool(values) for values in bug_sets.values()),
-                'note': None,
-                'max_value': max_value,
+                **matrix,
                 'format': 'pct',
+                'aggregation': 'per-trial median unique bug sets',
             },
-            score_by_fuzzer,
+            novelty_scores(fuzzers, trial_bug_sets),
         )

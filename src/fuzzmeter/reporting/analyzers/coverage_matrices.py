@@ -11,8 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..metrics import mann_whitney_u_pvalue, median, safe_int, vargha_delaney_a12
-from ..set_comparison import pairwise_matrix, unique_matrix
+from ..metrics import mann_whitney_u_pvalue, safe_int, vargha_delaney_a12
+from ..set_comparison import novelty_scores, pairwise_matrix, relative_containment_matrix, unique_matrix
 
 
 def compute_unique_matrix(
@@ -223,40 +223,20 @@ def _compute_relcov_matrix_for_metric(
     metric: str,
     trial_coverage_sets: dict[str, list[set[str]]],
 ) -> dict[str, Any]:
-    coverage_by_fuzzer = _coverage_by_fuzzer(fuzzers, trial_coverage_sets)
-    missing_any = len(coverage_by_fuzzer) != len(fuzzers) or any(
+    missing_any = len(trial_coverage_sets) != len(fuzzers) or any(
         not trial_coverage_sets.get(fuzzer)
         for fuzzer in fuzzers
     )
-    matrix: list[list[float]] = []
-    max_value = 0.0
-    for row_fuzzer in fuzzers:
-        row_trials = coverage_by_fuzzer.get(row_fuzzer, [])
-        row_vals = []
-        for col_fuzzer in fuzzers:
-            col_union = set().union(*coverage_by_fuzzer.get(col_fuzzer, []))
-            denominator = len(col_union)
-            values = [
-                100.0 * len(row_coverage & col_union) / denominator
-                for row_coverage in row_trials
-                if denominator > 0
-            ]
-            value = median(values) or 0.0
-            row_vals.append(value)
-            max_value = max(max_value, value)
-        matrix.append(row_vals)
-
-    has_data = any(bool(values) for values in coverage_by_fuzzer.values())
-    return {
-        'fuzzers': fuzzers,
-        'matrix': matrix,
-        'covered_counts': [len(set().union(*coverage_by_fuzzer.get(fuzzer, []))) for fuzzer in fuzzers],
-        'has_data': has_data,
-        'note': (
+    matrix = relative_containment_matrix(
+        fuzzers,
+        trial_coverage_sets,
+        note=(
             'Trial compact coverage sets missing for one or more fuzzers; '
             'relative coverage may be partial.'
         ) if missing_any else None,
-        'max_value': max_value,
+    )
+    return {
+        **matrix,
         'format': 'pct',
         'aggregation': f'per-trial median compact {metric} coverage sets',
     }
@@ -313,27 +293,4 @@ def _relcov_scores(
     trial_coverage_sets: dict[str, list[set[str]]],
 ) -> dict[str, float]:
     '''Score each fuzzer by coverage elements that fewer peers cover.'''
-
-    coverage_by_fuzzer = _coverage_by_fuzzer(fuzzers, trial_coverage_sets)
-    union_by_fuzzer = {
-        fuzzer: set().union(*coverage_by_fuzzer.get(fuzzer, []))
-        for fuzzer in fuzzers
-    }
-    all_edges = set().union(*union_by_fuzzer.values()) if union_by_fuzzer else set()
-    missing_approaches = {
-        edge: sum(1 for fuzzer in fuzzers if edge not in union_by_fuzzer.get(fuzzer, set()))
-        for edge in all_edges
-    }
-    scores: dict[str, float] = {}
-    for fuzzer in fuzzers:
-        trial_sets = coverage_by_fuzzer.get(fuzzer, [])
-        denominator = sum(1 for coverage in trial_sets if coverage)
-        if denominator <= 0:
-            continue
-        scores[fuzzer] = sum(
-            float(missing_approaches[edge])
-            * sum(1 for coverage in trial_sets if edge in coverage)
-            / denominator
-            for edge in all_edges
-        )
-    return scores
+    return novelty_scores(fuzzers, trial_coverage_sets)
