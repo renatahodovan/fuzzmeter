@@ -59,8 +59,8 @@ export function ensureConfigModal() {
 function metadataPayload(fuzzer) {
   const metadata = fuzzer?.metadata || {};
   const payload = {};
-  const fuzzerSource = metadata.source?.fuzzer_version;
-  if (fuzzerSource) payload.fuzzer_source = fuzzerSource;
+  if (metadata.config && Object.keys(metadata.config).length) payload.config = metadata.config;
+  if (metadata.source && Object.keys(metadata.source).length) payload.source = metadata.source;
   if (metadata.environment && Object.keys(metadata.environment).length) payload.environment = metadata.environment;
   if (metadata.digests && Object.keys(metadata.digests).length) payload.digests = metadata.digests;
   return Object.keys(payload).length ? payload : null;

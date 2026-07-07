@@ -223,6 +223,24 @@ class ReportingDB:
             for row in rows
         }
 
+    def metadata_rows(self, run_id: str) -> list[dict[str, Any]]:
+        '''Return composite metadata rows for a run.'''
+
+        try:
+            return self.rows(
+                '''
+                SELECT run_id, fuzzer, benchmark, fuzz_target, metadata_schema_version,
+                       repetitions, runtime_seconds, environment_digest, config_digest,
+                       source_digest, metadata_json, created_at
+                FROM metadata
+                WHERE run_id=?
+                ORDER BY benchmark, fuzz_target, fuzzer
+                ''',
+                (run_id,),
+            )
+        except sqlite3.OperationalError:
+            return []
+
     def bug_hits_by_snapshot(self) -> dict[int, int]:
         '''Return total bug hit counts keyed by snapshot id.'''
 

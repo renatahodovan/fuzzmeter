@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -73,6 +74,7 @@ class _PayloadBuilder:
         self._latest_snapshots = loaded.latest_snapshots
         self._latest_agg_snapshots = loaded.latest_agg_snapshots
         self._seed_baselines = loaded.seed_baselines
+        self._metadata_rows = loaded.metadata_rows
         self._snapshot_rows = loaded.snapshot_rows
         self._resource_telemetry_rows = loaded.resource_telemetry_rows
         self._bug_hits_by_snapshot = loaded.bug_hits_by_snapshot
@@ -316,7 +318,47 @@ class _PayloadBuilder:
             for fuzzer in target.get('fuzzers') or []:
                 agg_snapshot = self._agg_snapshot_for_fuzzer(str(fuzzer.get('fuzzer') or ''), benchmark, fuzz_target)
                 fuzzer['coverage_report'] = self._rel_to_url(agg_snapshot.get('coverage_html_dir'))
+        self._attach_metadata(targets)
         return targets
+
+    def _attach_metadata(self, targets: list[dict[str, Any]]) -> None:
+        metadata_by_key = self._metadata_by_key()
+        if not metadata_by_key:
+            return
+        for target in targets:
+            benchmark = str(target.get('benchmark') or '')
+            fuzz_target = str(target.get('fuzz_target') or '')
+            for fuzzer in target.get('fuzzers') or []:
+                key = (str(fuzzer.get('fuzzer') or ''), benchmark, fuzz_target)
+                metadata = metadata_by_key.get(key)
+                if metadata:
+                    fuzzer['metadata'] = metadata
+
+    def _metadata_by_key(self) -> dict[tuple[str, str, str], dict[str, Any]]:
+        out: dict[tuple[str, str, str], dict[str, Any]] = {}
+        for row in self._metadata_rows:
+            try:
+                metadata = json.loads(str(row.get('metadata_json') or '{}'))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(metadata, dict):
+                continue
+            digests = metadata.get('digests') if isinstance(metadata.get('digests'), dict) else {}
+            digests = {
+                **digests,
+                'environment': digests.get('environment') or row.get('environment_digest'),
+                'config': digests.get('config') or row.get('config_digest'),
+                'source': digests.get('source') or row.get('source_digest'),
+            }
+            metadata['digests'] = {key: value for key, value in digests.items() if value is not None}
+            out[
+                (
+                    str(row.get('fuzzer') or ''),
+                    str(row.get('benchmark') or ''),
+                    str(row.get('fuzz_target') or ''),
+                )
+            ] = metadata
+        return out
 
     def create_matrices(self, targets, trials):
         '''Attach pairwise coverage and bug comparison matrices to each target.'''

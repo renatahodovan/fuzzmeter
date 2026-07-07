@@ -20,7 +20,7 @@ import unittest
 from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.reporting import build_payload, write_report
 
-PAYLOAD_HASH = '043c5f6e6398d2db7df0d6510f3bc3872e38331a2b4b88d83f6b76cb45ca2707'
+PAYLOAD_HASH = '552bf786512a3e2fc302c994e3b71a65b4f9a6cb18e2631600688950e84661b3'
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _BUNDLE_SMOKE_SCRIPT = r"""
 import fs from 'node:fs';
@@ -117,6 +117,9 @@ class ReportingPayloadTest(unittest.TestCase):
 
             payload = build_payload(run_dir, run_id='run')
 
+        fuzzer = payload['targets'][0]['fuzzers'][0]
+        self.assertEqual('bench', fuzzer['metadata']['config']['benchmark'])
+        self.assertEqual(1, len(fuzzer['extra_sections']))
         normalized = _normalize_payload(payload)
         self.assertEqual(PAYLOAD_HASH, _payload_hash(normalized))
 
@@ -214,7 +217,11 @@ def _build_run_fixture(run_dir: Path) -> None:
             ts=130,
             corpus_files=2,
             execs_done=100,
-            stats_json='{"execs_per_sec": "3.5"}',
+            stats_json=(
+                '{"custom_metrics":[{"counts":{"havoc":2},"id":"afl-mutator-counts",'
+                '"kind":"counter_map","schema_version":1}],"custom_metrics_schema_version":1,'
+                '"execs_per_sec":"3.5"}'
+            ),
             crashes=1,
             hangs=0,
             lines=(5, 10),
@@ -230,7 +237,11 @@ def _build_run_fixture(run_dir: Path) -> None:
             ts=170,
             corpus_files=3,
             execs_done=180,
-            stats_json='{"execs_per_sec": "4.5"}',
+            stats_json=(
+                '{"custom_metrics":[{"counts":{"havoc":3,"splice":1},"id":"afl-mutator-counts",'
+                '"kind":"counter_map","schema_version":1}],"custom_metrics_schema_version":1,'
+                '"execs_per_sec":"4.5"}'
+            ),
             crashes=2,
             hangs=1,
             lines=(6, 10),
@@ -256,6 +267,28 @@ def _build_run_fixture(run_dir: Path) -> None:
                 8 * 1024 * 1024,
                 25.0,
                 3 * 1024 * 1024,
+            ),
+        )
+        db.exec(
+            """
+            INSERT INTO metadata(
+              run_id, fuzzer, benchmark, fuzz_target, repetitions, runtime_seconds,
+              environment_digest, config_digest, source_digest, metadata_json, created_at
+            )
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                'run',
+                'fz',
+                'bench',
+                'target',
+                1,
+                60,
+                'env-digest',
+                'cfg-digest',
+                'src-digest',
+                '{"config":{"benchmark":"bench","fuzz_target":"target"},"environment":{"host":{"machine":"x86_64"}}}',
+                1,
             ),
         )
         db.commit()

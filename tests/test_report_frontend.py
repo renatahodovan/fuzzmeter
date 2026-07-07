@@ -452,6 +452,9 @@ class ReportFrontendTest(unittest.TestCase):
             openConfigModal({
               fuzzer: 'hist-fz',
               metadata: {
+                config: {
+                  benchmark: 'bench',
+                },
                 source: {
                   fuzzer_version: {
                     status: 'ok',
@@ -467,6 +470,7 @@ class ReportFrontendTest(unittest.TestCase):
             assert.equal(elements.get('configModalTitle').textContent, 'hist-fz details');
             assert.equal(elements.get('configModalRuntimeTab').disabled, true);
             assert.equal(elements.get('configModalMetadataTab').classes.has('active'), true);
+            assert.match(elements.get('configModalBody').textContent, /bench/);
             assert.match(elements.get('configModalBody').textContent, /fuzzer-abc/);
             assert.match(elements.get('configModalBody').textContent, /arm64/);
         """
