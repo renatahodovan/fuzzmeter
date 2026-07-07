@@ -16,6 +16,7 @@ from typing import Any
 
 from .analyzers import coverage_curves, coverage_matrices
 from .analyzers.bug_analysis import BugAnalysis
+from .analyzers.custom_metrics import attach_custom_metric_sections, has_custom_metric_sections
 from .analyzers.trial_analysis import TrialAnalysis
 from .data.coverage_data import CoverageData
 from .data.run_data import RunData
@@ -101,10 +102,12 @@ class _PayloadBuilder:
         bugs = self.collect_bugs()
         LOG.info('Collect target view')
         targets = self.collect_target_view(trials, timeseries, bugs)
+        LOG.info('Collect persisted custom metrics')
+        attach_custom_metric_sections(targets, timeseries)
         LOG.info('Collect uniqueness matrices')
         targets = self.create_matrices(targets, trials)
 
-        if self._fuzzers_root is not None:
+        if self._fuzzers_root is not None and not has_custom_metric_sections(targets):
             LOG.info('Collect extra sections')
             attach_extra_sections(
                 fuzzers_root=self._fuzzers_root,

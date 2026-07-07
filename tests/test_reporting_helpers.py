@@ -15,6 +15,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fuzzmeter.reporting.analyzers.custom_metrics import attach_custom_metric_sections
 from fuzzmeter.reporting.data.coverage_data import CoverageData
 from fuzzmeter.reporting.fuzzer_chain import expand_reporting_candidates, load_fuzzer_plugin_candidates
 from fuzzmeter.reporting.plugin_api import (
@@ -214,6 +215,48 @@ class WebPayloadTest(unittest.TestCase):
             ],
             serialize_extra_sections([section], default_owner_fuzzer='fz'),
         )
+
+
+class PersistedCustomMetricsTest(unittest.TestCase):
+    '''Verify DB-backed custom metric section construction.'''
+
+    def test_invalid_persisted_custom_metric_payload_is_debug_only(self) -> None:
+        targets = [
+            {
+                'benchmark': 'bench',
+                'fuzz_target': 'target',
+                'fuzzers': [
+                    {
+                        'fuzzer': 'fz',
+                        'trials': [{'trial_id': 1}],
+                        'extra_sections': [],
+                        'extra_section_debug': [],
+                    }
+                ],
+            }
+        ]
+        timeseries = {
+            'per_trial': {
+                '1': {
+                    'trial_id': 1,
+                    'points': [
+                        {
+                            'idx': 1,
+                            'stats': {
+                                'custom_metrics_schema_version': 1,
+                                'custom_metrics': {'bad': 'shape'},
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+
+        attach_custom_metric_sections(targets, timeseries)
+
+        fuzzer = targets[0]['fuzzers'][0]
+        self.assertEqual([], fuzzer['extra_sections'])
+        self.assertEqual('invalid_custom_metrics', fuzzer['extra_section_debug'][0]['status'])
 
 
 class ReportingPluginLoaderTest(unittest.TestCase):

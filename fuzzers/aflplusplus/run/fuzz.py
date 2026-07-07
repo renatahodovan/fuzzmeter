@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+import os
+
+from pathlib import Path
+from typing import Any, Dict
+
+from fuzzers.afl.run import fuzz as afl_fuzzer
+from fuzzers.aflplusplus.common import get_cmplog_build_directory
+from fuzzmeter.resources.instrumentation import utils
+
+# Optional benchmark metadata is exposed to fuzzer builds via FM_BENCHMARK_YAML.
 # Copyright 2020 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,15 +25,6 @@ from __future__ import annotations
 # limitations under the License.
 #
 """Integration code for AFLplusplus fuzzer."""
-
-import os
-
-from pathlib import Path
-from typing import Any, Dict
-
-from fuzzers.afl.run import fuzz as afl_fuzzer
-from fuzzers.aflplusplus.common import get_cmplog_build_directory
-from fuzzmeter.resources.instrumentation import utils
 
 # Optional benchmark metadata is exposed to fuzzer builds via FM_BENCHMARK_YAML.
 
@@ -140,6 +141,21 @@ def get_stats_until(trial_root: Path, *, cutoff_elapsed_s: int | None = None) ->
         latest = None
         first_after = None
     return latest or first_after or {}
+
+
+def get_custom_metrics(
+    trial_root: Path,
+    *,
+    snapshot_dir: Path,
+    cutoff_elapsed_s: int | None = None,
+) -> list[dict]:
+    '''Return AFL++ custom metrics collected for one snapshot.'''
+
+    return afl_fuzzer.get_custom_metrics(
+        trial_root,
+        snapshot_dir=snapshot_dir,
+        cutoff_elapsed_s=cutoff_elapsed_s,
+    )
 
 
 def _stats_file(trial_root: Path) -> Path:

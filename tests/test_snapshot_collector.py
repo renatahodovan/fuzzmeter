@@ -184,6 +184,53 @@ class SnapshotCollectorTest(unittest.TestCase):
 
             self.assertEqual(seen_intervals, [(-1, 100), (-1, 100)])
 
+    def test_collect_trial_snapshot_persists_custom_metrics_in_stats_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            db_path = root / 'state.db'
+            db = DB.open(db_path)
+            ensure_schema(db)
+            db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run-1', 1, 'config'))
+            db.exec(
+                '''
+                INSERT INTO trials(trial_id, run_id, fuzzer, benchmark, fuzz_target, rep, status)
+                VALUES(?,?,?,?,?,?,?)
+                ''',
+                (1, 'run-1', 'aflplusplus', 'bench', 'target', 0, 'running'),
+            )
+            db.close()
+
+            trial = _active_trial(root, started_ts=0)
+            custom_metric = {
+                'schema_version': 1,
+                'id': 'afl-mutator-counts',
+                'kind': 'counter_map',
+                'counts': {'havoc': 2},
+            }
+            with patch('fuzzmeter.snapshot.collector._read_stats', return_value={'execs_done': 10}), \
+                 patch('fuzzmeter.snapshot.collector._read_custom_metrics', return_value=[custom_metric]), \
+                 patch('fuzzmeter.snapshot.collector.repro_ingest.detect_new_files', return_value=[]):
+                _collect_trial_snapshot(
+                    db_path=db_path,
+                    run_id='run-1',
+                    docker_runtime=None,
+                    tick_idx=1,
+                    end_ts=100,
+                    trial=trial,
+                    replay_mode=False,
+                    preprocess_jobs=1,
+                )
+
+            db = DB.open(db_path)
+            try:
+                stats_json = db.scalar('SELECT stats_json FROM snapshots WHERE trial_id=? AND idx=?', (1, 1))
+            finally:
+                db.close()
+
+            stats = json.loads(str(stats_json))
+            self.assertEqual(1, stats['custom_metrics_schema_version'])
+            self.assertEqual([custom_metric], stats['custom_metrics'])
+
     def test_collect_trial_snapshot_uses_tick_time_for_replay_file_cutoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

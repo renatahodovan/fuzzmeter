@@ -111,3 +111,46 @@ def fuzz(input_corpus, output_corpus, target_binary, input_mode: str):
     prepare_fuzz_environment(input_corpus)
 
     run_afl_fuzz(input_corpus, output_corpus, target_binary, input_mode)
+
+
+def get_custom_metrics(trial_root: Path, *, snapshot_dir: Path, cutoff_elapsed_s: int | None = None) -> list[dict]:
+    """Return AFL custom mutator counts collected during snapshot preprocessing."""
+
+    del trial_root, cutoff_elapsed_s
+    manifest = Path(snapshot_dir) / '.fuzzmeter_mutators.json'
+    if not manifest.is_file():
+        return []
+    try:
+        payload = json.loads(manifest.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return []
+    counts = payload.get('mutator_counts')
+    if not isinstance(counts, dict):
+        return []
+    normalized_counts = {}
+    for name, value in counts.items():
+        text = str(name).strip()
+        if not text or text.startswith('orig:'):
+            continue
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            continue
+        if count > 0:
+            normalized_counts[text] = count
+    if not normalized_counts:
+        return []
+    return [
+        {
+            'schema_version': 1,
+            'id': 'afl-mutator-counts',
+            'namespace': 'afl',
+            'kind': 'counter_map',
+            'title': 'AFL mutators',
+            'chart_title': 'Mutator usefulness ratio',
+            'chart_subtitle': 'Percentage distribution of AFL custom mutators across snapshot corpora.',
+            'counts': normalized_counts,
+            'total': sum(normalized_counts.values()),
+            'source': 'fuzzmeter_mutator_manifest',
+        }
+    ]

@@ -102,7 +102,6 @@ def _collect_trial_snapshot(
     preprocess_jobs: int,
 ) -> tuple[TrialCoverageSnapshot | None, TrialCrashSnapshot | None]:
     snapshot_dir = trial.layout.snapshots_dir / f'snap_{tick_idx:06d}'
-    stats = _read_stats(trial, tick_ts=end_ts)
 
     with open_db(db_path) as db:
         previous_snapshot = db_snapshot.latest_trial_snapshot(db, trial_row_id=trial.db_id)
@@ -119,6 +118,12 @@ def _collect_trial_snapshot(
     )
     prev_corpus_count = 0 if previous_snapshot is None else _safe_int(previous_snapshot.get('corpus_files')) or 0
     new_corpus_count = len(processed_by_kind['corpus'])
+    stats = _read_stats(trial, tick_ts=end_ts)
+    custom_metrics = _read_custom_metrics(trial, snapshot_dir=snapshot_dir, tick_ts=end_ts)
+    if custom_metrics:
+        stats = dict(stats)
+        stats['custom_metrics_schema_version'] = 1
+        stats['custom_metrics'] = custom_metrics
 
     with open_db(db_path) as db:
         snapshot_id = db_snapshot.save_snapshot_data(
@@ -348,6 +353,29 @@ def _read_stats(trial: TrialInstance, *, tick_ts: int) -> dict[str, Any]:
             exc,
         )
         return {}
+
+
+def _read_custom_metrics(trial: TrialInstance, *, snapshot_dir: Path, tick_ts: int) -> list[dict[str, Any]]:
+    try:
+        metrics = (
+            FuzzerLoader(trial.fuzzers_root)
+            .load(trial.config.fuzzer_impl)
+            .custom_metrics(
+                trial.layout.trial_dir,
+                snapshot_dir=snapshot_dir,
+                cutoff_elapsed_s=tick_ts - trial.start_ts,
+            )
+            or []
+        )
+        return metrics if isinstance(metrics, list) else []
+    except Exception as exc:
+        LOG.warning(
+            'Failed to get custom metrics from %s adapter for trial_row_id=%s: %s',
+            trial.config.fuzzer_impl,
+            trial.db_id,
+            exc,
+        )
+        return []
 
 
 def _safe_int(value: Any) -> int | None:

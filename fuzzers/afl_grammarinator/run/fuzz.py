@@ -38,3 +38,18 @@ def get_output_paths(live_out: Path) -> Dict[str, Any]:
 def get_stats(trial_root: Path) -> Dict[str, Any]:
     '''Return AFL++ statistics extracted from the trial workspace.'''
     return aflplusplus_fuzzer.get_stats(trial_root)
+
+
+def get_custom_metrics(
+    trial_root: Path,
+    *,
+    snapshot_dir: Path,
+    cutoff_elapsed_s: int | None = None,
+) -> list[dict]:
+    '''Return Grammarinator AFL custom mutator metrics for one snapshot.'''
+
+    return aflplusplus_fuzzer.get_custom_metrics(
+        trial_root,
+        snapshot_dir=snapshot_dir,
+        cutoff_elapsed_s=cutoff_elapsed_s,
+    )

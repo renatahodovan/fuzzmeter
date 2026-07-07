@@ -14,12 +14,30 @@ import unittest
 
 from pathlib import Path
 
+from fuzzers.afl.run import fuzz as afl_fuzzer
 from fuzzers.afl.run.reporting import AFLReportingPlugin
 from fuzzmeter.reporting.plugin_api import ReportingContext
 
 
 class AFLReportingTest(unittest.TestCase):
     '''Verify AFL mutator reporting data sources.'''
+
+    def test_snapshot_custom_metrics_read_mutator_manifest(self) -> None:
+        '''AFL adapters expose mutator manifests as persisted custom metrics.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            snapshot_dir = root / 'snapshots' / 'snap_000001'
+            snapshot_dir.mkdir(parents=True)
+            (snapshot_dir / '.fuzzmeter_mutators.json').write_text(
+                '{"mutator_counts": {"havoc": 2, "orig:seed": 5, "splice": "1"}}',
+                encoding='utf-8',
+            )
+
+            metrics = afl_fuzzer.get_custom_metrics(root / 'trial', snapshot_dir=snapshot_dir)
+
+        self.assertEqual(1, len(metrics))
+        self.assertEqual('afl-mutator-counts', metrics[0]['id'])
+        self.assertEqual({'havoc': 2, 'splice': 1}, metrics[0]['counts'])
 
     def test_uses_afl_mutator_manifest(self) -> None:
         '''AFL mutator reports are built from snapshot mutator manifests.'''
