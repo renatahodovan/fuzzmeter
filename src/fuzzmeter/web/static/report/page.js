@@ -1182,6 +1182,7 @@ export function createTargetSection(target) {
   const resourceTelemetryBlock = hasResourceTelemetry(target) ? createResourceTelemetryBlock(section) : null;
   if (resourceTelemetryBlock) resourceTelemetryBlock.id = `t-${targetId}-telemetry`;
   const perTrialBlock = createTrialTableBlock(section);
+  perTrialBlock.id = `t-${targetId}-trials`;
   const customMetricsBlock = createCustomMetricsBlock(combinedExtraSections);
   if (customMetricsBlock) customMetricsBlock.id = `t-${targetId}-custom`;
   const debugBlock = createDebugBlock(target);
@@ -1193,6 +1194,7 @@ export function createTargetSection(target) {
   blocks.appendChild(performanceBlock);
   blocks.appendChild(bugBlock);
   if (resourceTelemetryBlock) blocks.appendChild(resourceTelemetryBlock);
+  blocks.appendChild(perTrialBlock);
   if (customMetricsBlock) blocks.appendChild(customMetricsBlock);
   if (statisticsBlock) blocks.appendChild(statisticsBlock);
   if (debugBlock) blocks.appendChild(debugBlock);
@@ -1203,6 +1205,7 @@ export function createTargetSection(target) {
     ['Throughput', `#t-${targetId}-throughput`],
     ['Bug finding', `#t-${targetId}-bugs`],
     resourceTelemetryBlock ? ['Telemetry', `#t-${targetId}-telemetry`] : null,
+    ['Trials', `#t-${targetId}-trials`],
     customMetricsBlock ? ['Custom metrics', `#t-${targetId}-custom`] : null,
     statisticsBlock ? ['Statistics', `#t-${targetId}-statistics`] : null,
     debugBlock ? ['Debug', `#t-${targetId}-debug`] : null,

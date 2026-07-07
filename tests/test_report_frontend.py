@@ -251,13 +251,21 @@ class ReportFrontendTest(unittest.TestCase):
             assert.ok(sparseSegments.every((segment) => segment[0].low > 15900));
             assert.ok(sparseSegments.every((segment) => segment[0].high < 20600));
             assert.equal(shouldDrawDistributionViolin([1, 2, 3, 4]), false);
-            assert.equal(shouldDrawDistributionViolin([1, 2, 3, 4, 5]), true);
+            assert.equal(shouldDrawDistributionViolin([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), false);
+            assert.equal(shouldDrawDistributionViolin(Array.from({ length: 20 }, (_, index) => index)), true);
         """
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],
             cwd=REPO_ROOT,
             check=True,
         )
+
+    def test_target_page_source_appends_per_trial_block_and_nav(self) -> None:
+        page_js = REPO_ROOT / 'src' / 'fuzzmeter' / 'web' / 'static' / 'report' / 'page.js'
+        text = page_js.read_text(encoding='utf-8')
+
+        self.assertIn('blocks.appendChild(perTrialBlock);', text)
+        self.assertIn("['Trials', `#t-${targetId}-trials`]", text)
 
     def test_report_source_compatibility_helpers_render_modal_details(self) -> None:
         script = r"""

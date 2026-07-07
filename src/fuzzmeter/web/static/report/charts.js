@@ -33,7 +33,7 @@ const EXPORT_BORDER = 'rgba(148,163,184,.45)';
 const EXPORT_HEADER_BG = 'rgba(241,245,249,.95)';
 const EXPORT_TEXT = '#17212f';
 const EXPORT_MUTED_TEXT = 'rgba(23,33,47,.68)';
-export const MIN_DISTRIBUTION_VIOLIN_VALUES = 5;
+export const MIN_DISTRIBUTION_VIOLIN_VALUES = 20;
 const CHART_PAD = {
   bar: [14, 16, 76, 56],
   distribution: [14, 16, 32, 56],
