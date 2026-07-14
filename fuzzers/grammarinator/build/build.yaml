@@ -4,6 +4,7 @@ allowed_benchmarks:
   - jsoncpp:jsoncpp
 source_dependencies:
   - libfuzzer
+local_repo_env: FM_GRAMMARINATOR_LOCAL_REPO
 build:
   seed_cache:
     enabled: true

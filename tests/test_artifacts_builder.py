@@ -105,14 +105,57 @@ class ArtifactBuilderTest(unittest.TestCase):
             self.assertIn(f'fuzzer_build_sources = "{plain_build_context.resolve()}"', plain_block)
             self.assertNotIn(str((run_dir / 'fuzzer_resources' / 'build' / 'other').resolve()), plain_block)
 
+    def test_buildx_bake_allows_configured_local_fuzzer_repo(self) -> None:
+        '''Verify local fuzzer source checkouts are allowed as BuildKit inputs.'''
+        with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as out_dir:
+            repo_root = Path(repo_dir)
+            run_dir = Path(out_dir) / 'runs' / 'run'
+            local_repo = Path(out_dir) / 'local-fuzzer'
+            run_dir.mkdir(parents=True)
+            local_repo.mkdir()
+            _write_repo_sources(repo_root, local_repo_env='FM_TEST_LOCAL_REPO')
 
-def _write_repo_sources(repo_root: Path, *, fuzzers: tuple[str, ...] = ('plain',)) -> None:
+            with (
+                patch.dict('os.environ', {'FM_TEST_LOCAL_REPO': str(local_repo)}, clear=True),
+                patch('fuzzmeter.artifacts.builder.subprocess.run') as run,
+            ):
+                _build_images(
+                    campaign_config=CampaignConfig(
+                        settings=CampaignSettings(),
+                        cases=[
+                            CampaignCase(
+                                fuzzer_name='plain',
+                                fuzzer_chain=('plain',),
+                                benchmark='bench',
+                                fuzz_target='target',
+                                input_mode='file',
+                            ),
+                        ],
+                    ),
+                    run_dir=run_dir,
+                    external_roots=ExternalRoots.from_checkout(repo_root),
+                )
+
+            self.assertIn(f'--allow=fs.read={local_repo.resolve()}', run.call_args.args[0])
+
+
+def _write_repo_sources(
+    repo_root: Path,
+    *,
+    fuzzers: tuple[str, ...] = ('plain',),
+    local_repo_env: str | None = None,
+) -> None:
     fuzzers_root = repo_root / 'fuzzers'
     for fuzzer in fuzzers:
         for phase in ('build', 'run'):
             phase_dir = fuzzers_root / fuzzer / phase
             phase_dir.mkdir(parents=True)
             (phase_dir / 'Dockerfile').write_text('FROM scratch\n', encoding='utf-8')
+        if local_repo_env:
+            (fuzzers_root / fuzzer / 'build' / 'build.yaml').write_text(
+                f'local_repo_env: {local_repo_env}\n',
+                encoding='utf-8',
+            )
 
     target_dir = repo_root / 'targets' / 'bench'
     target_dir.mkdir(parents=True)

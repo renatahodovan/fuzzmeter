@@ -16,7 +16,7 @@ import unittest
 from unittest.mock import patch
 
 from fuzzmeter.config import CampaignCase
-from fuzzmeter.docker.bake import _entry_args, generate_run_bake_hcl
+from fuzzmeter.docker.bake import _entry_args, fuzzer_source_dirs, generate_run_bake_hcl
 from fuzzmeter.docker.runtime import DockerRuntime
 
 
@@ -260,6 +260,163 @@ class DockerHelperTest(unittest.TestCase):
         self.assertIn(f'fuzzer_run_sources = "{run_sources["libfuzzer"].resolve()}"', libfuzzer_block)
         self.assertNotIn(str(build_sources['afl'].resolve()), libfuzzer_block)
         self.assertNotIn(str(run_sources['afl'].resolve()), libfuzzer_block)
+
+    def test_fuzzer_source_dependencies_merge_build_and_run_yaml(self) -> None:
+        """Verify build and run source dependencies are both available to campaign builds."""
+        with TemporaryDirectory() as root:
+            fuzzers_root = Path(root) / 'fuzzers'
+            for fuzzer in ('grammarinator', 'libfuzzer', 'blackbox'):
+                (fuzzers_root / fuzzer / 'build').mkdir(parents=True)
+                (fuzzers_root / fuzzer / 'run').mkdir(parents=True)
+            (fuzzers_root / 'grammarinator' / 'build' / 'build.yaml').write_text(
+                'source_dependencies:\n'
+                '  - libfuzzer\n',
+                encoding='utf-8',
+            )
+            (fuzzers_root / 'grammarinator' / 'run' / 'run.yaml').write_text(
+                'source_dependencies:\n'
+                '  - blackbox\n',
+                encoding='utf-8',
+            )
+
+            source_dirs = fuzzer_source_dirs(fuzzers_root, 'grammarinator')
+
+        self.assertEqual(['grammarinator', 'blackbox', 'libfuzzer'], source_dirs)
+
+    def test_fuzzer_builder_can_use_configured_local_checkout_context(self) -> None:
+        """Verify local_repo_env can redirect a fuzzer builder to a host checkout."""
+        with TemporaryDirectory() as root:
+            root_path = Path(root)
+            fuzzers_root = root_path / 'fuzzers'
+            targets_root = root_path / 'targets'
+            resources_root = root_path / 'docker'
+            entrypoints_root = root_path / 'entrypoints'
+            runtime_root = root_path / 'runtime'
+            local_repo = root_path / 'private-fuzzer'
+            build_sources = {'local': root_path / 'fuzzer_build' / 'local'}
+            run_sources = {'local': root_path / 'fuzzer_run' / 'local'}
+            instrumentation_sources = {
+                'coverage': root_path / 'instrumentation_build' / 'coverage',
+                'asan': root_path / 'instrumentation_build' / 'asan',
+            }
+
+            for path in (
+                fuzzers_root / 'local' / 'build',
+                targets_root / 'bench',
+                resources_root,
+                entrypoints_root,
+                runtime_root,
+                local_repo,
+                *build_sources.values(),
+                *run_sources.values(),
+                *(path / name for name, path in instrumentation_sources.items()),
+            ):
+                path.mkdir(parents=True)
+            (fuzzers_root / 'local' / 'build' / 'Dockerfile').write_text(
+                'FROM parent_image\n',
+                encoding='utf-8',
+            )
+            (fuzzers_root / 'local' / 'build' / 'build.yaml').write_text(
+                'local_repo_env: FM_TEST_LOCAL_REPO\n',
+                encoding='utf-8',
+            )
+            (targets_root / 'bench' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
+            for name, root_dir in instrumentation_sources.items():
+                (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
+
+            with patch.dict(os.environ, {'FM_TEST_LOCAL_REPO': str(local_repo)}, clear=True):
+                bake_hcl = generate_run_bake_hcl(
+                    fuzzers_root=fuzzers_root,
+                    targets_root=targets_root,
+                    entries=[
+                        CampaignCase(
+                            fuzzer_name='local',
+                            fuzzer_chain=('local',),
+                            benchmark='bench',
+                            fuzz_target='target',
+                            input_mode='file',
+                        )
+                    ],
+                    fuzzer_build_sources=build_sources,
+                    fuzzer_run_sources=run_sources,
+                    instrumentation_build_sources=instrumentation_sources,
+                    docker_resources=resources_root,
+                    entrypoint_resources=entrypoints_root,
+                    fuzzmeter_resources=runtime_root,
+                )
+
+        local_block = _target_block(bake_hcl, 'fuzzer_builder_local')
+        self.assertIn(f'context    = "{local_repo.resolve()}"', local_block)
+        self.assertIn(
+            f'dockerfile = "{(fuzzers_root / "local" / "build" / "Dockerfile").resolve()}"',
+            local_block,
+        )
+        self.assertIn('FM_LOCAL_REPO = "1"', local_block)
+
+    def test_fuzzer_builder_keeps_default_context_without_local_checkout_env(self) -> None:
+        """Verify local_repo_env is opt-in only when its host env var is set."""
+        with TemporaryDirectory() as root:
+            root_path = Path(root)
+            fuzzers_root = root_path / 'fuzzers'
+            targets_root = root_path / 'targets'
+            resources_root = root_path / 'docker'
+            entrypoints_root = root_path / 'entrypoints'
+            runtime_root = root_path / 'runtime'
+            build_sources = {'local': root_path / 'fuzzer_build' / 'local'}
+            run_sources = {'local': root_path / 'fuzzer_run' / 'local'}
+            instrumentation_sources = {
+                'coverage': root_path / 'instrumentation_build' / 'coverage',
+                'asan': root_path / 'instrumentation_build' / 'asan',
+            }
+
+            for path in (
+                fuzzers_root / 'local' / 'build',
+                targets_root / 'bench',
+                resources_root,
+                entrypoints_root,
+                runtime_root,
+                *build_sources.values(),
+                *run_sources.values(),
+                *(path / name for name, path in instrumentation_sources.items()),
+            ):
+                path.mkdir(parents=True)
+            (fuzzers_root / 'local' / 'build' / 'Dockerfile').write_text(
+                'FROM parent_image\n',
+                encoding='utf-8',
+            )
+            (fuzzers_root / 'local' / 'build' / 'build.yaml').write_text(
+                'local_repo_env: FM_TEST_LOCAL_REPO\n',
+                encoding='utf-8',
+            )
+            (targets_root / 'bench' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
+            for name, root_dir in instrumentation_sources.items():
+                (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
+
+            with patch.dict(os.environ, {}, clear=True):
+                bake_hcl = generate_run_bake_hcl(
+                    fuzzers_root=fuzzers_root,
+                    targets_root=targets_root,
+                    entries=[
+                        CampaignCase(
+                            fuzzer_name='local',
+                            fuzzer_chain=('local',),
+                            benchmark='bench',
+                            fuzz_target='target',
+                            input_mode='file',
+                        )
+                    ],
+                    fuzzer_build_sources=build_sources,
+                    fuzzer_run_sources=run_sources,
+                    instrumentation_build_sources=instrumentation_sources,
+                    docker_resources=resources_root,
+                    entrypoint_resources=entrypoints_root,
+                    fuzzmeter_resources=runtime_root,
+                )
+
+        local_block = _target_block(bake_hcl, 'fuzzer_builder_local')
+        self.assertIn(f'context    = "{(fuzzers_root / "local" / "build").resolve()}"', local_block)
+        self.assertIn('dockerfile = "Dockerfile"', local_block)
+        self.assertNotIn('FM_LOCAL_REPO = "1"', local_block)
 
 
 def _target_block(bake_hcl: str, target: str) -> str:

@@ -19,7 +19,7 @@ import subprocess
 from ..config import CampaignConfig, implementation_fuzzer
 from ..composite.collect import collect_records, save_records
 from ..docker import DockerRuntime, fuzzer_source_dirs, generate_run_bake_hcl
-from ..docker.bake import INSTRUMENTATION_PROFILES
+from ..docker.bake import INSTRUMENTATION_PROFILES, fuzzer_local_repo_paths
 from ..paths import ExternalRoots, docker_resources, entrypoint_resources, instrumentation_resources
 from .extract import extract_fuzz_binaries
 from .seeds import measure_seed_baselines, prepare_seed_corpora
@@ -70,11 +70,14 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path, external_ro
         bake_hcl_path.write_text(str(bake_hcl), encoding='utf-8')
         info_enabled = logger.isEnabledFor(logging.INFO)
         progress = 'auto' if info_enabled else 'plain'
+        entry_fuzzers = sorted({implementation_fuzzer(entry.fuzzer_chain) for entry in campaign_config.cases})
+        local_repo_paths = fuzzer_local_repo_paths(external_roots.fuzzers_root, entry_fuzzers)
         allow_args = [
             f'--allow=fs.read={Path(docker_resources_path).resolve()}',
             f'--allow=fs.read={Path(entrypoint_resources_path).resolve()}',
             f'--allow=fs.read={fuzzmeter_resources_path.resolve()}',
             *[f'--allow=fs.read={path.resolve()}' for path in fuzzer_contexts.paths()],
+            *[f'--allow=fs.read={path}' for path in local_repo_paths.values()],
             f'--allow=fs.read={external_roots.targets_root.resolve()}',
         ]
 

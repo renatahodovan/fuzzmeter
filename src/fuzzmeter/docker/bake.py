@@ -27,6 +27,8 @@ INSTRUMENTATION_PROFILES = (
 ENTRY_BUILDER_MEMORY_LIMIT = '4g'
 DEFAULT_DOCKER_PLATFORM = 'linux/amd64'
 DOCKER_ENV_RE = re.compile(r'\$([A-Za-z_][A-Za-z0-9_]*)|\$\{([A-Za-z_][A-Za-z0-9_]*)\}')
+LOCAL_REPO_ENV_KEY = 'local_repo_env'
+LOCAL_REPO_BUILD_ARG = 'FM_LOCAL_REPO'
 
 
 def _hcl_str_list(items: list[str]) -> str:
@@ -66,7 +68,16 @@ def _fuzzer_config(fuzzers_root: Path, fuzzer: str) -> dict[str, object]:
             continue
         loaded = yaml.safe_load(path.read_text(encoding='utf-8')) or {}
         if isinstance(loaded, dict):
+            dependencies = loaded.pop('source_dependencies', None)
             data.update(loaded)
+            if dependencies:
+                existing = data.get('source_dependencies') or []
+                if isinstance(existing, str):
+                    existing = [existing]
+                if isinstance(dependencies, str):
+                    dependencies = [dependencies]
+                if isinstance(existing, list) and isinstance(dependencies, list):
+                    data['source_dependencies'] = [*existing, *dependencies]
     return data
 
 
@@ -141,6 +152,38 @@ def _fuzzer_source_dirs(fuzzers_root: Path, fuzzer: str) -> list[str]:
 def fuzzer_source_dirs(fuzzers_root: Path, fuzzer: str) -> list[str]:
     """Return fuzzer source directories needed by a fuzzer implementation."""
     return _fuzzer_source_dirs(fuzzers_root, fuzzer)
+
+
+def _fuzzer_local_repo_env(fuzzers_root: Path, fuzzer: str) -> str | None:
+    value = _fuzzer_config(fuzzers_root, fuzzer).get(LOCAL_REPO_ENV_KEY)
+    if not value:
+        return None
+    env_var = str(value).strip()
+    return env_var or None
+
+
+def _local_repo_path(env_var: str) -> Path | None:
+    raw_path = os.environ.get(env_var, '').strip()
+    if not raw_path:
+        return None
+    path = Path(raw_path).expanduser().resolve()
+    if not path.is_dir():
+        raise NotADirectoryError(f'Local fuzzer repository from {env_var} is not a directory: {path}')
+    return path
+
+
+def fuzzer_local_repo_paths(fuzzers_root: Path, fuzzers: list[str]) -> dict[str, Path]:
+    """Return configured host-side fuzzer source checkouts by fuzzer."""
+    resolved_root = Path(fuzzers_root).resolve()
+    paths: dict[str, Path] = {}
+    for fuzzer in _fuzzers_with_parents(resolved_root, fuzzers):
+        env_var = _fuzzer_local_repo_env(resolved_root, fuzzer)
+        if not env_var:
+            continue
+        local_repo = _local_repo_path(env_var)
+        if local_repo:
+            paths[fuzzer] = local_repo
+    return paths
 
 
 def _benchmark_workdir(targets_root: Path, benchmark: str) -> str:
@@ -255,6 +298,7 @@ def generate_run_bake_hcl(
 
     entry_fuzzers = sorted({implementation_fuzzer(entry.fuzzer_chain) for entry in entries})
     campaign_fuzzers = _fuzzers_with_parents(fuzzers_root, entry_fuzzers)
+    local_repo_paths = fuzzer_local_repo_paths(fuzzers_root, entry_fuzzers)
     build_fuzzers = list(campaign_fuzzers)
     benchmark_workdirs = {
         benchmark: _escape(_benchmark_workdir(targets_root, benchmark))
@@ -324,16 +368,29 @@ def generate_run_bake_hcl(
         parent = _fuzzer_parent(fuzzers_root, fuzzer)
         builder_parent = f'fuzzer_builder_{parent}' if parent else 'clang_base'
         builder_depends = [f'depends_on = ["{builder_parent}"]']
+        builder_context = _escape(str(fuzzers_root / fuzzer / 'build'))
+        dockerfile = 'Dockerfile'
+        extra_args: list[str] = []
+        local_repo = local_repo_paths.get(fuzzer)
+        if local_repo:
+            builder_context = _escape(str(local_repo))
+            dockerfile = _escape(str(fuzzers_root / fuzzer / 'build' / 'Dockerfile'))
+            extra_args = [
+                'args = {',
+                f'  {LOCAL_REPO_BUILD_ARG} = "1"',
+                '}',
+            ]
         hcl_parts.append(
             _hcl_block(
                 f'fuzzer_builder_{fuzzer}',
                 [
-                    f'context    = "{_escape(str(fuzzers_root / fuzzer / "build"))}"',
-                    'dockerfile = "Dockerfile"',
+                    f'context    = "{builder_context}"',
+                    f'dockerfile = "{dockerfile}"',
                     f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
                     'contexts = {',
                     f'  parent_image = "target:{builder_parent}"',
                     '}',
+                    *extra_args,
                     *builder_depends,
                 ],
             )

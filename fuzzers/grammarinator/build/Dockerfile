@@ -3,6 +3,7 @@ FROM parent_image
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV GRAMMARINATOR_DIR=/grammarinator
+ARG FM_LOCAL_REPO=0
 
 WORKDIR /work
 
@@ -15,7 +16,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         python3-pip && \
     rm -rf /var/lib/apt/lists/*
 
-RUN git clone https://github.com/renatahodovan/grammarinator.git "${GRAMMARINATOR_DIR}"
+RUN --mount=type=bind,source=.,target=/src,readonly \
+    if [ "${FM_LOCAL_REPO}" = "1" ]; then \
+        cp -a /src/. "${GRAMMARINATOR_DIR}"; \
+    else \
+        git clone https://github.com/renatahodovan/grammarinator.git "${GRAMMARINATOR_DIR}"; \
+    fi
+
+# RUN git clone https://github.com/renatahodovan/grammarinator.git "${GRAMMARINATOR_DIR}"
 RUN python3 -m pip install --break-system-packages "${GRAMMARINATOR_DIR}" && \
     python3 -m pip install --break-system-packages -r ${GRAMMARINATOR_DIR}/grammarinator-cxx/dev/requirements.txt && \
     conan profile detect && echo "OK"
