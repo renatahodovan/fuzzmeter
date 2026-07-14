@@ -126,15 +126,27 @@ def run_build(
         'python3',
         '/grammarinator/grammarinator-cxx/dev/build.py',
     ]
+    custom_include_dirs: list[Path] = []
     serializer = resolve_include_paths(as_list(cfg.get('GRAMMARINATOR_SERIALIZER')))
     if serializer:
-        build_cmd.extend(['--serializer', Path(serializer[0]).stem])
+        serializer_path = Path(serializer[0])
+        build_cmd.extend(['--serializer', serializer_path.stem])
+        custom_include_dirs.append(serializer_path.parent)
     model = resolve_include_paths(as_list(cfg.get('GRAMMARINATOR_MODEL')))
     if model:
-        build_cmd.extend(['--model', Path(model[0]).stem])
+        model_path = Path(model[0])
+        build_cmd.extend(['--model', model_path.stem])
+        custom_include_dirs.append(model_path.parent)
+    listener = resolve_include_paths(as_list(cfg.get('GRAMMARINATOR_LISTENER')))
+    if listener:
+        listener_path = Path(listener[0])
+        build_cmd.extend(['--listener', listener_path.stem])
+        custom_include_dirs.append(listener_path.parent)
     include = []
-    for include in resolve_include_paths(as_list(cfg.get('GRAMMARINATOR_CONFIG'))):
-        include = ['--include', Path(include).name]
+    for config_include in resolve_include_paths(as_list(cfg.get('GRAMMARINATOR_CONFIG'))):
+        config_include_path = Path(config_include)
+        include = ['--include', config_include_path.name]
+        custom_include_dirs.append(config_include_path.parent)
 
     if include:
         build_cmd.extend(include)
@@ -151,6 +163,8 @@ def run_build(
         '--suffix', fuzz_target,
         '--clean',
     ])
+    for custom_include_dir in dict.fromkeys(custom_include_dirs):
+        build_cmd.extend(['--includedir', str(custom_include_dir)])
     if _is_verbose_logging():
         build_cmd.append('--verbose')
     # build_cmd.extend(['--log-level', _grammarinator_log_level()])
