@@ -183,7 +183,7 @@ def fuzz_blackbox(
         target_command=_configured_target_command(target_cfg, target_binary, target_args or []),
         batch_size=_configured_batch_size(generator_cfg),
         generator_timeout_s=_optional_float(generator_cfg.get('timeout_s')),
-        target_timeout_s=_optional_float(target_cfg.get('timeout_s')),
+        target_timeout_s=_configured_target_timeout(target_cfg),
     )
     fuzzer.run()
 
@@ -253,6 +253,13 @@ def _configured_target_command(config: dict[str, Any], target_binary: str, defau
     command.extend(default_args)
     command.extend(_as_command(config.get('args')))
     return command
+
+
+def _configured_target_timeout(config: dict[str, Any]) -> float | None:
+    timeout_s = _optional_float(config.get('timeout_s'))
+    if timeout_s is not None:
+        return timeout_s
+    return utils.get_fuzz_target_timeout_s(default=None)
 
 
 def _as_command(value: Any) -> list[str]:

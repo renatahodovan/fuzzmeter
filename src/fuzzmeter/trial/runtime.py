@@ -89,6 +89,7 @@ class TrialContainer:
         echo "[fuzzmeter] runner_image={self.cfg.images.runner}" >> "$LOG"
         echo "[fuzzmeter] FM_TARGET_BIN=$FM_TARGET_BIN" >> "$LOG"
         echo "[fuzzmeter] FM_INPUT=$FM_INPUT FM_OUTPUT=$FM_OUTPUT" >> "$LOG"
+        echo "[fuzzmeter] FM_FUZZ_TARGET_TIMEOUT=$FM_FUZZ_TARGET_TIMEOUT" >> "$LOG"
         echo "[fuzzmeter] FM_LOG_LEVEL=$FM_LOG_LEVEL" >> "$LOG"
         set +e
         python3 -u "/opt/fuzzmeter/run_fuzzer.py" >> "$LOG" 2>&1
@@ -108,6 +109,7 @@ class TrialContainer:
         env = {
             'FM_TARGET_BIN': str(fuzz_target_bin),
             'FM_INPUT_MODE': str(self.cfg.fuzz_target_input_mode),
+            'FM_FUZZ_TARGET_TIMEOUT': str(self.cfg.fuzz_target_timeout),
             'FM_INPUT': str(input_corpus_dir),
             'FM_OUTPUT': str(fuzz_dir),
             'FM_TIME_SECONDS': str(self.cfg.trial_timeout),

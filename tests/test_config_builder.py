@@ -347,8 +347,28 @@ targets:
         self.assertEqual(10.0, config.cases[0].target_timeout_s)
         self.assertEqual({}, config.cases[0].runtime_config)
 
-    def test_runtime_target_timeout_overrides_target_default(self) -> None:
-        """Verify that config/fuzzer runtime config can override target defaults."""
+    def test_missing_target_timeout_defaults_to_one_second(self) -> None:
+        """Verify that missing target timeouts default to one second."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            _write_fuzzer(root, 'plain', '')
+            _write_target(root, 'jerryscript', 'jerry')
+
+            config = _load_campaign_config(
+                root,
+                """
+fuzzers:
+  - plain
+targets:
+  - jerryscript:jerry
+""",
+            )
+
+        self.assertEqual(1.0, config.cases[0].target_timeout_s)
+        self.assertEqual({}, config.cases[0].runtime_config)
+
+    def test_runtime_target_timeout_is_preserved_without_changing_target_timeout(self) -> None:
+        """Verify that fuzzer runtime config does not replace the benchmark target timeout."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
@@ -367,6 +387,7 @@ targets:
 """,
             )
 
+        self.assertEqual(10.0, config.cases[0].target_timeout_s)
         self.assertEqual({'target': {'timeout_s': 3}}, config.cases[0].runtime_config)
 
     def test_snapshot_export_interval_defaults_to_one(self) -> None:

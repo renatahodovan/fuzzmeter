@@ -66,6 +66,8 @@ def run_afl_fuzz(input_corpus,
                  additional_flags=None,
                  hide_output=False):
     """Run afl-fuzz."""
+    additional_flags = list(additional_flags or [])
+
     # Spawn the afl fuzzing process.
     print('[run_afl_fuzz] Running target with afl-fuzz')
     command = [
@@ -77,15 +79,15 @@ def run_afl_fuzz(input_corpus,
         # Use no memory limit as ASAN doesn't play nicely with one.
         '-m',
         'none',
-        '-t',
-        '1000',  # Use same default 1 sec timeout, but add '+' to skip hangs.
     ]
+    if not _has_timeout_flag(additional_flags):
+        command.extend(['-t', _target_timeout_ms()])
+
     # Use '-d' to skip deterministic mode, as long as it it compatible with
     # additional flags.
     if not additional_flags or check_skip_det_compatible(additional_flags):
         command.append('-z')
-    if additional_flags:
-        command.extend(additional_flags)
+    command.extend(additional_flags)
     dictionary_path = utils.get_dictionary_path(target_binary)
     if dictionary_path:
         command.extend(['-x', dictionary_path])
@@ -104,6 +106,15 @@ def run_afl_fuzz(input_corpus,
     subprocess.DEVNULL if hide_output else None
     cwd = f'/opt/fuzzmeter/fuzzers/{os.environ["FUZZER"]}'
     subprocess.run(command, cwd=cwd)
+
+
+def _has_timeout_flag(flags):
+    return any(flag == '-t' or flag.startswith('-t=') or (flag.startswith('-t') and len(flag) > 2) for flag in flags)
+
+
+def _target_timeout_ms() -> str:
+    timeout_s = utils.get_fuzz_target_timeout_s(default=1.0)
+    return str(max(1, int(timeout_s * 1000)))
 
 
 def fuzz(input_corpus, output_corpus, target_binary, input_mode: str):

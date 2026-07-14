@@ -263,6 +263,19 @@ def get_runtime_args(base_fuzzer: str | None = None) -> list[str]:
     return expand_configured_args(get_fuzzer_config_value('runtime', 'args', default=[], base_fuzzer=base_fuzzer))
 
 
+def get_fuzz_target_timeout_s(default: float | None = None, base_fuzzer: str | None = None) -> float | None:
+    '''Return the configured per-input fuzz target timeout in seconds.'''
+    del base_fuzzer
+    value = os.environ.get('FM_FUZZ_TARGET_TIMEOUT')
+    if value is None:
+        return default
+
+    timeout_s = float(value)
+    if timeout_s <= 0:
+        raise ValueError(f'Fuzz target timeout must be positive, got {timeout_s}.')
+    return timeout_s
+
+
 @contextlib.contextmanager
 def restore_directory(directory: str | os.PathLike[str] | None, ignore_errors: bool = False) -> Iterator[None]:
     '''Restore a directory to its original state after the wrapped block exits.'''

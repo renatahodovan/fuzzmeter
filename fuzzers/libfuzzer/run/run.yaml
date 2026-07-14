@@ -8,7 +8,6 @@ runtime:
     - -cross_over=1
     - -max_len=500000
     - -mutate_depth=15
-    - -timeout=1
     - -detect_leaks=0
     - -create_missing_dirs=1
     # - -entropic=1

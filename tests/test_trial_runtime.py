@@ -31,6 +31,25 @@ class _StoppedDocker:
         return 17
 
 
+class _StartingDocker:
+    def __init__(self) -> None:
+        self.spec = None
+
+    @property
+    def run_user(self) -> str:
+        return 'runner'
+
+    def out_volume(self, container_path: str) -> str:
+        return f'out:{container_path}'
+
+    def start(self, spec) -> str:
+        self.spec = spec
+        return 'container-id'
+
+    def is_running(self, container_name: str) -> bool:
+        return True
+
+
 @dataclass(frozen=True)
 class _DockerRuntimeStub:
     fuzzers_root: Path
@@ -117,6 +136,34 @@ class TrialRuntimeTest(unittest.TestCase):
 
             self.assertIn('container exited before the configured deadline', log_path.read_text(encoding='utf-8'))
             self.assertIn('log tail', log_path.read_text(encoding='utf-8'))
+
+    def test_start_passes_target_timeout_to_fuzzer_environment(self) -> None:
+        from fuzzmeter.trial.runtime import TrialContainer
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            log_path = root / 'fuzzer.log'
+            target_bin = root / 'target'
+            target_bin.write_text('', encoding='utf-8')
+            runtime = TrialContainer(
+                docker_runtime=_DockerRuntimeStub(fuzzers_root=root),
+                container_name='container',
+                config=_trial_config(root),
+                run_dir=root,
+                input_corpus_dir=root,
+                run_id='run',
+                fuzzer_log=log_path,
+                start_ts=1,
+            )
+            docker = _StartingDocker()
+            runtime.docker = docker
+
+            runtime.start()
+            TrialContainer._unregister_active_container('container')
+
+        self.assertIsNotNone(docker.spec)
+        self.assertEqual('file', docker.spec.env['FM_INPUT_MODE'])
+        self.assertEqual('1.0', docker.spec.env['FM_FUZZ_TARGET_TIMEOUT'])
 
 
 if __name__ == '__main__':

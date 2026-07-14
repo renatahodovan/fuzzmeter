@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import subprocess
@@ -34,6 +35,10 @@ def run_fuzzer(input_corpus, output_corpus, target_binary, extra_flags=None):
 
     utils.apply_configured_env(utils.get_runtime_env())
     extra_flags = list(utils.get_runtime_args()) + list(extra_flags)
+    if not _has_timeout_flag(extra_flags):
+        target_timeout_s = utils.get_fuzz_target_timeout_s(default=1.0)
+        if target_timeout_s is not None:
+            extra_flags.append(f'-timeout={max(1, math.ceil(target_timeout_s))}')
 
     # Enable symbolization if needed.
     # Note: if the flags are like `symbolize=0:..:symbolize=1` then
@@ -58,6 +63,10 @@ def run_fuzzer(input_corpus, output_corpus, target_binary, extra_flags=None):
     command = [target_binary] + flags + [output_corpus, input_corpus] + extra_flags
     print('Running libFuzzer command:', ' '.join(command))
     subprocess.check_output(command)
+
+
+def _has_timeout_flag(flags: list[str]) -> bool:
+    return any(flag == '-timeout' or flag.startswith('-timeout=') for flag in flags)
 
 
 def get_output_paths(live_out: Path) -> Dict[str, Any]:
