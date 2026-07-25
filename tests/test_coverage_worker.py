@@ -19,9 +19,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-REPRO_DIR = Path(__file__).resolve().parents[1] / 'src' / 'fuzzmeter' / 'repro'
-if str(REPRO_DIR) not in sys.path:
-    sys.path.insert(0, str(REPRO_DIR))
+ENTRYPOINTS_DIR = Path(__file__).resolve().parents[1] / 'src' / 'fuzzmeter' / 'resources' / 'entrypoints'
+if str(ENTRYPOINTS_DIR) not in sys.path:
+    sys.path.insert(0, str(ENTRYPOINTS_DIR))
 
 coverage_worker = importlib.import_module('coverage_worker')
 
