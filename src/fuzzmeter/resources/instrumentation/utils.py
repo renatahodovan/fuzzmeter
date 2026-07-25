@@ -26,7 +26,6 @@ import yaml
 LOG = logging.getLogger(__name__)
 
 DEFAULT_OPTIMIZATION_LEVEL = '-O3'
-LIBCPLUSPLUS_FLAG = ''
 
 NO_SANITIZER_COMPAT_CFLAGS = [
     '-pthread',

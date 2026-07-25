@@ -175,10 +175,9 @@ function summarizeTargetMetric(targets, extractor) {
   }));
 }
 
-function winnerCard(icon, title, description, winner, formatter) {
+function winnerCard(title, description, winner, formatter) {
   const card = el('article', 'winner-card');
   const titleRow = el('div', 'winner-title-row');
-  // titleRow.appendChild(icon);
   const titleStack = el('div', 'winner-title-stack');
   titleStack.appendChild(el('div', 'winner-tooltip-content', description));
   titleStack.appendChild(el('div', 'winner-title', title));
@@ -198,25 +197,6 @@ function winnerCard(icon, title, description, winner, formatter) {
   return card;
 }
 
-function winnerIcon(kind) {
-  const wrap = el('span', `winner-icon winner-icon-${kind}`);
-  const icons = {
-      bug: '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="18" y="18" width="92" height="92" rx="22" fill="#EFF6FF" stroke="#DBEAFE" stroke-width="3"/><g opacity="0.45" stroke="#60A5FA" stroke-width="4"><path d="M44 40c5 0 9 4 9 9v9c0 5-4 9-9 9s-9-4-9-9v-9c0-5 4-9 9-9Z" fill="#DBEAFE"/><path d="M44 40v-5"/><path d="M39 43l-4-4"/><path d="M49 43l4-4"/><path d="M35 53h-6"/><path d="M53 53h6"/><path d="M39 64l-4 5"/><path d="M49 64l4 5"/></g><g opacity="0.45" stroke="#60A5FA" stroke-width="4"><path d="M86 40c5 0 9 4 9 9v9c0 5-4 9-9 9s-9-4-9-9v-9c0-5 4-9 9-9Z" fill="#DBEAFE"/><path d="M86 40v-5"/><path d="M81 43l-4-4"/><path d="M91 43l4-4"/><path d="M77 53h-6"/><path d="M95 53h6"/><path d="M81 64l-4 5"/><path d="M91 64l4 5"/></g><g stroke="#F97316" stroke-width="5"><path d="M64 50c8 0 14 6 14 14v14c0 8-6 14-14 14s-14-6-14-14V64c0-8 6-14 14-14Z" fill="#FDBA74"/><path d="M64 50v-7"/><path d="M57 54l-6-6"/><path d="M71 54l6-6"/><path d="M50 68h-8"/><path d="M78 68h8"/><path d="M56 86l-6 7"/><path d="M72 86l6 7"/><path d="M64 62v24"/></g></svg>',
-
-      relcov: '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="18" y="18" width="92" height="92" rx="22" fill="#EFF6FF" stroke="#DBEAFE" stroke-width="3"/><circle cx="44" cy="50" r="16" fill="#DBEAFE" stroke="#60A5FA" stroke-width="4"/><circle cx="56" cy="78" r="16" fill="#DBEAFE" stroke="#60A5FA" stroke-width="4"/><circle cx="84" cy="50" r="18" fill="#FFF7ED" stroke="#F97316" stroke-width="4"/><path d="M60 70L72 58" stroke="#93C5FD" stroke-width="3"/><path d="M60 58L72 50" stroke="#93C5FD" stroke-width="3" opacity="0.7"/><g><rect x="77" y="43" width="5" height="5" rx="1.5" fill="#60A5FA"/><rect x="84" y="43" width="5" height="5" rx="1.5" fill="#93C5FD"/><rect x="77" y="50" width="5" height="5" rx="1.5" fill="#93C5FD"/><rect x="84" y="50" width="5" height="5" rx="1.5" fill="#34D399"/></g></svg>',
-
-      relbug: '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="18" y="18" width="92" height="92" rx="22" fill="#EFF6FF" stroke="#DBEAFE" stroke-width="3"/><circle cx="44" cy="50" r="16" fill="#DBEAFE" stroke="#60A5FA" stroke-width="4"/><circle cx="56" cy="78" r="16" fill="#DBEAFE" stroke="#60A5FA" stroke-width="4"/><circle cx="84" cy="50" r="18" fill="#FFF7ED" stroke="#F97316" stroke-width="4"/><path d="M60 70L72 58" stroke="#93C5FD" stroke-width="3"/><path d="M60 58L72 50" stroke="#93C5FD" stroke-width="3" opacity="0.7"/><g stroke="#F97316" stroke-width="2.8"><path d="M84 43c3.2 0 5.5 2.3 5.5 5.5v5c0 3.2-2.3 5.5-5.5 5.5s-5.5-2.3-5.5-5.5v-5c0-3.2 2.3-5.5 5.5-5.5Z" fill="#FDBA74"/><path d="M84 43v-3.5"/><path d="M80.5 45.5l-2.5-2.5"/><path d="M87.5 45.5l2.5-2.5"/><path d="M78.5 51h-3"/><path d="M89.5 51h3"/><path d="M80.5 57l-2.5 3"/><path d="M87.5 57l2.5 3"/><path d="M84 48v9"/></g></svg>',
-
-      coverage: '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="22" y="22" width="84" height="84" rx="18" fill="#EFF6FF" stroke="#DBEAFE" stroke-width="3"/><g stroke="#1877F2" stroke-width="3"><rect x="38" y="38" width="12" height="12" rx="3" fill="#BFDBFE"/><rect x="56" y="38" width="12" height="12" rx="3" fill="#93C5FD"/><rect x="74" y="38" width="12" height="12" rx="3" fill="#60A5FA"/><rect x="38" y="56" width="12" height="12" rx="3" fill="#93C5FD"/><rect x="56" y="56" width="12" height="12" rx="3" fill="#60A5FA"/><rect x="74" y="56" width="12" height="12" rx="3" fill="#34D399" stroke="#34D399"/><rect x="38" y="74" width="12" height="12" rx="3" fill="#60A5FA"/><rect x="56" y="74" width="12" height="12" rx="3" fill="#34D399" stroke="#34D399"/><rect x="74" y="74" width="12" height="12" rx="3" fill="#F97316" stroke="#F97316"/></g></svg>',
-    
-      auc: '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="18" y="18" width="92" height="92" rx="22" fill="#EFF6FF" stroke="#DBEAFE" stroke-width="3"/><path d="M34 90H96" stroke="#94A3B8" stroke-width="4"/><path d="M34 90V34" stroke="#94A3B8" stroke-width="4"/><path d="M36 84C44 68 50 54 60 48C70 42 80 43 94 34V90H36Z" fill="#FDBA74" opacity=".45"/><path d="M36 84C44 68 50 54 60 48C70 42 80 43 94 34" stroke="#1877F2" stroke-width="5"/><path d="M48 90V76M62 90V62M76 90V52M90 90V42" stroke="#FDBA74" stroke-width="3" opacity=".9"/></svg>',
-        
-      exec: '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="18" y="18" width="92" height="92" rx="22" fill="#EFF6FF" stroke="#DBEAFE" stroke-width="3"/><path d="M38 72a26 26 0 0 1 52 0" stroke="#1877F2" stroke-width="5"/><path d="M44 72h-8M64 46v-9M84 54l7-7" stroke="#1877F2" stroke-width="4"/><circle cx="64" cy="72" r="6" fill="#1877F2"/><path d="M64 72L84 52" stroke="#1877F2" stroke-width="5"/><path d="M40 88H56M34 98H56" stroke="#94A3B8" stroke-width="4"/><path d="M70 86L92 99L70 112V86Z" fill="#34D399" stroke="#34D399" stroke-width="4"/></svg>',
-  };
-  wrap.innerHTML = icons[kind] || icons.coverage;
-  return wrap;
-}
-
 function buildWinnerCards(data) {
   const host = byId('summaryHighlights');
   if (!host) return;
@@ -229,7 +209,6 @@ function buildWinnerCards(data) {
 
   const cards = [
     {
-      icon: winnerIcon('coverage'),
       title: 'Highest Coverage',
       description: 'Reaches the strongest final coverage level across targets.',
       winner: bestRowByKey(rankingRows.map((row) => ({ fuzzer: row.fuzzer, coverage_score: row.coverage_score })), 'coverage_score'),
@@ -237,7 +216,6 @@ function buildWinnerCards(data) {
       key: 'coverage_score',
     },
     {
-      icon: winnerIcon('auc'),
       title: 'Early Coverage',
       description: 'Reaches a large share of final coverage early in the run.',
       winner: bestRowByKey(rankingRows.map((row) => ({ fuzzer: row.fuzzer, auc_score: row.auc_score })), 'auc_score'),
@@ -245,7 +223,6 @@ function buildWinnerCards(data) {
       key: 'auc_score',
     },
     {
-      icon: winnerIcon('relcov'),
       title: 'Distinct Coverage',
       description: 'Contributes branch coverage that other fuzzers miss.',
       winner: bestRowByKey(relCovRows.map((row) => ({ ...row, value: row.value })), 'value'),
@@ -253,7 +230,6 @@ function buildWinnerCards(data) {
       key: 'value',
     },
     {
-      icon: winnerIcon('relcov'),
       title: 'Exclusive Coverage',
       description: 'Reaches the largest total branch set that no other fuzzer reaches.',
       winner: bestRowByKey(exclusiveCoverageRows.map((row) => ({ ...row, value: row.value })), 'value'),
@@ -261,7 +237,6 @@ function buildWinnerCards(data) {
       key: 'value',
     },
     {
-      icon: winnerIcon('bug'),
       title: 'Most Bug Finder',
       description: 'Finds the largest total set of distinct bugs.',
       winner: bestRowByKey(rankingRows.map((row) => ({ fuzzer: row.fuzzer, unique_bug_count: row.unique_bug_count })), 'unique_bug_count'),
@@ -269,7 +244,6 @@ function buildWinnerCards(data) {
       key: 'unique_bug_count',
     },
     {
-      icon: winnerIcon('relbug'),
       title: 'Distinct Bug Finder',
       description: 'Finds bugs that are less commonly shared with other fuzzers.',
       winner: bestRowByKey(rankingRows.map((row) => ({ fuzzer: row.fuzzer, relbug_score: row.relbug_score })), 'relbug_score'),
@@ -277,7 +251,6 @@ function buildWinnerCards(data) {
       key: 'relbug_score',
     },
     {
-      icon: winnerIcon('exec'),
       title: 'Fastest Executor',
       description: 'Pushes through the highest sustained execution speed.',
       winner: bestRowByKey(execRows.map((row) => ({ ...row, value: row.value })), 'value'),
@@ -290,7 +263,7 @@ function buildWinnerCards(data) {
     if (!card.winner) return;
     const value = card.key === 'value' ? card.winner.value : card.winner[card.key];
     if (!Number.isFinite(Number(value))) return;
-    host.appendChild(winnerCard(card.icon, card.title, card.description, { fuzzer: card.winner.fuzzer, value }, card.formatter));
+    host.appendChild(winnerCard(card.title, card.description, { fuzzer: card.winner.fuzzer, value }, card.formatter));
   });
 }
 

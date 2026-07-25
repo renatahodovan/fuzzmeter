@@ -30,7 +30,7 @@ def initialize_env(env: dict[str, str] | None = None) -> None:
         'CXXFLAGS',
         utils.FUZZING_CFLAGS
         + utils.NO_SANITIZER_COMPAT_CFLAGS
-        + [utils.LIBCPLUSPLUS_FLAG, utils.DEFAULT_OPTIMIZATION_LEVEL],
+        + [utils.DEFAULT_OPTIMIZATION_LEVEL],
         env=env,
     )
 

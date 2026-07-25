@@ -13,7 +13,7 @@ import json
 from typing import Any
 
 from ..metrics import dt, median, safe_int
-from ..set_comparison import novelty_scores, relative_containment_matrix
+from ..set_comparison import exclusive_total, novelty_scores, relative_containment_matrix
 
 
 class BugAnalysis:
@@ -84,11 +84,9 @@ class BugAnalysis:
 
         for entry in entries:
             fuzzer = str(entry.get('fuzzer') or '')
-            own_bug_set = bug_sets_by_fuzzer.get(fuzzer, set())
             other_bug_union = set().union(
                 *(bug_sets for other_fuzzer, bug_sets in bug_sets_by_fuzzer.items() if other_fuzzer != fuzzer)
             )
-            exclusive_total = len(own_bug_set - other_bug_union)
             trial_counts: list[int] = []
             for trial in entry.get('trials') or []:
                 trial_id = trial.get('trial_id')
@@ -97,7 +95,7 @@ class BugAnalysis:
                 own_trial_bugs = trial_bug_sets_by_fuzzer.get(fuzzer, {}).get(trial_id, set())
                 trial_counts.append(len(own_trial_bugs - other_bug_union))
             entry['exclusive_bugs'] = {
-                'total': exclusive_total,
+                'total': exclusive_total(fuzzer, bug_sets_by_fuzzer),
                 'min': min(trial_counts) if trial_counts else None,
                 'max': max(trial_counts) if trial_counts else None,
                 'median': median(trial_counts),

@@ -150,28 +150,6 @@ def _collapse_auc_points(points: Sequence[tuple[float, float]]) -> list[tuple[fl
     return collapsed
 
 
-def rankdata_desc(values: Sequence[float | None]) -> list[float | None]:
-    '''Return descending average ranks for numeric values.'''
-
-    indexed = [(i, float(v)) for i, v in enumerate(values) if isinstance(v, (int, float))]
-    if not indexed:
-        return [None] * len(values)
-    indexed.sort(key=lambda item: item[1], reverse=True)
-    ranks: list[float | None] = [None] * len(values)
-    pos = 1
-    i = 0
-    while i < len(indexed):
-        j = i + 1
-        while j < len(indexed) and indexed[j][1] == indexed[i][1]:
-            j += 1
-        avg_rank = (pos + (pos + (j - i) - 1)) / 2.0
-        for k in range(i, j):
-            ranks[indexed[k][0]] = avg_rank
-        pos += j - i
-        i = j
-    return ranks
-
-
 def mann_whitney_u_pvalue(x: Sequence[float], y: Sequence[float]) -> float | None:
     '''Return a normal-approximation two-sided Mann-Whitney U p-value.'''
 
@@ -231,20 +209,3 @@ def vargha_delaney_a12(x: Sequence[float], y: Sequence[float]) -> float | None:
             elif a == b:
                 wins += 0.5
     return float(wins / (len(x) * len(y)))
-
-
-def cliffs_delta(x: Sequence[float], y: Sequence[float]) -> float | None:
-    '''Return Cliff's delta effect size.'''
-
-    x = clean_floats(x)
-    y = clean_floats(y)
-    if not x or not y:
-        return None
-    gt = lt = 0
-    for a in x:
-        for b in y:
-            if a > b:
-                gt += 1
-            elif a < b:
-                lt += 1
-    return float((gt - lt) / (len(x) * len(y)))

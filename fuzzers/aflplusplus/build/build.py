@@ -93,8 +93,7 @@ def build(*args):  # pylint: disable=too-many-branches,too-many-statements
 
     if 'qemu' in build_modes or 'symcc' in build_modes:
         os.environ['CFLAGS'] = ' '.join(utils.NO_SANITIZER_COMPAT_CFLAGS)
-        cxxflags = [utils.LIBCPLUSPLUS_FLAG] + utils.NO_SANITIZER_COMPAT_CFLAGS
-        os.environ['CXXFLAGS'] = ' '.join(cxxflags)
+        os.environ['CXXFLAGS'] = ' '.join(utils.NO_SANITIZER_COMPAT_CFLAGS)
 
     if 'tracepc' in build_modes or 'pcguard' in build_modes:
         os.environ['AFL_LLVM_USE_TRACE_PC'] = '1'

@@ -335,24 +335,6 @@ a:hover{ text-decoration:underline; }
   gap:2px;
   position:relative;
 }
-.winner-icon{
-  width:42px;
-  height:42px;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  color:var(--accent);
-  flex:0 0 auto;
-}
-.winner-icon svg{
-  width:42px;
-  height:42px;
-  stroke:currentColor;
-  fill:none;
-  stroke-width:2.4;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
 .winner-title{
   font-weight:700;
 }

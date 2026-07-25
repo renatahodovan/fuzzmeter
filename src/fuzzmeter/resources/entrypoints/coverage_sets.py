@@ -12,10 +12,13 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import zlib
 
 from pathlib import Path
 from typing import Any, Iterable
+
+LOG = logging.getLogger(__name__)
 
 COVERAGE_METRICS = ('lines', 'branches', 'functions', 'regions')
 
@@ -92,7 +95,11 @@ def write_coverage_sets(path: Path, summary: dict[str, Any], metrics: dict[str, 
 
 def _metric_values(doc: dict[str, Any], metric: str) -> list[int]:
     metrics = doc.get('metrics')
-    values = metrics.get(metric) if isinstance(metrics, dict) else None
+    if not isinstance(metrics, dict):
+        LOG.warning('Coverage set document has no metrics mapping; reading %s as empty.', metric)
+        return []
+
+    values = metrics.get(metric)
 
     if isinstance(values, list):
         return [int(value) for value in values]
@@ -101,11 +108,13 @@ def _metric_values(doc: dict[str, Any], metric: str) -> list[int]:
         decoded_values = _decode_compact_metric(values)
         if decoded_values is not None:
             return decoded_values
-
-    export_obj = doc.get('export') if isinstance(doc.get('export'), dict) else doc
-    if not isinstance(export_obj, dict):
+        LOG.warning('Could not decode the compact coverage set of %s; reading it as empty.', metric)
         return []
-    return _covered_hashes(export_obj, metric)
+
+    # write_coverage_sets always emits every COVERAGE_METRICS entry, and an empty
+    # metric still decodes to an empty list, so reaching here means a broken file.
+    LOG.warning('Coverage set of %s is missing or has type %s; reading it as empty.', metric, type(values).__name__)
+    return []
 
 
 def _covered_hashes(export_obj: dict[str, Any], metric: str) -> list[int]:

@@ -30,7 +30,7 @@ def unique_matrix(labels: list[str], sets: Mapping[str, set[str]], *, note: str 
             else:
                 row.append(len(row_set - sets[col_label]))
         matrix.append(row)
-        unique_counts.append(_exclusive_count(row_label, row_set, sets) if has_all_labels else 0)
+        unique_counts.append(exclusive_total(row_label, sets) if has_all_labels else 0)
 
     return {
         'fuzzers': labels,
@@ -45,7 +45,11 @@ def unique_matrix(labels: list[str], sets: Mapping[str, set[str]], *, note: str 
 
 def exclusive_total(label: str, sets: Mapping[str, set[str]]) -> int:
     '''Return the number of values that only the selected label contains.'''
-    return _exclusive_count(label, sets.get(label), sets)
+    values = sets.get(label)
+    if values is None:
+        return 0
+    other_union = set().union(*(other_values for other, other_values in sets.items() if other != label))
+    return len(values - other_union)
 
 
 def pairwise_matrix(
@@ -147,13 +151,6 @@ def novelty_scores(labels: list[str], trial_sets_by_label: Mapping[str, list[set
             for value in all_values
         )
     return scores
-
-
-def _exclusive_count(label: str, values: set[str] | None, sets: Mapping[str, set[str]]) -> int:
-    if values is None:
-        return 0
-    other_union = set().union(*(values for other, values in sets.items() if other != label))
-    return len(values - other_union)
 
 
 def _sets_by_label(labels: list[str], trial_sets_by_label: Mapping[str, list[set[str]]]) -> dict[str, list[set[str]]]:

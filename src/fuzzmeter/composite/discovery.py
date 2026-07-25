@@ -96,14 +96,6 @@ def read_measurements(db_path: Path, source_id: str) -> list[CompositeMeasuremen
     ]
 
 
-def read_measurement(db_path: Path, key: CompositeMeasurementKey) -> CompositeMeasurement | None:
-    '''Read one descriptor row by its measurement key.'''
-    for measurement in read_measurements(db_path, key.source_id):
-        if measurement.key == key:
-            return measurement
-    return None
-
-
 def _record_to_measurement(record: db_metadata.MetadataRecord, db_path: Path, source_id: str) -> CompositeMeasurement:
     metadata = MetadataTriplet.from_json(record.metadata)
     if not metadata.environment_digest:

@@ -21,7 +21,6 @@ from fuzzmeter.db.snapshot import CoverageSummary, upsert_agg_snapshot, update_a
 from fuzzmeter.reporting.analyzers import coverage_curves, coverage_matrices
 from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.metrics import (
-    cliffs_delta,
     clean_floats,
     dt,
     mann_whitney_u_pvalue,
@@ -30,7 +29,6 @@ from fuzzmeter.reporting.metrics import (
     median,
     minimum,
     pct,
-    rankdata_desc,
     safe_int,
     trapezoid_auc,
     vargha_delaney_a12,
@@ -116,10 +114,7 @@ class ReportingMetricsTest(unittest.TestCase):
         self.assertEqual(0.0, trapezoid_auc([(0, 7)]))
         self.assertIsNone(trapezoid_auc([]))
 
-    def test_rank_and_pairwise_statistics_preserve_tie_behavior(self) -> None:
-        self.assertEqual([4.0, None, 1.5, 1.5, 3.0], rankdata_desc([10, None, 30, 30, 20]))
-        self.assertEqual([None, None], rankdata_desc([None, '4']))
-
+    def test_pairwise_statistics_preserve_tie_behavior(self) -> None:
         self.assertAlmostEqual(0.12118327283746333, mann_whitney_u_pvalue([1, 2, 3], [3, 4, 5]))
         self.assertAlmostEqual(0.6192567541768622, mann_whitney_u_pvalue([1, 1, 2], [1, 2, 2]))
         self.assertIsNone(mann_whitney_u_pvalue([1], [2, 3]))
@@ -127,8 +122,6 @@ class ReportingMetricsTest(unittest.TestCase):
 
         self.assertEqual(0.5, vargha_delaney_a12([1, 2, 3], [2, 2]))
         self.assertIsNone(vargha_delaney_a12([], [2]))
-        self.assertEqual(0.0, cliffs_delta([1, 2, 3], [2, 2]))
-        self.assertIsNone(cliffs_delta([1], []))
 
 
 class CoverageReportingTest(unittest.TestCase):

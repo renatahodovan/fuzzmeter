@@ -212,7 +212,7 @@ class ReportFrontendTest(unittest.TestCase):
     def test_report_statistical_and_domain_helpers_are_dom_independent(self) -> None:
         script = r"""
             import assert from 'node:assert/strict';
-            import { cleanFloats, cliffsDelta, median, quantile } from './src/fuzzmeter/web/static/report/stats.js';
+            import { cleanFloats, median, quantile } from './src/fuzzmeter/web/static/report/stats.js';
             import {
               distributionDensitySegments,
               shouldDrawDistributionViolin,
@@ -227,7 +227,6 @@ class ReportFrontendTest(unittest.TestCase):
             assert.deepEqual(cleanFloats([1, '2', null, Number.NaN, 'x']), [1, 2]);
             assert.equal(quantile([1, 3, 5], 0.5), 3);
             assert.equal(median([5, 1, 3]), 3);
-            assert.equal(cliffsDelta([3, 4], [1, 2]), 1);
             assert.equal(pctValue(3, 4), 75);
 
             const fuzzer = {

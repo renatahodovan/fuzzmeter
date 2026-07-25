@@ -97,21 +97,6 @@ export function mannWhitneyUPValue(xValues, yValues) {
   return Math.max(0, Math.min(1, 2 * Math.min(pOne, 1 - pOne)));
 }
 
-export function cliffsDelta(xValues, yValues) {
-  const x = cleanFloats(xValues);
-  const y = cleanFloats(yValues);
-  if (!x.length || !y.length) return null;
-  let gt = 0;
-  let lt = 0;
-  x.forEach((a) => {
-    y.forEach((b) => {
-      if (a > b) gt += 1;
-      else if (a < b) lt += 1;
-    });
-  });
-  return (gt - lt) / (x.length * y.length);
-}
-
 export function erf(value) {
   const sign = value < 0 ? -1 : 1;
   const x = Math.abs(value);

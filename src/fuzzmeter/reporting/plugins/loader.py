@@ -46,12 +46,6 @@ class ReportingPluginLoader:
     def __init__(self, fuzzers_root: Path) -> None:
         self.fuzzers_root = Path(fuzzers_root)
 
-    def load(self, fuzzer_name: str) -> ReportingPlugin:
-        '''Load a reporting plugin for one fuzzer.'''
-
-        plugin, _ = self.load_first([fuzzer_name])
-        return plugin
-
     def load_first(self, fuzzer_names: Sequence[str]) -> tuple[ReportingPlugin, str | None]:
         '''Load the first available reporting plugin from the candidate fuzzer names.'''
 

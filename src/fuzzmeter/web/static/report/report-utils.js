@@ -54,7 +54,6 @@ import {
 import { FM_APP, THEME_STORAGE_KEY } from './state.js';
 import {
   cleanFloats,
-  cliffsDelta,
   erf,
   mannWhitneyUPValue,
   median,
@@ -79,6 +78,6 @@ export { COVERAGE_METRICS, FM_PALETTE, VALUE_OPTIONS, assignFuzzerColors, buildC
 export { configPayload, dedupeBugCount, distributionValues, finalMetricValue, fuzzerColor, hashString };
 export { metricCovKey, metricLabel, metricTotalKey, pctValue, per10kExec };
 export { FM_APP, THEME_STORAGE_KEY };
-export { cleanFloats, cliffsDelta, erf, mannWhitneyUPValue, median, quantile, rankdataDesc };
+export { cleanFloats, erf, mannWhitneyUPValue, median, quantile, rankdataDesc };
 export { applySearch, applyTheme, createConfigLink, createFuzzerNameButton, ensureConfigModal };
 export { openConfigModal, preferredTheme, renderAggregateCell, setTooltip };

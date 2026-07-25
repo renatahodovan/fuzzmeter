@@ -242,18 +242,6 @@ def _compute_relcov_matrix_for_metric(
     }
 
 
-def _coverage_by_fuzzer(
-    fuzzers: list[str],
-    trial_coverage_sets: dict[str, list[set[str]]],
-) -> dict[str, list[set[str]]]:
-    out: dict[str, list[set[str]]] = {}
-    for fuzzer in fuzzers:
-        trial_sets = [set(value) for value in trial_coverage_sets.get(fuzzer, [])]
-        if trial_sets:
-            out[fuzzer] = trial_sets
-    return out
-
-
 def _single_metric_matrix_group(matrix: dict[str, Any]) -> dict[str, Any]:
     '''Wrap a branch matrix in the report metric-group shape.'''
 

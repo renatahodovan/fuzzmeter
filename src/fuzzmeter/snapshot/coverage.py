@@ -269,8 +269,7 @@ def bootstrap_from_seed_baseline(
     for name in (
         'summary.json',
         'coverage-sets.json',
-        'merge_run_diagnostics.txt',
-        'input_exec_diagnostics.txt',
+        'input_exec_diagnostics.json',
     ):
         src = base_root / name
         dst = latest_root / name
