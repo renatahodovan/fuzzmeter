@@ -31,7 +31,11 @@ def _is_locked_error(e: Exception) -> bool:
 def open_readonly_connection(path: Path) -> sqlite3.Connection:
     '''Open a read-only SQLite connection for reporting and web views.'''
 
-    uri = f'file:{Path(path).as_posix()}?mode=ro'
+    path = Path(path)
+    uri = f'file:{path.as_posix()}?mode=ro'
+    # Immutable mode avoids sidecars for finished runs, but would hide live WAL rows.
+    if not Path(f'{path}-wal').exists():
+        uri += '&immutable=1'
     con = sqlite3.connect(uri, uri=True, check_same_thread=False)
     con.row_factory = sqlite3.Row
     con.execute('PRAGMA foreign_keys=ON')

@@ -327,6 +327,47 @@ class DatabaseBehaviorTest(unittest.TestCase):
 
         self.assertEqual(1, foreign_keys)
 
+    def test_readonly_connection_does_not_create_sidecars_for_finished_wal_db(self) -> None:
+        '''Finished WAL databases remain readable without filesystem writes.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            db_path = root / 'fuzzmeter.db'
+            with _open_test_db(db_path) as db:
+                db.con.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+            for suffix in ('-wal', '-shm'):
+                Path(f'{db_path}{suffix}').unlink(missing_ok=True)
+            before_mtime = root.stat().st_mtime_ns
+
+            con = open_readonly_connection(db_path)
+            try:
+                run_id = con.execute('SELECT run_id FROM runs').fetchone()[0]
+            finally:
+                con.close()
+
+            self.assertEqual('run', run_id)
+            self.assertEqual(before_mtime, root.stat().st_mtime_ns)
+            self.assertEqual(['fuzzmeter.db'], [path.name for path in root.iterdir()])
+
+    def test_readonly_connection_reads_live_wal_rows(self) -> None:
+        '''Live reporting reads include rows that have not left the WAL.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / 'fuzzmeter.db'
+            db = DB.open(db_path)
+            try:
+                ensure_schema(db)
+                db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('live', 1, 'config'))
+                self.assertTrue(Path(f'{db_path}-wal').is_file())
+
+                con = open_readonly_connection(db_path)
+                try:
+                    run_id = con.execute('SELECT run_id FROM runs').fetchone()[0]
+                finally:
+                    con.close()
+            finally:
+                db.close()
+
+        self.assertEqual('live', run_id)
+
     def test_reporting_run_summary_counts_current_schema_rows(self) -> None:
         '''ReportingDB exposes current-schema run summary counts for the web UI.'''
         with tempfile.TemporaryDirectory() as tmp_dir:

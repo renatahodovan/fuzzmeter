@@ -188,6 +188,7 @@ def _updated_ts(run_dir: Path) -> int | None:
 
 def _list_run_entry(run_dir: Path) -> RunEntry:
     run_dir = Path(run_dir).resolve()
+    updated_ts = _updated_ts(run_dir)
     run_id = run_dir.name
     has_static_report = (run_dir / 'report' / 'report.html').is_file()
     db_path = run_dir / 'fuzzmeter.db'
@@ -213,7 +214,7 @@ def _list_run_entry(run_dir: Path) -> RunEntry:
         run_id=run_id,
         path=run_dir,
         has_static_report=has_static_report,
-        updated_ts=_updated_ts(run_dir),
+        updated_ts=updated_ts,
         summary=summary,
         error=error,
     )

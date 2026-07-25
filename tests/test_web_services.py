@@ -18,6 +18,7 @@ from unittest.mock import patch
 from fuzzmeter.composite import CompositeMeasurement, CompositeMeasurementKey, CompositeViewStore, MetadataTriplet
 from fuzzmeter.composite.registry import selection_from_key
 from fuzzmeter.db import DB, ensure_schema
+from fuzzmeter.db.base import open_readonly_connection
 from fuzzmeter.web.services import composite_service
 from fuzzmeter.web.services.file_service import (
     require_run_dir,
@@ -123,6 +124,27 @@ class WebRunsServiceTest(unittest.TestCase):
 
         self.assertEqual(['second', 'first', 'third'], [entry.run_id for entry in entries])
         self.assertEqual(50, entries[0].updated_ts)
+
+    def test_list_run_entry_captures_updated_ts_before_db_access(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            run_dir = root / 'run'
+            run_dir.mkdir()
+            _build_run_db(run_dir, run_id='run', created_ts=1)
+            _touch(run_dir / 'fuzzmeter.db', 20)
+            _touch(run_dir, 10)
+
+            def open_and_touch(db_path: Path):
+                con = open_readonly_connection(db_path)
+                _touch(run_dir, 100)
+                return con
+
+            with patch('fuzzmeter.db.report_views.open_readonly_connection', side_effect=open_and_touch):
+                entry = list_runs(root)[0]
+
+            self.assertEqual(100, int(run_dir.stat().st_mtime))
+
+        self.assertEqual(20, entry.updated_ts)
 
     def test_db_summary_inferred_run_id_and_config_override_filesystem_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
