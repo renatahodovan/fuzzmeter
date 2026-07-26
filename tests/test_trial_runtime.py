@@ -18,6 +18,7 @@ from pathlib import Path
 
 from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.trial.models import TrialConfig, TrialImages
+from tests.support.trials import make_trial_config
 
 
 class _StoppedDocker:
@@ -56,7 +57,7 @@ class _DockerRuntimeStub:
 
 
 def _trial_config(root: Path) -> TrialConfig:
-    return TrialConfig(
+    return make_trial_config(
         fuzzer='aflplusplus',
         fuzzer_impl='aflplusplus',
         benchmark='sqlite3',

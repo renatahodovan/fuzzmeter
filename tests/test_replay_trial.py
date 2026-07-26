@@ -21,6 +21,7 @@ from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.trial.models import TrialConfig, TrialImages
 from fuzzmeter.trial.replay import prepare_replay_trial
+from tests.support.trials import make_trial_config
 
 
 @dataclass(frozen=True)
@@ -29,7 +30,7 @@ class _DockerRuntimeStub:
 
 
 def _trial_config(root: Path, *, replay_dir: Path) -> TrialConfig:
-    return TrialConfig(
+    return make_trial_config(
         fuzzer='aflplusplus_replay',
         fuzzer_impl='aflplusplus',
         benchmark='jerryscript',

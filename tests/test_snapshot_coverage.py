@@ -17,7 +17,8 @@ from unittest.mock import Mock, patch
 from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.snapshot.coverage import process_snapshot_coverage
 from fuzzmeter.snapshot.trial_snapshot import TrialCoverageSnapshot
-from fuzzmeter.trial.models import TrialConfig, TrialImages, TrialInstance, TrialLayout
+from fuzzmeter.trial.models import TrialImages, TrialInstance, TrialLayout
+from tests.support.trials import make_trial_config
 
 
 class SnapshotCoverageTest(unittest.TestCase):
@@ -58,7 +59,7 @@ class SnapshotCoverageTest(unittest.TestCase):
 
 
 def _trial_instance(root: Path) -> TrialInstance:
-    config = TrialConfig(
+    config = make_trial_config(
         fuzzer='fuzzer',
         fuzzer_impl='fuzzer',
         benchmark='bench',

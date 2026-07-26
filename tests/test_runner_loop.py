@@ -36,10 +36,11 @@ from fuzzmeter.snapshot.collector import collect_snapshots
 from fuzzmeter.snapshot.scheduler import ReplaySnapshotScheduler, SnapshotScheduler
 from fuzzmeter.snapshot.trial_snapshot import TrialCoverageSnapshot, TrialCrashSnapshot
 from fuzzmeter.trial.models import ReplayTrialInstance, TrialConfig, TrialImages, TrialInstance, TrialLayout
+from tests.support.trials import make_trial_config
 
 
 def _trial_config(root: Path, *, rep_idx: int = 0, replay_dir: Path | None = None) -> TrialConfig:
-    return TrialConfig(
+    return make_trial_config(
         fuzzer='aflplusplus',
         fuzzer_impl='aflplusplus',
         benchmark='bench',

@@ -23,9 +23,10 @@ from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.repro.ingest import DetectedFile, detect_new_files, prepare_snapshot_inputs
 from fuzzmeter.snapshot.collector import _collect_trial_snapshot, _detect_replay_files
 from fuzzmeter.snapshot.scheduler import SnapshotScheduler
-from fuzzmeter.trial.models import ReplayTrialInstance, TrialConfig, TrialImages, TrialInstance, TrialLayout
+from fuzzmeter.trial.models import ReplayTrialInstance, TrialImages, TrialInstance, TrialLayout
 from fuzzers.aflplusplus.run import fuzz as aflplusplus_fuzzer
 from fuzzers.libfuzzer.run import fuzz as libfuzzer_fuzzer
+from tests.support.trials import make_trial_config
 
 
 def _active_trial(
@@ -36,7 +37,7 @@ def _active_trial(
     rep_idx: int = 0,
 ) -> TrialInstance:
     trial_root = root / f'trial_{db_id}'
-    config = TrialConfig(
+    config = make_trial_config(
         fuzzer='aflplusplus',
         fuzzer_impl='aflplusplus',
         benchmark='bench',

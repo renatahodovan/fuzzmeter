@@ -16,13 +16,11 @@ import unittest
 from fuzzmeter.composite import (
     COMPOSITE_ORIGIN_FRESH,
     COMPOSITE_ORIGIN_HISTORICAL,
-    CompositeMeasurement,
-    CompositeMeasurementKey,
-    MetadataTriplet,
 )
 from fuzzmeter.composite.registry import selection_from_key
 from fuzzmeter.reporting.composite import build_composite_payload
-from tests.test_reporting_payload import _build_run_fixture
+from tests.support.composite import make_measurement
+from tests.support.dbs import reporting_run_db
 
 
 class CompositeReportingTest(unittest.TestCase):
@@ -36,11 +34,25 @@ class CompositeReportingTest(unittest.TestCase):
             run_b = root / 'run-b'
             run_a.mkdir()
             run_b.mkdir()
-            _build_run_fixture(run_a)
-            _build_run_fixture(run_b)
+            reporting_run_db(run_a)
+            reporting_run_db(run_b)
 
-            first = _measurement(run_a, source_id='run-a')
-            second = _measurement(run_b, source_id='run-b')
+            first = make_measurement(
+                source_id='run-a',
+                source_path=run_a,
+                environment={},
+                source={},
+                runtime_seconds=60,
+                repetitions=1,
+            )
+            second = make_measurement(
+                source_id='run-b',
+                source_path=run_b,
+                environment={},
+                source={},
+                runtime_seconds=60,
+                repetitions=1,
+            )
             payload = build_composite_payload(
                 [
                     (selection_from_key(first.key, origin=COMPOSITE_ORIGIN_FRESH), first),
@@ -63,19 +75,21 @@ class CompositeReportingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / 'run-a'
             run_dir.mkdir()
-            _build_run_fixture(run_dir)
-            measurement = _measurement(run_dir, source_id='run-a')
-            missing_fuzzer = CompositeMeasurement(
-                key=CompositeMeasurementKey(
-                    source_id='run-a',
-                    run_id='run',
-                    fuzzer='missing',
-                    benchmark='bench',
-                    fuzz_target='target',
-                ),
+            reporting_run_db(run_dir)
+            measurement = make_measurement(
+                source_id='run-a',
                 source_path=run_dir,
-                db_path=run_dir / 'fuzzmeter.db',
-                metadata=MetadataTriplet(config={'benchmark': 'bench', 'fuzz_target': 'target'}),
+                environment={},
+                source={},
+                runtime_seconds=60,
+                repetitions=1,
+            )
+            missing_fuzzer = make_measurement(
+                source_id='run-a',
+                fuzzer='missing',
+                source_path=run_dir,
+                environment={},
+                source={},
                 runtime_seconds=60,
                 repetitions=1,
             )
@@ -91,24 +105,6 @@ class CompositeReportingTest(unittest.TestCase):
         self.assertEqual('skipped', skipped['status'])
         self.assertIn('Fuzzer data not found', skipped['error'])
         self.assertEqual('missing', skipped['source_fuzzer'])
-
-
-def _measurement(run_dir: Path, *, source_id: str) -> CompositeMeasurement:
-    key = CompositeMeasurementKey(
-        source_id=source_id,
-        run_id='run',
-        fuzzer='fz',
-        benchmark='bench',
-        fuzz_target='target',
-    )
-    return CompositeMeasurement(
-        key=key,
-        source_path=run_dir,
-        db_path=run_dir / 'fuzzmeter.db',
-        metadata=MetadataTriplet(config={'benchmark': 'bench', 'fuzz_target': 'target'}),
-        runtime_seconds=60,
-        repetitions=1,
-    )
 
 
 if __name__ == '__main__':

@@ -17,6 +17,7 @@ from unittest.mock import patch
 from fuzzmeter.artifacts.builder import _build_images
 from fuzzmeter.config import CampaignCase, CampaignConfig, CampaignSettings
 from fuzzmeter.paths import ExternalRoots
+from tests.support.bake import target_block
 
 
 class ArtifactBuilderTest(unittest.TestCase):
@@ -101,7 +102,7 @@ class ArtifactBuilderTest(unittest.TestCase):
             self.assertFalse((plain_build_context / 'other').exists())
 
             bake_hcl = (run_dir / 'bake.hcl').read_text(encoding='utf-8')
-            plain_block = _target_block(bake_hcl, 'runner_plain_bench-target')
+            plain_block = target_block(bake_hcl, 'runner_plain_bench-target')
             self.assertIn(f'fuzzer_build_sources = "{plain_build_context.resolve()}"', plain_block)
             self.assertNotIn(str((run_dir / 'fuzzer_resources' / 'build' / 'other').resolve()), plain_block)
 
@@ -160,12 +161,6 @@ def _write_repo_sources(
     target_dir = repo_root / 'targets' / 'bench'
     target_dir.mkdir(parents=True)
     (target_dir / 'Dockerfile').write_text('FROM scratch\n', encoding='utf-8')
-
-
-def _target_block(bake_hcl: str, target: str) -> str:
-    start = bake_hcl.index(f'target "{target}" {{')
-    end = bake_hcl.index('\n}\n', start)
-    return bake_hcl[start : end + 3]
 
 
 if __name__ == '__main__':

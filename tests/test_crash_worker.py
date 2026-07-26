@@ -9,20 +9,16 @@
 
 from __future__ import annotations
 
-import importlib
 import json
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
-ENTRYPOINTS_DIR = Path(__file__).resolve().parents[1] / 'src' / 'fuzzmeter' / 'resources' / 'entrypoints'
-if str(ENTRYPOINTS_DIR) not in sys.path:
-    sys.path.insert(0, str(ENTRYPOINTS_DIR))
+from tests.support.entrypoints import load_entrypoint
 
-crash_worker = importlib.import_module('crash_worker')
+crash_worker = load_entrypoint('crash_worker')
 
 
 class CrashWorkerTest(unittest.TestCase):

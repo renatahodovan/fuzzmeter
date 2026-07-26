@@ -15,9 +15,7 @@ import tempfile
 import unittest
 
 from fuzzmeter.composite.discovery import discover_measurements
-from fuzzmeter.db import ensure_schema, open_db
-from fuzzmeter.db import metadata as db_metadata
-from fuzzmeter.db import runs as db_runs
+from tests.support.dbs import measurement_run_db
 
 
 class CompositeDiscoveryTest(unittest.TestCase):
@@ -27,11 +25,11 @@ class CompositeDiscoveryTest(unittest.TestCase):
         '''Only direct child run directories are scanned and invalid DBs are isolated.'''
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_run_db(root / 'run-a', source_id='run-a')
+            measurement_run_db(root / 'run-a', source_id='run-a')
             (root / 'broken').mkdir()
             nested_parent = root / 'nested'
             nested_parent.mkdir()
-            _write_run_db(nested_parent / 'run-b', source_id='run-b')
+            measurement_run_db(nested_parent / 'run-b', source_id='run-b')
 
             discovery = discover_measurements(root)
 
@@ -63,7 +61,7 @@ class CompositeDiscoveryTest(unittest.TestCase):
         '''Unsupported explicit metadata versions are reported instead of guessed from columns.'''
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            _write_run_db(root / 'future-run', source_id='future-run')
+            measurement_run_db(root / 'future-run', source_id='future-run')
             with sqlite3.connect(root / 'future-run' / 'fuzzmeter.db') as con:
                 con.execute('UPDATE metadata SET metadata_schema_version=?', (999,))
                 con.commit()
@@ -73,34 +71,6 @@ class CompositeDiscoveryTest(unittest.TestCase):
         self.assertEqual((), discovery.measurements)
         self.assertEqual(1, len(discovery.invalid_sources))
         self.assertIn('Unsupported composite metadata schema version: 999', discovery.invalid_sources[0].error)
-
-
-def _write_run_db(run_dir: Path, *, source_id: str, fuzzer: str = 'libfuzzer') -> None:
-    run_dir.mkdir(parents=True, exist_ok=True)
-    with open_db(run_dir / 'fuzzmeter.db') as db:
-        ensure_schema(db)
-        db_runs.upsert_run(db, run_id=source_id, created_ts=100, config_src='config')
-        db_metadata.upsert_metadata(
-            db,
-            db_metadata.MetadataRecord(
-                run_id=source_id,
-                fuzzer=fuzzer,
-                benchmark='zlib',
-                fuzz_target='compress',
-                repetitions=1,
-                runtime_seconds=60,
-                environment_digest='env',
-                config_digest='cfg',
-                source_digest='src',
-                metadata={
-                    'environment': {'host': {'system': 'test'}},
-                    'config': {'benchmark': 'zlib', 'fuzz_target': 'compress'},
-                    'source': {},
-                    'digests': {'environment': 'env', 'config': 'cfg', 'source': 'src'},
-                },
-                created_at=100,
-            ),
-        )
 
 
 if __name__ == '__main__':

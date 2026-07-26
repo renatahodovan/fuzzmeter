@@ -18,12 +18,19 @@ from fuzzmeter.composite import (
     INCOMPATIBLE,
     RISKY,
     CompositeMeasurement,
-    CompositeMeasurementKey,
     MetadataTriplet,
     compare_metadata,
 )
 from fuzzmeter.composite.registry import selection_from_key
 from fuzzmeter.web.services.composite_service import _compatibility_for
+from tests.support.composite import make_measurement
+
+_MEASUREMENT_CONFIG = {
+    'benchmark': 'bench',
+    'fuzz_target': 'target',
+    'input_mode': 'file',
+    'timeout': 1.0,
+}
 
 
 class CompositeCompatibilityTest(unittest.TestCase):
@@ -100,8 +107,22 @@ class CompositeCompatibilityTest(unittest.TestCase):
 
     def test_fresh_target_reference_is_preferred(self) -> None:
         '''Fresh measurements are the target reference for historical rows.'''
-        fresh = _measurement('fresh', origin=COMPOSITE_ORIGIN_FRESH, environment={'host': {'kernel': '6.8'}})
-        historical = _measurement('hist', environment={'host': {'kernel': '6.9'}})
+        fresh = make_measurement(
+            source_id='fresh',
+            source_path=Path('/tmp/fresh'),
+            metadata=_metadata(environment={'host': {'kernel': '6.8'}}, config=_MEASUREMENT_CONFIG),
+            runtime_seconds=0,
+            repetitions=0,
+            tags=(COMPOSITE_ORIGIN_FRESH,),
+        )
+        historical = make_measurement(
+            source_id='hist',
+            source_path=Path('/tmp/hist'),
+            metadata=_metadata(environment={'host': {'kernel': '6.9'}}, config=_MEASUREMENT_CONFIG),
+            runtime_seconds=0,
+            repetitions=0,
+            tags=('historical',),
+        )
 
         result = _compatibility_for(_entries(fresh, historical), historical)
 
@@ -111,8 +132,22 @@ class CompositeCompatibilityTest(unittest.TestCase):
 
     def test_historical_target_reference_falls_back_to_first_selection(self) -> None:
         '''Historical-only comparisons use the first same-target selection as reference.'''
-        first = _measurement('hist-a', environment={'host': {'kernel': '6.8'}})
-        second = _measurement('hist-b', environment={'host': {'kernel': '6.9'}})
+        first = make_measurement(
+            source_id='hist-a',
+            source_path=Path('/tmp/hist-a'),
+            metadata=_metadata(environment={'host': {'kernel': '6.8'}}, config=_MEASUREMENT_CONFIG),
+            runtime_seconds=0,
+            repetitions=0,
+            tags=('historical',),
+        )
+        second = make_measurement(
+            source_id='hist-b',
+            source_path=Path('/tmp/hist-b'),
+            metadata=_metadata(environment={'host': {'kernel': '6.9'}}, config=_MEASUREMENT_CONFIG),
+            runtime_seconds=0,
+            repetitions=0,
+            tags=('historical',),
+        )
 
         result = _compatibility_for(_entries(first, second), second)
 
@@ -121,16 +156,29 @@ class CompositeCompatibilityTest(unittest.TestCase):
 
     def test_cross_fuzzer_source_metadata_does_not_make_candidate_risky(self) -> None:
         '''Fuzzer metadata differences do not create risk signals.'''
-        fresh = _measurement(
-            'fresh',
-            origin=COMPOSITE_ORIGIN_FRESH,
+        fresh = make_measurement(
+            source_id='fresh',
+            source_path=Path('/tmp/fresh'),
             fuzzer='afl',
-            source=_source(target_revision='abc', fuzzer_revision='afl'),
+            metadata=_metadata(
+                config=_MEASUREMENT_CONFIG,
+                source=_source(target_revision='abc', fuzzer_revision='afl'),
+            ),
+            runtime_seconds=0,
+            repetitions=0,
+            tags=(COMPOSITE_ORIGIN_FRESH,),
         )
-        historical = _measurement(
-            'hist',
+        historical = make_measurement(
+            source_id='hist',
+            source_path=Path('/tmp/hist'),
             fuzzer='grafl',
-            source=_source(target_revision='abc', fuzzer_revision='grafl'),
+            metadata=_metadata(
+                config=_MEASUREMENT_CONFIG,
+                source=_source(target_revision='abc', fuzzer_revision='grafl'),
+            ),
+            runtime_seconds=0,
+            repetitions=0,
+            tags=('historical',),
         )
 
         result = _compatibility_for(_entries(fresh, historical), historical)
@@ -141,7 +189,14 @@ class CompositeCompatibilityTest(unittest.TestCase):
 
     def test_no_external_reference_is_reported_as_note(self) -> None:
         '''A single measurement has no external comparison basis.'''
-        measurement = _measurement('only')
+        measurement = make_measurement(
+            source_id='only',
+            source_path=Path('/tmp/only'),
+            metadata=_metadata(config=_MEASUREMENT_CONFIG),
+            runtime_seconds=0,
+            repetitions=0,
+            tags=('historical',),
+        )
 
         result = _compatibility_for(_entries(measurement), measurement)
 
@@ -173,34 +228,6 @@ def _source(*, target_revision: str = 'abc', fuzzer_revision: str = 'def') -> di
         'target_source': {'status': 'ok', 'data': {'revision': target_revision}},
         'fuzzer_version': {'status': 'ok', 'data': {'revision': fuzzer_revision}},
     }
-
-
-def _measurement(
-    source_id: str,
-    *,
-    origin: str = 'historical',
-    fuzzer: str = 'fz',
-    environment: dict | None = None,
-    source: dict | None = None,
-) -> CompositeMeasurement:
-    key = CompositeMeasurementKey(
-        source_id=source_id,
-        run_id='run',
-        fuzzer=fuzzer,
-        benchmark='bench',
-        fuzz_target='target',
-    )
-    return CompositeMeasurement(
-        key=key,
-        source_path=Path('/tmp') / source_id,
-        db_path=Path('/tmp') / source_id / 'fuzzmeter.db',
-        metadata=_metadata(
-            environment=environment or {'host': {'kernel': '6.8'}},
-            config={'benchmark': 'bench', 'fuzz_target': 'target', 'input_mode': 'file', 'timeout': 1.0},
-            source=source or _source(),
-        ),
-        tags=(origin,),
-    )
 
 
 def _entries(*measurements: CompositeMeasurement):

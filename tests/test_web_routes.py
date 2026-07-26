@@ -17,10 +17,9 @@ try:
     from flask import Flask
 
     from fuzzmeter.composite import CompositeRegistry, CompositeViewStore
-    from fuzzmeter.db import ensure_schema, metadata as db_metadata, open_db
-    from fuzzmeter.db import runs as db_runs
     from fuzzmeter.web.app import resolve_runs_root
     from fuzzmeter.web.routes import composite_bp, files_bp, reports_bp, runs_bp
+    from tests.support.dbs import measurement_run_db
 except ModuleNotFoundError as exc:
     FLASK_IMPORT_ERROR = exc
 else:
@@ -130,7 +129,14 @@ class WebRoutesTest(unittest.TestCase):
     def test_composite_measurements_endpoint_has_nested_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
-            _write_measurement_db(root / 'run-a')
+            measurement_run_db(
+                root / 'run-a',
+                source_id='run-a',
+                fuzzer='fz',
+                benchmark='bench',
+                fuzz_target='target',
+                environment={},
+            )
             response = _app(root).test_client().get('/api/composite/measurements')
 
         self.assertEqual(200, response.status_code)
@@ -145,7 +151,14 @@ class WebRoutesTest(unittest.TestCase):
             stale_root = root / 'stale'
             runs_root = root / 'runs'
             stale_root.mkdir()
-            _write_measurement_db(runs_root / 'run-a')
+            measurement_run_db(
+                runs_root / 'run-a',
+                source_id='run-a',
+                fuzzer='fz',
+                benchmark='bench',
+                fuzz_target='target',
+                environment={},
+            )
             app = _app(stale_root)
             app.config['RUNS_ROOT_PROVIDER'] = lambda: runs_root
 
@@ -184,34 +197,6 @@ def _app(runs_root: Path) -> Flask:
     app.register_blueprint(composite_bp)
     app.register_blueprint(files_bp)
     return app
-
-
-def _write_measurement_db(run_dir: Path) -> None:
-    run_dir.mkdir(parents=True, exist_ok=True)
-    with open_db(run_dir / 'fuzzmeter.db') as db:
-        ensure_schema(db)
-        db_runs.upsert_run(db, run_id='run-a', created_ts=100, config_src='config')
-        db_metadata.upsert_metadata(
-            db,
-            db_metadata.MetadataRecord(
-                run_id='run-a',
-                fuzzer='fz',
-                benchmark='bench',
-                fuzz_target='target',
-                repetitions=1,
-                runtime_seconds=60,
-                environment_digest='env',
-                config_digest='cfg',
-                source_digest='src',
-                metadata={
-                    'environment': {},
-                    'config': {'benchmark': 'bench', 'fuzz_target': 'target'},
-                    'source': {},
-                    'digests': {'environment': 'env', 'config': 'cfg', 'source': 'src'},
-                },
-                created_at=100,
-            ),
-        )
 
 
 if __name__ == '__main__':

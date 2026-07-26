@@ -18,6 +18,7 @@ from unittest.mock import patch
 from fuzzmeter.config import CampaignCase
 from fuzzmeter.docker.bake import _entry_args, fuzzer_source_dirs, generate_run_bake_hcl
 from fuzzmeter.docker.runtime import DockerRuntime
+from tests.support.bake import target_block
 
 
 class DockerHelperTest(unittest.TestCase):
@@ -255,7 +256,7 @@ class DockerHelperTest(unittest.TestCase):
                 fuzzmeter_resources=runtime_root,
             )
 
-        libfuzzer_block = _target_block(bake_hcl, 'runner_libfuzzer_bench-target')
+        libfuzzer_block = target_block(bake_hcl, 'runner_libfuzzer_bench-target')
         self.assertIn(f'fuzzer_build_sources = "{build_sources["libfuzzer"].resolve()}"', libfuzzer_block)
         self.assertIn(f'fuzzer_run_sources = "{run_sources["libfuzzer"].resolve()}"', libfuzzer_block)
         self.assertNotIn(str(build_sources['afl'].resolve()), libfuzzer_block)
@@ -345,7 +346,7 @@ class DockerHelperTest(unittest.TestCase):
                     fuzzmeter_resources=runtime_root,
                 )
 
-        local_block = _target_block(bake_hcl, 'fuzzer_builder_local')
+        local_block = target_block(bake_hcl, 'fuzzer_builder_local')
         self.assertIn(f'context    = "{local_repo.resolve()}"', local_block)
         self.assertIn(
             f'dockerfile = "{(fuzzers_root / "local" / "build" / "Dockerfile").resolve()}"',
@@ -413,16 +414,10 @@ class DockerHelperTest(unittest.TestCase):
                     fuzzmeter_resources=runtime_root,
                 )
 
-        local_block = _target_block(bake_hcl, 'fuzzer_builder_local')
+        local_block = target_block(bake_hcl, 'fuzzer_builder_local')
         self.assertIn(f'context    = "{(fuzzers_root / "local" / "build").resolve()}"', local_block)
         self.assertIn('dockerfile = "Dockerfile"', local_block)
         self.assertNotIn('FM_LOCAL_REPO = "1"', local_block)
-
-
-def _target_block(bake_hcl: str, target: str) -> str:
-    start = bake_hcl.index(f'target "{target}" {{')
-    end = bake_hcl.index('\n}\n', start)
-    return bake_hcl[start : end + 3]
 
 
 if __name__ == '__main__':

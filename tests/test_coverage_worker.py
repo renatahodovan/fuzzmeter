@@ -9,21 +9,17 @@
 
 from __future__ import annotations
 
-import importlib
 import json
 import subprocess
-import sys
 import tempfile
 import unittest
 
 from pathlib import Path
 from unittest.mock import patch
 
-ENTRYPOINTS_DIR = Path(__file__).resolve().parents[1] / 'src' / 'fuzzmeter' / 'resources' / 'entrypoints'
-if str(ENTRYPOINTS_DIR) not in sys.path:
-    sys.path.insert(0, str(ENTRYPOINTS_DIR))
+from tests.support.entrypoints import load_entrypoint
 
-coverage_worker = importlib.import_module('coverage_worker')
+coverage_worker = load_entrypoint('coverage_worker')
 
 
 class CoverageWorkerTest(unittest.TestCase):

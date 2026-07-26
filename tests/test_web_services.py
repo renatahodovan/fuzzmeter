@@ -15,9 +15,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from fuzzmeter.composite import CompositeMeasurement, CompositeMeasurementKey, CompositeViewStore, MetadataTriplet
+from fuzzmeter.composite import CompositeMeasurement, CompositeMeasurementKey, CompositeViewStore
 from fuzzmeter.composite.registry import selection_from_key
-from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.db.base import open_readonly_connection
 from fuzzmeter.web.services import composite_service
 from fuzzmeter.web.services.file_service import (
@@ -28,6 +27,8 @@ from fuzzmeter.web.services.file_service import (
 )
 from fuzzmeter.web.services.report_service import export_static_report, load_report_payload
 from fuzzmeter.web.services.runs_service import delete_runs, list_runs, parse_config
+from tests.support.composite import make_measurement
+from tests.support.dbs import run_listing_db
 
 
 class WebFileServiceTest(unittest.TestCase):
@@ -113,10 +114,10 @@ class WebRunsServiceTest(unittest.TestCase):
             _touch(first, 10)
             _touch(second / 'report' / 'data.json', 50)
             _touch(second, 10)
-            _build_run_db(first, run_id='first', created_ts=90)
+            run_listing_db(first, run_id='first', created_ts=90)
             _touch(first / 'fuzzmeter.db', 20)
             _touch(first, 10)
-            _build_run_db(third, run_id='third', created_ts=80)
+            run_listing_db(third, run_id='third', created_ts=80)
             _touch(third / 'fuzzmeter.db', 20)
             _touch(third, 10)
 
@@ -130,7 +131,7 @@ class WebRunsServiceTest(unittest.TestCase):
             root = Path(tmp_dir)
             run_dir = root / 'run'
             run_dir.mkdir()
-            _build_run_db(run_dir, run_id='run', created_ts=1)
+            run_listing_db(run_dir, run_id='run', created_ts=1)
             _touch(run_dir / 'fuzzmeter.db', 20)
             _touch(run_dir, 10)
 
@@ -151,7 +152,7 @@ class WebRunsServiceTest(unittest.TestCase):
             run_dir = Path(tmp_dir) / 'folder-name'
             run_dir.mkdir()
             (run_dir / 'config.yaml').write_text('fuzzers: [filesystem]\n', encoding='utf-8')
-            _build_run_db(
+            run_listing_db(
                 run_dir,
                 run_id='db-run',
                 created_ts=70,
@@ -250,8 +251,8 @@ class WebCompositeServiceTest(unittest.TestCase):
             )
 
     def test_view_report_data_skips_compatibility_for_all_fresh_views(self) -> None:
-        first = _composite_measurement('run-a', environment={'host': {'kernel': '6.8'}})
-        second = _composite_measurement('run-b', environment={'host': {'kernel': '6.9'}})
+        first = make_measurement(source_id='run-a', environment={'host': {'kernel': '6.8'}})
+        second = make_measurement(source_id='run-b', environment={'host': {'kernel': '6.9'}})
         registry = _CompositeRegistryStub([first, second])
         store = CompositeViewStore()
         view = store.create([
@@ -281,8 +282,8 @@ class WebCompositeServiceTest(unittest.TestCase):
         self.assertNotIn('compatibility', result['targets'][0]['fuzzers'][0])
 
     def test_view_report_data_attaches_source_compatibility_to_fuzzer_rows(self) -> None:
-        first = _composite_measurement('run-a', environment={'host': {'kernel': '6.8'}})
-        second = _composite_measurement('run-b', environment={'host': {'kernel': '6.9'}})
+        first = make_measurement(source_id='run-a', environment={'host': {'kernel': '6.8'}})
+        second = make_measurement(source_id='run-b', environment={'host': {'kernel': '6.9'}})
         registry = _CompositeRegistryStub([first, second])
         store = CompositeViewStore()
         view = store.create([
@@ -334,14 +335,14 @@ class WebCompositeServiceTest(unittest.TestCase):
         self.assertEqual(3, fuzzer['source_detail']['repetitions'])
 
     def test_view_report_data_warns_about_shorter_historical_policy(self) -> None:
-        first = _composite_measurement(
-            'run-a',
+        first = make_measurement(
+            source_id='run-a',
             environment={'host': {'kernel': '6.8'}},
             runtime_seconds=7200,
             repetitions=5,
         )
-        second = _composite_measurement(
-            'run-b',
+        second = make_measurement(
+            source_id='run-b',
             environment={'host': {'kernel': '6.8'}},
             runtime_seconds=3600,
             repetitions=3,
@@ -388,92 +389,12 @@ def _touch(path: Path, ts: int) -> None:
     os.utime(path, (ts, ts))
 
 
-def _build_run_db(
-    run_dir: Path,
-    *,
-    run_id: str,
-    created_ts: int,
-    config_src: str = 'fuzzers: [fz]\n',
-    with_trial_data: bool = False,
-) -> None:
-    db = DB.open(run_dir / 'fuzzmeter.db')
-    try:
-        ensure_schema(db)
-        db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', (run_id, created_ts, config_src))
-        if with_trial_data:
-            db.exec(
-                '''
-                INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep, status)
-                VALUES(?,?,?,?,?,?)
-                ''',
-                (run_id, 'fz', 'bench', 'target-a', 0, 'done'),
-            )
-            db.exec(
-                '''
-                INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep, status)
-                VALUES(?,?,?,?,?,?)
-                ''',
-                (run_id, 'fz', 'bench', 'target-b', 0, 'running'),
-            )
-            trial_id = int(db.scalar('SELECT trial_id FROM trials WHERE fuzz_target=?', ('target-a',)))
-            db.exec(
-                '''
-                INSERT INTO snapshots(snapshot_id, trial_id, idx, ts)
-                VALUES(?,?,?,?)
-                ''',
-                (10, trial_id, 1, 100),
-            )
-            db.exec(
-                '''
-                INSERT INTO bugs(
-                  run_id, fuzzer, benchmark, fuzz_target, bug_key, first_seen_ts, first_seen_snapshot_id
-                )
-                VALUES(?,?,?,?,?,?,?)
-                ''',
-                (run_id, 'fz', 'bench', 'target-a', 'bug', 100, 10),
-            )
-        db.commit()
-    finally:
-        db.close()
-
-
 class _CompositeRegistryStub:
     def __init__(self, measurements: list[CompositeMeasurement]):
         self.measurements = {measurement.key: measurement for measurement in measurements}
 
     def get(self, key: CompositeMeasurementKey) -> CompositeMeasurement | None:
         return self.measurements.get(key)
-
-
-def _composite_measurement(
-    source_id: str,
-    *,
-    environment: dict,
-    runtime_seconds: int = 3600,
-    repetitions: int = 3,
-) -> CompositeMeasurement:
-    key = CompositeMeasurementKey(
-        source_id=source_id,
-        run_id='run',
-        fuzzer='fz',
-        benchmark='bench',
-        fuzz_target='target',
-    )
-    return CompositeMeasurement(
-        key=key,
-        source_path=Path('/runs') / source_id,
-        db_path=Path('/runs') / source_id / 'fuzzmeter.db',
-        metadata=MetadataTriplet(
-            environment=environment,
-            config={'benchmark': 'bench', 'fuzz_target': 'target'},
-            source={
-                'target_source': {'status': 'ok', 'data': {'revision': 'target'}},
-                'fuzzer_version': {'status': 'ok', 'data': {'revision': 'fuzzer'}},
-            },
-        ),
-        runtime_seconds=runtime_seconds,
-        repetitions=repetitions,
-    )
 
 
 def _source_payload(measurement: CompositeMeasurement, *, fuzzer: str, origin: str | None = None) -> dict:

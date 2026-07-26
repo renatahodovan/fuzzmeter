@@ -16,9 +16,10 @@ from unittest.mock import Mock, patch
 
 from fuzzmeter.artifacts.seeds import _collect_seed_baseline_jobs
 from fuzzmeter.config import CampaignCase, CampaignConfig, CampaignSettings
-from fuzzmeter.db import DB, ensure_schema
+from fuzzmeter.db import DB
 from fuzzmeter.repro.coverage_baseline import SeedBaselineJob, measure_seed_baseline
 from fuzzmeter.repro.coverage_state import seed_coverage_root
+from tests.support.dbs import empty_run_db
 
 
 class CoverageBaselineTest(unittest.TestCase):
@@ -65,7 +66,7 @@ class CoverageBaselineTest(unittest.TestCase):
             (seed_root / 'nested').mkdir()
             (seed_root / 'nested' / 'b.txt').write_text('b\n', encoding='utf-8')
             db_path = root / 'run.db'
-            _create_db(db_path)
+            empty_run_db(db_path)
 
             job = SeedBaselineJob(
                 fuzzer='fuzzer',
@@ -149,11 +150,6 @@ def _write_merge_outputs(**kwargs) -> dict[str, int]:
         'cov_lines_covered': 7,
         'cov_lines_total': 11,
     }
-
-
-def _create_db(db_path: Path) -> None:
-    with DB.open(db_path) as db:
-        ensure_schema(db)
 
 
 def _seed_baseline_row(db_path: Path) -> dict:

@@ -18,11 +18,12 @@ from unittest.mock import patch
 from fuzzmeter.db.resource_telemetry import TelemetrySample
 from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.snapshot.resource_telemetry import ResourceTelemetryCollector
-from fuzzmeter.trial.models import TrialConfig, TrialImages, TrialInstance, TrialLayout
+from fuzzmeter.trial.models import TrialImages, TrialInstance, TrialLayout
+from tests.support.trials import make_trial_config
 
 
 def _active_trial(root: Path, *, db_id: int = 1) -> TrialInstance:
-    config = TrialConfig(
+    config = make_trial_config(
         fuzzer='aflplusplus',
         fuzzer_impl='aflplusplus',
         benchmark='bench',

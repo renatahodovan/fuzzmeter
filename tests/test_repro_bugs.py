@@ -15,10 +15,12 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from fuzzmeter.db import DB, ensure_schema
+from fuzzmeter.db import DB
 from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.repro.bugs import repro_crash_batch
-from fuzzmeter.trial.models import TrialConfig, TrialImages, TrialInstance, TrialLayout
+from fuzzmeter.trial.models import TrialImages, TrialInstance, TrialLayout
+from tests.support.dbs import seeded_run_db
+from tests.support.trials import make_trial_config
 
 
 class ReproBugPersistenceTest(unittest.TestCase):
@@ -28,7 +30,7 @@ class ReproBugPersistenceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             db_path = root / 'run.db'
-            _create_db(db_path)
+            seeded_run_db(db_path)
             trial = _trial_instance(root)
 
             with patch(
@@ -82,7 +84,7 @@ class ReproBugPersistenceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             db_path = root / 'run.db'
-            _create_db(db_path)
+            seeded_run_db(db_path)
             trial = _trial_instance(root)
 
             with patch(
@@ -160,32 +162,6 @@ class ReproBugPersistenceTest(unittest.TestCase):
         self.assertEqual(2, hits[9])
 
 
-def _create_db(db_path: Path) -> None:
-    db = DB.open(db_path)
-    try:
-        ensure_schema(db)
-        db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
-        db.exec(
-            '''
-            INSERT INTO trials(
-              trial_id, run_id, fuzzer, benchmark, fuzz_target, rep, status
-            )
-            VALUES(?,?,?,?,?,?,?)
-            ''',
-            (1, 'run', 'fuzzer', 'bench', 'target', 0, 'running'),
-        )
-        for snapshot_id in (7, 9):
-            db.exec(
-                '''
-                INSERT INTO snapshots(snapshot_id, trial_id, idx, ts, corpus_files)
-                VALUES(?,?,?,?,?)
-                ''',
-                (snapshot_id, 1, snapshot_id, snapshot_id, 0),
-            )
-    finally:
-        db.close()
-
-
 def _bug_and_hits(db_path: Path) -> tuple[dict, dict[int, int]]:
     db = DB.open(db_path)
     try:
@@ -197,7 +173,7 @@ def _bug_and_hits(db_path: Path) -> tuple[dict, dict[int, int]]:
 
 
 def _trial_instance(root: Path) -> TrialInstance:
-    config = TrialConfig(
+    config = make_trial_config(
         fuzzer='fuzzer',
         fuzzer_impl='fuzzer',
         benchmark='bench',

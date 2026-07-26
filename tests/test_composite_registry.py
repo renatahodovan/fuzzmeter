@@ -16,7 +16,7 @@ from pathlib import Path
 
 from fuzzmeter.composite import CompositeMeasurementKey
 from fuzzmeter.composite.registry import CompositeRegistry, CompositeViewStore, selection_from_key
-from tests.test_composite_discovery import _write_run_db
+from tests.support.dbs import measurement_run_db
 
 
 class CompositeRegistryTest(unittest.TestCase):
@@ -29,7 +29,7 @@ class CompositeRegistryTest(unittest.TestCase):
             registry = CompositeRegistry(root)
             self.assertEqual((), registry.measurements())
 
-            _write_run_db(root / 'run-a', source_id='run-a')
+            measurement_run_db(root / 'run-a', source_id='run-a')
             registry.refresh()
 
             self.assertEqual(1, len(registry.measurements()))

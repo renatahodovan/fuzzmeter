@@ -17,8 +17,8 @@ import tempfile
 from typing import Any
 import unittest
 
-from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.reporting import build_payload, write_report
+from tests.support.dbs import reporting_run_db
 
 PAYLOAD_HASH = '552bf786512a3e2fc302c994e3b71a65b4f9a6cb18e2631600688950e84661b3'
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -113,7 +113,7 @@ class ReportingPayloadTest(unittest.TestCase):
     def test_build_payload_matches_stable_snapshot_hash(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
-            _build_run_fixture(run_dir)
+            reporting_run_db(run_dir)
 
             payload = build_payload(run_dir, run_id='run')
 
@@ -126,7 +126,7 @@ class ReportingPayloadTest(unittest.TestCase):
     def test_write_report_writes_static_payload_and_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
-            _build_run_fixture(run_dir)
+            reporting_run_db(run_dir)
 
             report_dir = write_report(run_dir, out_dir=run_dir / 'report')
 
@@ -147,7 +147,7 @@ class ReportingPayloadTest(unittest.TestCase):
     def test_write_report_static_bundle_parses_and_smoke_loads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
-            _build_run_fixture(run_dir)
+            reporting_run_db(run_dir)
 
             report_dir = write_report(run_dir, out_dir=run_dir / 'report')
             bundle_path = report_dir / 'report.js'
@@ -177,173 +177,6 @@ class ReportingPayloadTest(unittest.TestCase):
                     self.assertTrue(statement.endswith(';'), f'Unsupported import form in {path.name}: {line}')
                 if stripped.startswith('export '):
                     self.assertFalse(stripped.startswith('export default'), path.name)
-
-
-def _build_run_fixture(run_dir: Path) -> None:
-    db = DB.open(run_dir / 'fuzzmeter.db')
-    try:
-        ensure_schema(db)
-        db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
-        db.exec(
-            """
-            INSERT INTO trials(
-              run_id, fuzzer, benchmark, fuzz_target, rep, time_seconds, jobs,
-              status, started_ts, ended_ts, fuzzer_image, build_config_json, runtime_config_json
-            )
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                'run',
-                'fz',
-                'bench',
-                'target',
-                0,
-                60,
-                1,
-                'done',
-                100,
-                160,
-                'image',
-                '{"opt":"O2"}',
-                '{"jobs":1}',
-            ),
-        )
-        trial_id = int(db.scalar('SELECT trial_id FROM trials'))
-        _insert_snapshot(
-            db,
-            snapshot_id=10,
-            trial_id=trial_id,
-            idx=1,
-            ts=130,
-            corpus_files=2,
-            execs_done=100,
-            stats_json=(
-                '{"custom_metrics":[{"counts":{"havoc":2},"id":"afl-mutator-counts",'
-                '"kind":"counter_map","schema_version":1}],"custom_metrics_schema_version":1,'
-                '"execs_per_sec":"3.5"}'
-            ),
-            crashes=1,
-            hangs=0,
-            lines=(5, 10),
-            branches=(3, 6),
-            functions=(1, 2),
-            regions=(4, 8),
-        )
-        _insert_snapshot(
-            db,
-            snapshot_id=11,
-            trial_id=trial_id,
-            idx=2,
-            ts=170,
-            corpus_files=3,
-            execs_done=180,
-            stats_json=(
-                '{"custom_metrics":[{"counts":{"havoc":3,"splice":1},"id":"afl-mutator-counts",'
-                '"kind":"counter_map","schema_version":1}],"custom_metrics_schema_version":1,'
-                '"execs_per_sec":"4.5"}'
-            ),
-            crashes=2,
-            hangs=1,
-            lines=(6, 10),
-            branches=(4, 6),
-            functions=(1, 2),
-            regions=(5, 8),
-        )
-        db.exec(
-            """
-            INSERT INTO resource_telemetry(
-              trial_id, idx, ts, container_name, cpu_percent, memory_usage_bytes,
-              memory_limit_bytes, memory_percent, corpus_disk_usage_bytes
-            )
-            VALUES(?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                trial_id,
-                2,
-                170,
-                'c',
-                12.5,
-                2 * 1024 * 1024,
-                8 * 1024 * 1024,
-                25.0,
-                3 * 1024 * 1024,
-            ),
-        )
-        db.exec(
-            """
-            INSERT INTO metadata(
-              run_id, fuzzer, benchmark, fuzz_target, repetitions, runtime_seconds,
-              environment_digest, config_digest, source_digest, metadata_json, created_at
-            )
-            VALUES(?,?,?,?,?,?,?,?,?,?,?)
-            """,
-            (
-                'run',
-                'fz',
-                'bench',
-                'target',
-                1,
-                60,
-                'env-digest',
-                'cfg-digest',
-                'src-digest',
-                '{"config":{"benchmark":"bench","fuzz_target":"target"},"environment":{"host":{"machine":"x86_64"}}}',
-                1,
-            ),
-        )
-        db.commit()
-    finally:
-        db.close()
-
-
-def _insert_snapshot(
-    db: DB,
-    *,
-    snapshot_id: int,
-    trial_id: int,
-    idx: int,
-    ts: int,
-    corpus_files: int,
-    execs_done: int,
-    stats_json: str,
-    crashes: int,
-    hangs: int,
-    lines: tuple[int, int],
-    branches: tuple[int, int],
-    functions: tuple[int, int],
-    regions: tuple[int, int],
-) -> None:
-    db.exec(
-        """
-        INSERT INTO snapshots(
-          snapshot_id, trial_id, idx, ts, corpus_files, execs_done, stats_json,
-          crashes, hangs, cov_lines_covered, cov_lines_total,
-          cov_branches_covered, cov_branches_total, cov_functions_covered,
-          cov_functions_total, cov_regions_covered, cov_regions_total, coverage_html_dir
-        )
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """,
-        (
-            snapshot_id,
-            trial_id,
-            idx,
-            ts,
-            corpus_files,
-            execs_done,
-            stats_json,
-            crashes,
-            hangs,
-            lines[0],
-            lines[1],
-            branches[0],
-            branches[1],
-            functions[0],
-            functions[1],
-            regions[0],
-            regions[1],
-            'coverage/fz/index.html',
-        ),
-    )
 
 
 def _normalize_payload(payload: dict[str, Any]) -> dict[str, Any]:
