@@ -64,6 +64,7 @@ def _read_crash_inputs(input_list: Path) -> list[Path]:
     return [
         Path(line.strip())
         for line in input_list.read_text(encoding='utf-8', errors='replace').splitlines()
+        if line.strip()
     ]
 
 
@@ -80,7 +81,7 @@ def _run_one(
         stdin_data = None
     else:
         cmd = [str(asan_bin)]
-        stdin_data = crash_input.read_text(encoding='utf-8', errors='replace')
+        stdin_data = crash_input.read_bytes()
 
     LOG.debug('Running crash repro command: %s', ' '.join(str(item) for item in cmd))
     try:
@@ -88,9 +89,6 @@ def _run_one(
             cmd,
             input=stdin_data,
             check=False,
-            text=True,
-            encoding='utf-8',
-            errors='replace',
             capture_output=True,
             timeout=timeout_s,
             env=env,
@@ -105,8 +103,8 @@ def _run_one(
 
     return {
         'returncode': int(result.returncode),
-        'stdout': result.stdout or '',
-        'stderr': result.stderr or '',
+        'stdout': result.stdout.decode('utf-8', errors='replace') if result.stdout else '',
+        'stderr': result.stderr.decode('utf-8', errors='replace') if result.stderr else '',
         'timeout': False,
     }
 

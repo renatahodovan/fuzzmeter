@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -24,6 +25,42 @@ coverage_worker = load_entrypoint('coverage_worker')
 
 class CoverageWorkerTest(unittest.TestCase):
     '''Verify coverage worker batch execution behavior.'''
+
+    def test_execute_one_input_preserves_binary_stdin(self) -> None:
+        input_bytes = b'\xff\xfe\x00\x80abc'
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            input_path = root / 'input'
+            input_path.write_bytes(input_bytes)
+            replayed_path = root / 'replayed'
+            target = root / 'target'
+            target.write_text(
+                f'#!{sys.executable}\n'
+                'import pathlib\n'
+                'import sys\n'
+                f'pathlib.Path({str(replayed_path)!r}).write_bytes(sys.stdin.buffer.read())\n'
+                'sys.stdout.buffer.write(b"\\xfflog")\n',
+                encoding='utf-8',
+            )
+            target.chmod(target.stat().st_mode | 0o111)
+            profraws_dir = root / 'profraws'
+            profraws_dir.mkdir()
+            cfg = coverage_worker.WorkerConfig(
+                cov_bin=target,
+                input_mode='stdin',
+                out_dir=root / 'out',
+                work_dir=root / 'work',
+                input_list=Path(),
+                profdata=root / 'merged.profdata',
+                timeout_s=5.0,
+            )
+
+            result = coverage_worker._execute_one_input(cfg, str(input_path), 0, profraws_dir)
+            replayed_bytes = replayed_path.read_bytes()
+
+        self.assertEqual(input_bytes, replayed_bytes)
+        self.assertEqual(0, result['returncode'])
+        self.assertEqual('\ufffdlog', result['stdout'])
 
     def test_batch_mode_runs_inputs_sequentially_and_writes_diagnostics_without_jobs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

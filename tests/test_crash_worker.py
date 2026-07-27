@@ -10,10 +10,12 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
+
+from pathlib import Path
 from unittest.mock import patch
 
 from tests.support.entrypoints import load_entrypoint
@@ -23,6 +25,46 @@ crash_worker = load_entrypoint('crash_worker')
 
 class CrashWorkerTest(unittest.TestCase):
     '''Verify crash worker environment and result mapping behavior.'''
+
+    def test_read_crash_inputs_skips_blank_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            input_list = Path(tmp_dir) / 'inputs.txt'
+            input_list.write_text('\n  \n', encoding='utf-8')
+
+            crash_inputs = crash_worker._read_crash_inputs(input_list)
+
+        self.assertEqual([], crash_inputs)
+
+    def test_run_one_preserves_binary_stdin(self) -> None:
+        input_bytes = b'\xff\xfe\x00\x80abc'
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            crash_input = root / 'crash'
+            crash_input.write_bytes(input_bytes)
+            replayed_path = root / 'replayed'
+            target = root / 'target'
+            target.write_text(
+                f'#!{sys.executable}\n'
+                'import pathlib\n'
+                'import sys\n'
+                f'pathlib.Path({str(replayed_path)!r}).write_bytes(sys.stdin.buffer.read())\n'
+                'sys.stderr.buffer.write(b"\\xfflog")\n',
+                encoding='utf-8',
+            )
+            target.chmod(target.stat().st_mode | 0o111)
+
+            result = crash_worker._run_one(
+                asan_bin=target,
+                crash_input=crash_input,
+                input_mode='stdin',
+                timeout_s=5.0,
+                env={},
+            )
+            replayed_bytes = replayed_path.read_bytes()
+
+        self.assertEqual(input_bytes, replayed_bytes)
+        self.assertEqual(0, result['returncode'])
+        self.assertEqual('\ufffdlog', result['stderr'])
 
     def test_main_requires_target_name_env(self) -> None:
         with patch.dict(crash_worker.os.environ, {}, clear=True):
@@ -50,8 +92,8 @@ class CrashWorkerTest(unittest.TestCase):
             completed = subprocess.CompletedProcess(
                 args=['/out/target', str(crash_input)],
                 returncode=77,
-                stdout='stdout text',
-                stderr='stderr text',
+                stdout=b'stdout text',
+                stderr=b'stderr text',
             )
 
             with patch.dict(crash_worker.os.environ, env, clear=True), \

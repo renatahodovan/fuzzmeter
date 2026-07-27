@@ -205,9 +205,6 @@ def _execute_one_input(cfg: WorkerConfig, input_path: str, index: int, profraws_
             input=stdin_data,
             capture_output=True,
             check=False,
-            text=True,
-            encoding='utf-8',
-            errors='replace',
             env=env,
             cwd=str(cfg.cov_bin.parent),
             timeout=cfg.timeout_s,
@@ -231,8 +228,8 @@ def _execute_one_input(cfg: WorkerConfig, input_path: str, index: int, profraws_
         input_path=input_path,
         returncode=int(cp.returncode),
         profraws=profraws,
-        stdout=cp.stdout or '',
-        stderr=cp.stderr or '',
+        stdout=cp.stdout.decode('utf-8', errors='replace') if cp.stdout else '',
+        stderr=cp.stderr.decode('utf-8', errors='replace') if cp.stderr else '',
     )
 
 
@@ -408,10 +405,10 @@ def _run(cmd: list[str], *, out_dir: Path, label: str, check: bool = True) -> su
     raise RuntimeError(f'{label} failed rc={cp.returncode}')
 
 
-def _target_command(cfg: WorkerConfig, input_path: str) -> tuple[list[str], str | None]:
+def _target_command(cfg: WorkerConfig, input_path: str) -> tuple[list[str], bytes | None]:
     if cfg.input_mode in {'in_process', 'file'}:
         return [str(cfg.cov_bin), input_path], None
-    return [str(cfg.cov_bin)], Path(input_path).read_text(encoding='utf-8', errors='replace')
+    return [str(cfg.cov_bin)], Path(input_path).read_bytes()
 
 
 def _path_equivalence_args(cfg: WorkerConfig) -> list[str]:
