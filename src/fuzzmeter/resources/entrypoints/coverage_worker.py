@@ -14,6 +14,7 @@ import glob
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -331,25 +332,53 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
 
 
 def _coverage_summary_from_report(report: str) -> dict[str, int | None]:
+    header_columns: list[str] | None = None
+    group_indexes: dict[str, tuple[int, int, int]] = {}
+    total_parts: list[str] | None = None
+
     for line in report.splitlines():
         stripped = line.strip()
-        if not stripped.startswith('TOTAL'):
+        columns = [column.strip() for column in re.split(r'\s{2,}', stripped)]
+        if columns[0] == 'Filename':
+            header_columns = columns[1:]
+            group_indexes = {}
+            for metric in ('regions', 'functions', 'lines', 'branches'):
+                name = metric.title()
+                percentage = 'Executed' if metric == 'functions' else 'Cover'
+                expected = [name, f'Missed {name}', percentage]
+                matches = [
+                    index
+                    for index in range(len(header_columns) - 2)
+                    if header_columns[index:index + 3] == expected
+                ]
+                if len(matches) != 1:
+                    raise ValueError(f'Cannot locate {metric} columns in llvm-cov report header')
+                start = matches[0]
+                group_indexes[metric] = (start, start + 1, start + 2)
+            indexes = [index for group in group_indexes.values() for index in group]
+            if sorted(indexes) != list(range(len(header_columns))):
+                raise ValueError('Unexpected columns in llvm-cov report header')
             continue
-        parts = stripped.split()[1:]
-        if len(parts) < 12:
-            return {}
-        groups = {
-            'regions': parts[0:3],
-            'functions': parts[3:6],
-            'lines': parts[6:9],
-            'branches': parts[9:12],
-        }
-        return {
-            key: value
-            for metric, group in groups.items()
-            for key, value in _coverage_report_counts(metric, group).items()
-        }
-    return {}
+        parts = stripped.split()
+        if parts and parts[0] == 'TOTAL':
+            total_parts = parts[1:]
+
+    if header_columns is None:
+        raise ValueError('Missing llvm-cov report header')
+    if total_parts is None:
+        raise ValueError('Missing TOTAL row in llvm-cov report')
+    if len(total_parts) != len(header_columns):
+        raise ValueError(
+            f'llvm-cov TOTAL row has {len(total_parts)} columns, expected {len(header_columns)}'
+        )
+    return {
+        key: value
+        for metric, indexes in group_indexes.items()
+        for key, value in _coverage_report_counts(
+            metric,
+            [total_parts[index] for index in indexes],
+        ).items()
+    }
 
 
 def _coverage_report_counts(metric: str, group: list[str]) -> dict[str, int | None]:

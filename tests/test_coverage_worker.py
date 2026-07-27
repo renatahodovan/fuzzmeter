@@ -27,6 +27,55 @@ coverage_worker = load_entrypoint('coverage_worker')
 class CoverageWorkerTest(unittest.TestCase):
     '''Verify coverage worker batch execution behavior.'''
 
+    def test_coverage_summary_uses_real_total_after_total_prefixed_file(self) -> None:
+        report = '''
+Filename                               Regions    Missed Regions     Cover   Functions  Missed Functions  Executed       Lines      Missed Lines     Cover    Branches   Missed Branches     Cover
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/src/alpha.c                                 10                 1    90.00%           4                 1    75.00%          20                 2    90.00%           8                 3    62.50%
+/src/TOTALS.c                                99                88    11.11%          77                66    14.29%          55                44    20.00%          33                22    33.33%
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+TOTAL                                        31                 5    83.87%           8                 2    75.00%         100                25    75.00%          40                30    25.00%
+'''
+
+        summary = coverage_worker._coverage_summary_from_report(report)
+
+        self.assertEqual(31, summary['cov_regions_total'])
+        self.assertEqual(26, summary['cov_regions_covered'])
+
+    def test_coverage_summary_rejects_extra_total_column(self) -> None:
+        report = '''
+Filename    Regions    Missed Regions    Cover    Functions    Missed Functions    Executed    Lines    Missed Lines    Cover    Branches    Missed Branches    Cover
+TOTAL       31         5                 83.87%   8            2                   75.00%      100      25              75.00%   40          30                 25.00%   999
+'''
+
+        with self.assertRaisesRegex(ValueError, 'TOTAL row has 13 columns, expected 12'):
+            coverage_worker._coverage_summary_from_report(report)
+
+    def test_coverage_summary_parses_all_counts_from_real_header(self) -> None:
+        report = '''
+Filename                               Regions    Missed Regions     Cover   Functions  Missed Functions  Executed       Lines      Missed Lines     Cover    Branches   Missed Branches     Cover
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+/src/alpha.c                                 10                 1    90.00%           4                 1    75.00%          20                 2    90.00%           8                 3    62.50%
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+TOTAL                                        31                 5    83.87%           8                 2    75.00%         100                25    75.00%          40                30    25.00%
+'''
+
+        summary = coverage_worker._coverage_summary_from_report(report)
+
+        self.assertEqual(
+            {
+                'cov_regions_total': 31,
+                'cov_regions_covered': 26,
+                'cov_functions_total': 8,
+                'cov_functions_covered': 6,
+                'cov_lines_total': 100,
+                'cov_lines_covered': 75,
+                'cov_branches_total': 40,
+                'cov_branches_covered': 10,
+            },
+            summary,
+        )
+
     def test_execute_one_input_preserves_binary_stdin(self) -> None:
         input_bytes = b'\xff\xfe\x00\x80abc'
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -161,7 +210,19 @@ class CoverageWorkerTest(unittest.TestCase):
                  patch.object(
                      coverage_worker,
                      '_run',
-                     return_value=subprocess.CompletedProcess(args=['llvm-cov'], returncode=0, stdout='', stderr=''),
+                     return_value=subprocess.CompletedProcess(
+                         args=['llvm-cov'],
+                         returncode=0,
+                         stdout=(
+                             'Filename    Regions    Missed Regions    Cover    Functions    '
+                             'Missed Functions    Executed    Lines    Missed Lines    Cover    '
+                             'Branches    Missed Branches    Cover\n'
+                             'TOTAL       1          0                 100.00%   1            '
+                             '0                   100.00%      1        0               100.00%   '
+                             '0           0                  -\n'
+                         ),
+                         stderr='',
+                     ),
                  ) as run:
                 coverage_worker._write_coverage_outputs(cfg)
 
