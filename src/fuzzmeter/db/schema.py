@@ -56,6 +56,8 @@ _SCHEMA = [
       run_id TEXT NOT NULL,
       idx INTEGER NOT NULL,
       ts INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error TEXT,
       PRIMARY KEY(run_id, idx)
     )
     """,
@@ -198,6 +200,7 @@ def ensure_schema(db: DB) -> None:
     for stmt in _SCHEMA:
         db.exec(stmt)
     _ensure_metadata_schema_version_column(db)
+    _ensure_snapshot_tick_status_columns(db)
     db.commit()
 
 
@@ -205,3 +208,11 @@ def _ensure_metadata_schema_version_column(db: DB) -> None:
     columns = {str(row['name']) for row in db.q('PRAGMA table_info(metadata)')}
     if columns and 'metadata_schema_version' not in columns:
         db.exec('ALTER TABLE metadata ADD COLUMN metadata_schema_version INTEGER NOT NULL DEFAULT 1')
+
+
+def _ensure_snapshot_tick_status_columns(db: DB) -> None:
+    columns = {str(row['name']) for row in db.q('PRAGMA table_info(snapshot_ticks)')}
+    if columns and 'status' not in columns:
+        db.exec("ALTER TABLE snapshot_ticks ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'")
+    if columns and 'error' not in columns:
+        db.exec('ALTER TABLE snapshot_ticks ADD COLUMN error TEXT')

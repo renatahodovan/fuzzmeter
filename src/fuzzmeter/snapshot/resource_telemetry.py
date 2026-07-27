@@ -73,7 +73,10 @@ class ResourceTelemetryCollector:
         '''Collect and persist one resource sample for each active trial.'''
         stats_by_container = self._docker_stats_by_container([trial.container_name for trial in active_trials])
         for trial in active_trials:
-            stats = stats_by_container[trial.container_name]
+            stats = stats_by_container.get(trial.container_name)
+            if stats is None:
+                LOG.warning('Container %s exited before resource telemetry collection', trial.container_name)
+                stats = {}
             disk_kib = self._du_sk(trial.layout.fuzz_dir)
             disk_bytes = None if disk_kib is None else disk_kib * 1024
             db_resource_telemetry.upsert_resource_telemetry(

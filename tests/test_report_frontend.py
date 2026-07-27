@@ -19,6 +19,23 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 class ReportFrontendTest(unittest.TestCase):
     """Verify browser-side summary and ranking derivation."""
 
+    def test_failed_tick_notice_marks_coverage_holes(self) -> None:
+        script = r"""
+            import assert from 'node:assert/strict';
+            import { tickFailureNotice } from './src/fuzzmeter/web/static/report/report-data.js';
+
+            assert.equal(tickFailureNotice({ failed_snapshot_ticks: 0 }), null);
+            assert.equal(
+              tickFailureNotice({ failed_snapshot_ticks: 2 }),
+              'Warning: 2 snapshot ticks failed. Coverage and crash curves may contain unmeasured gaps.',
+            );
+        """
+        subprocess.run(
+            ['node', '--no-warnings', '--input-type=module', '-e', script],
+            cwd=REPO_ROOT,
+            check=True,
+        )
+
     def test_frontend_derives_summary_scores_and_metric_ranks(self) -> None:
         script = r"""
             import assert from 'node:assert/strict';

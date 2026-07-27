@@ -83,6 +83,9 @@ def replay_coverage_batches(
     on_batch_done: Callable[[], None] | None = None,
 ) -> None:
     '''Replay planned coverage batches in parallel on the host.'''
+    if not batches:
+        return
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(batches), jobs)) as executor:
         futures = [
             executor.submit(
@@ -98,10 +101,19 @@ def replay_coverage_batches(
             )
             for batch in batches
         ]
+        failures = []
         for future in concurrent.futures.as_completed(futures):
-            future.result()
-            if on_batch_done is not None:
-                on_batch_done()
+            try:
+                future.result()
+            except Exception as exc:
+                failures.append(exc)
+            else:
+                if on_batch_done is not None:
+                    on_batch_done()
+
+    if failures:
+        details = '\n'.join(f'{index}. {type(exc).__name__}: {exc}' for index, exc in enumerate(failures, 1))
+        raise RuntimeError(f'Coverage replay failed in {len(failures)} batch(es):\n{details}')
 
 
 def replay_coverage_batch(
@@ -240,19 +252,20 @@ def _replace_out_root(*, out_root: Path, tmp_root: Path, protected_dir: Path | N
     saved_protected_dir = None
     final_protected_dir = None
     if protected_dir is not None:
-        try:
-            protected_dir = protected_dir.resolve()
-            out_root_resolved = out_root.resolve()
-            protected_dir.relative_to(out_root_resolved)
-            final_protected_dir = protected_dir
-            saved_protected_dir = out_root_resolved.parent / f'.{out_root_resolved.name}.{protected_dir.name}.preserved'
-            shutil.rmtree(saved_protected_dir, ignore_errors=True)
-            if protected_dir.exists():
-                protected_dir.rename(saved_protected_dir)
-        except Exception:
-            LOG.debug('Could not preserve protected dir %s under %s', protected_dir, out_root)
-            saved_protected_dir = None
-            final_protected_dir = None
+        protected_dir = protected_dir.resolve()
+        out_root_resolved = out_root.resolve()
+        if out_root_resolved in protected_dir.parents:
+            try:
+                final_protected_dir = protected_dir
+                preserved_name = f'.{out_root_resolved.name}.{protected_dir.name}.preserved'
+                saved_protected_dir = out_root_resolved.parent / preserved_name
+                shutil.rmtree(saved_protected_dir, ignore_errors=True)
+                if protected_dir.exists():
+                    protected_dir.rename(saved_protected_dir)
+            except OSError:
+                LOG.debug('Could not preserve protected dir %s under %s', protected_dir, out_root)
+                saved_protected_dir = None
+                final_protected_dir = None
 
     if out_root.exists():
         shutil.rmtree(out_root, ignore_errors=True)

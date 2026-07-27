@@ -44,6 +44,7 @@ import {
   installCompositeControls,
 } from './composite.js';
 import { createTargetSection } from './page.js';
+import { tickFailureNotice } from './report-data.js';
 
 function compareSummaryRows(left, right, key, direction) {
   const leftValue = left?.[key];
@@ -341,6 +342,10 @@ function renderView(data) {
   if (overview.elapsed_human) subtitleParts.push(`running for ${overview.elapsed_human}`);
   else if (overview.created_at || meta.generated_at) subtitleParts.push(overview.created_at || meta.generated_at);
   byId('runSubtitle').textContent = subtitleParts.join(' • ');
+  const tickFailureWarning = byId('tickFailureWarning');
+  const tickFailureMessage = tickFailureNotice(overview);
+  tickFailureWarning.textContent = tickFailureMessage || '';
+  tickFailureWarning.hidden = !tickFailureMessage;
 
   buildSummaryRows(data);
   buildWinnerCards(data);

@@ -41,6 +41,9 @@ def collect_snapshots(
 ) -> tuple[list[TrialCoverageSnapshot], list[TrialCrashSnapshot]]:
     '''Collect snapshot work for all active trials at one tick.'''
     LOG.debug('\tCollect snapshot data for tick %s', tick_idx)
+    if not active_trials:
+        return [], []
+
     trial_jobs = min(len(active_trials), max(1, jobs))
     preprocess_jobs = max(1, jobs // trial_jobs)
 

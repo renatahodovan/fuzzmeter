@@ -252,6 +252,16 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertEqual(300, overview['elapsed_seconds'])
         self.assertEqual(800, overview['wall_elapsed_seconds'])
 
+    def test_overview_surfaces_failed_snapshot_tick_count(self) -> None:
+        builder = _PayloadBuilder.__new__(_PayloadBuilder)
+        builder._overview_raw = {'created_ts': 50, 'failed_snapshot_ticks': 2}
+        builder._trial_rows = []
+        builder._snapshot_rows = []
+
+        overview = builder.collect_overview()
+
+        self.assertEqual(2, overview['failed_snapshot_ticks'])
+
     def test_report_links_campaign_coverage_per_fuzzer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)

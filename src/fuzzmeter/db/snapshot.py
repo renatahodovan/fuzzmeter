@@ -106,6 +106,24 @@ def insert_tick(db: DB, *, run_id: str, idx: int, ts: int) -> None:
     )
 
 
+def mark_tick_completed(db: DB, *, run_id: str, idx: int) -> None:
+    '''Mark a snapshot tick as processed successfully.'''
+
+    db.exec(
+        "UPDATE snapshot_ticks SET status='completed', error=NULL WHERE run_id=? AND idx=?",
+        (str(run_id), int(idx)),
+    )
+
+
+def mark_tick_failed(db: DB, *, run_id: str, idx: int, error: str) -> None:
+    '''Record a snapshot tick processing failure.'''
+
+    db.exec(
+        "UPDATE snapshot_ticks SET status='failed', error=? WHERE run_id=? AND idx=?",
+        (str(error), str(run_id), int(idx)),
+    )
+
+
 def get_latest_tick_idx(db: DB, *, run_id: str) -> int:
     '''Return the latest recorded snapshot tick index for a run.'''
 
@@ -122,7 +140,7 @@ def list_ticks(db: DB, *, run_id: str) -> list[dict[str, Any]]:
     '''Return snapshot ticks for a run ordered by tick index.'''
     return db.q(
         """
-        SELECT run_id, idx, ts
+        SELECT run_id, idx, ts, status, error
           FROM snapshot_ticks
          WHERE run_id=?
          ORDER BY idx

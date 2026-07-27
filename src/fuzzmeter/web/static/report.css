@@ -288,6 +288,15 @@ a:hover{ text-decoration:underline; }
   gap:18px;
   padding:16px;
 }
+.tick-failure-warning{
+  padding:12px 14px;
+  border:1px solid rgba(239, 68, 68, .55);
+  border-left:4px solid #ef4444;
+  border-radius:10px;
+  color:var(--text);
+  background:color-mix(in srgb, #ef4444 12%, transparent);
+  font-weight:700;
+}
 #highlightsPanel,
 #summaryPanel{
   border:0;

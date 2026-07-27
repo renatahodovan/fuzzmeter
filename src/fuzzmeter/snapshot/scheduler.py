@@ -247,7 +247,9 @@ class SnapshotScheduler:
         render_heavy: bool = False,
     ) -> None:
         active_trials = list(selected_trials)
-        write_export = render_heavy or self.coverage_export_every > 0 and tick_idx % self.coverage_export_every == 0
+        write_export = render_heavy or (
+            self.coverage_export_every > 0 and tick_idx % self.coverage_export_every == 0
+        )
         self._progress.update_run(
             elapsed_seconds=max(0, end_ts - self.start_ts),
             total_seconds=self.campaign_seconds,
@@ -299,6 +301,8 @@ class SnapshotScheduler:
             )
             LOG.debug('Crash processing of %s tick finished in %.1f seconds', tick_idx, time.time() - cur_time)
 
+        db_snapshot.mark_tick_completed(db, run_id=self.run_id, idx=tick_idx)
+        db.commit()
         self._processed_ticks += 1
         self._update_scheduler_progress(ts=end_ts)
 
@@ -334,7 +338,14 @@ class SnapshotScheduler:
                             render_heavy=snapshot_item.render_heavy,
                         )
                         LOG.debug('Finished snapshot processing for tick %s', snapshot_item.tick_idx)
-                except Exception:
+                except Exception as exc:
+                    db_snapshot.mark_tick_failed(
+                        db,
+                        run_id=self.run_id,
+                        idx=snapshot_item.tick_idx,
+                        error=f'{type(exc).__name__}: {exc}',
+                    )
+                    db.commit()
                     LOG.exception('Error during snapshot tick %s', snapshot_item.tick_idx)
         finally:
             db.close()
@@ -395,15 +406,25 @@ class ReplaySnapshotScheduler(SnapshotScheduler):
                     db.commit()
                     self._scheduled_ticks += 1
                     self._update_scheduler_progress(ts=ts)
-                    self._process_tick(
-                        db=db,
-                        tick_idx=tick_idx,
-                        end_ts=ts,
-                        selected_trials=selected_trials,
-                        campaign_trials=campaign_trials,
-                        replay_mode=True,
-                        render_heavy=True,
-                    )
+                    try:
+                        self._process_tick(
+                            db=db,
+                            tick_idx=tick_idx,
+                            end_ts=ts,
+                            selected_trials=selected_trials,
+                            campaign_trials=campaign_trials,
+                            replay_mode=True,
+                            render_heavy=True,
+                        )
+                    except Exception as exc:
+                        db_snapshot.mark_tick_failed(
+                            db,
+                            run_id=self.run_id,
+                            idx=tick_idx,
+                            error=f'{type(exc).__name__}: {exc}',
+                        )
+                        db.commit()
+                        raise
         finally:
             db.close()
             self._progress.close()

@@ -93,6 +93,33 @@ class ResourceTelemetryTest(unittest.TestCase):
             ),
         )
 
+    def test_exited_container_records_absent_telemetry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trial = _active_trial(Path(tmp_dir))
+
+            upsert_target = 'fuzzmeter.snapshot.resource_telemetry.db_resource_telemetry.upsert_resource_telemetry'
+            with (
+                patch.object(ResourceTelemetryCollector, '_docker_stats_by_container', return_value={}),
+                patch.object(ResourceTelemetryCollector, '_du_sk', return_value=2),
+                patch(upsert_target) as upsert,
+            ):
+                ResourceTelemetryCollector().collect(db=None, tick_idx=1, ts=100, active_trials=[trial])
+
+        upsert.assert_called_once_with(
+            None,
+            TelemetrySample(
+                trial_row_id=trial.db_id,
+                idx=1,
+                ts=100,
+                container_name='container',
+                cpu_percent=None,
+                memory_usage_bytes=None,
+                memory_limit_bytes=None,
+                memory_percent=None,
+                corpus_disk_usage_bytes=2 * 1024,
+            ),
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

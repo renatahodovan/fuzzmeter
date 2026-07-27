@@ -16,6 +16,7 @@ from unittest.mock import Mock, patch
 
 from fuzzmeter.repro.coverage_measure import (
     CoverageBatch,
+    _replace_out_root,
     build_coverage_replay_batches,
     replay_coverage_batches,
 )
@@ -171,6 +172,62 @@ class CoverageMeasureTest(unittest.TestCase):
                 jobs=1,
                 on_batch_done=None,
             )
+
+    def test_replay_coverage_batches_accepts_empty_batch_list(self) -> None:
+        replay_coverage_batches(
+            docker_runtime=Mock(),
+            batches=[],
+            jobs=2,
+        )
+
+    def test_replay_coverage_batches_reports_every_failure(self) -> None:
+        batches = [
+            CoverageBatch(
+                image='coverage-image',
+                fuzz_target='target',
+                input_mode='file',
+                inputs=[Path(f'input-{index}')],
+                profdata_path=Path(f'batch-{index}.profdata'),
+                diagnostics_dir=Path(f'diag-{index}'),
+                timeout_s=1.0,
+            )
+            for index in range(2)
+        ]
+
+        with (
+            patch(
+                'fuzzmeter.repro.coverage_measure.replay_coverage_batch',
+                side_effect=[RuntimeError('first failure'), ValueError('second failure')],
+            ),
+            self.assertRaises(RuntimeError) as raised,
+        ):
+            replay_coverage_batches(
+                docker_runtime=Mock(),
+                batches=batches,
+                jobs=2,
+            )
+
+        self.assertIn('first failure', str(raised.exception))
+        self.assertIn('second failure', str(raised.exception))
+
+    def test_replace_out_root_skips_unrelated_protected_directory_without_exception_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            out_root = root / 'out'
+            tmp_root = root / 'tmp'
+            protected_dir = root / 'trial' / 'state'
+            out_root.mkdir()
+            tmp_root.mkdir()
+            protected_dir.mkdir(parents=True)
+
+            with patch('fuzzmeter.repro.coverage_measure.LOG.debug') as debug:
+                _replace_out_root(
+                    out_root=out_root,
+                    tmp_root=tmp_root,
+                    protected_dir=protected_dir,
+                )
+
+        debug.assert_not_called()
 
 
 if __name__ == '__main__':

@@ -400,6 +400,7 @@ class RunnerLoopTest(unittest.TestCase):
 
             db = DB.open(db_path)
             try:
+                db_snapshot.insert_tick(db, run_id='run', idx=1, ts=130)
                 with patch(
                     'fuzzmeter.snapshot.scheduler.collect_snapshots',
                     return_value=([coverage_snapshot], [crash_snapshot]),
@@ -412,8 +413,9 @@ class RunnerLoopTest(unittest.TestCase):
                         end_ts=130,
                         selected_trials=(trial,),
                         campaign_trials=(trial,),
-                        render_heavy=True,
+                     render_heavy=True,
                     )
+                tick = db_snapshot.list_ticks(db, run_id='run')[0]
             finally:
                 db.close()
 
@@ -425,6 +427,8 @@ class RunnerLoopTest(unittest.TestCase):
             self.assertEqual((trial,), process_coverage.call_args.kwargs['campaign_trials'])
             process_crashes.assert_called_once()
             self.assertEqual([crash_snapshot], process_crashes.call_args.kwargs['snapshots'])
+            self.assertEqual('completed', tick['status'])
+            self.assertIsNone(tick['error'])
 
     def test_collector_parallelizes_trial_snapshot_collection(self) -> None:
         seen_threads: set[int] = set()
@@ -454,6 +458,63 @@ class RunnerLoopTest(unittest.TestCase):
         self.assertEqual([], coverage_snapshots)
         self.assertEqual([], crash_snapshots)
         self.assertGreaterEqual(len(seen_threads), 2)
+
+    def test_collector_accepts_tick_without_active_trials(self) -> None:
+        coverage_snapshots, crash_snapshots = collect_snapshots(
+            db_path=Path('/tmp/unused.db'),
+            run_id='run',
+            docker_runtime=None,
+            tick_idx=1,
+            end_ts=200,
+            active_trials=[],
+            replay_mode=True,
+            jobs=2,
+        )
+
+        self.assertEqual([], coverage_snapshots)
+        self.assertEqual([], crash_snapshots)
+
+    def test_tick_worker_records_processing_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            db_path = root / 'state.db'
+            db = DB.open(db_path)
+            try:
+                ensure_schema(db)
+                db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
+                db_snapshot.insert_tick(db, run_id='run', idx=1, ts=100)
+                db.commit()
+            finally:
+                db.close()
+
+            scheduler = SnapshotScheduler(
+                db_path=db_path,
+                run_dir=root,
+                run_id='run',
+                campaign_seconds=300,
+                every_seconds=60,
+                docker_runtime=None,
+            )
+            scheduler._schedule_tick(
+                tick_idx=1,
+                ts=100,
+                render_heavy=False,
+                trials=(),
+                campaign_trials=(),
+            )
+            scheduler._tick_queue.put(None)
+
+            with patch.object(scheduler, '_process_tick', side_effect=RuntimeError('coverage exploded')):
+                scheduler._tick_worker_loop()
+
+            db = DB.open(db_path)
+            try:
+                tick = db_snapshot.list_ticks(db, run_id='run')[0]
+            finally:
+                db.close()
+
+        self.assertEqual('failed', tick['status'])
+        self.assertIn('coverage exploded', tick['error'])
 
     def test_replay_scheduler_creates_periodic_and_last_ticks_from_replay_time(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

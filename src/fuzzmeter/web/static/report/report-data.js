@@ -13,6 +13,12 @@
 
 import { FM_APP } from './state.js';
 
+export function tickFailureNotice(overview) {
+  const count = Number(overview?.failed_snapshot_ticks || 0);
+  if (!Number.isFinite(count) || count <= 0) return null;
+  return `Warning: ${count} snapshot tick${count === 1 ? '' : 's'} failed. Coverage and crash curves may contain unmeasured gaps.`;
+}
+
 export const FM_PALETTE = [
   'rgba(120,180,255,0.95)',
   'rgba(255,160,120,0.95)',

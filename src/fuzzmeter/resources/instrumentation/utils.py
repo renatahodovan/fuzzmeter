@@ -286,13 +286,17 @@ def restore_directory(directory: str | os.PathLike[str] | None, ignore_errors: b
     with tempfile.TemporaryDirectory() as temp_dir:
         backup = os.path.join(temp_dir, os.path.basename(directory))
         shutil.copytree(directory, backup, symlinks=True)
-        yield
-        shutil.rmtree(directory, ignore_errors=ignore_errors)
-        shutil.move(backup, directory)
         try:
-            os.getcwd()
-        except FileNotFoundError:
-            os.chdir(initial_cwd)
+            yield
+        finally:
+            try:
+                shutil.rmtree(directory, ignore_errors=ignore_errors)
+                shutil.move(backup, directory)
+            finally:
+                try:
+                    os.getcwd()
+                except FileNotFoundError:
+                    os.chdir(initial_cwd)
 
 
 def get_dictionary_path(target_binary: str) -> str | None:

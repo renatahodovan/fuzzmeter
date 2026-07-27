@@ -64,6 +64,10 @@ class ReportingDB:
             'SELECT COUNT(*) FROM snapshots s JOIN trials t ON t.trial_id=s.trial_id WHERE t.run_id=?',
             (run_id,),
         ) or 0)
+        overview['failed_snapshot_ticks'] = int(self.scalar(
+            "SELECT COUNT(*) FROM snapshot_ticks WHERE run_id=? AND status='failed'",
+            (run_id,),
+        ) or 0)
         overview['bugs'] = int(self.scalar('SELECT COUNT(*) FROM bugs WHERE run_id=?', (run_id,)) or 0)
         return overview
 

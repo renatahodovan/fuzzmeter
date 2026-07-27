@@ -28,6 +28,46 @@ from fuzzmeter.db.report_views import ReportingDB
 class DatabaseBehaviorTest(unittest.TestCase):
     '''Pin behavior-sensitive database helper semantics before cleanup.'''
 
+    def test_snapshot_tick_status_is_persisted_and_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / 'fuzzmeter.db'
+            with _open_test_db(db_path) as db:
+                db_snapshot.insert_tick(db, run_id='run', idx=1, ts=10)
+                db_snapshot.mark_tick_failed(db, run_id='run', idx=1, error='coverage failed')
+                tick = db_snapshot.list_ticks(db, run_id='run')[0]
+                db.commit()
+                with ReportingDB(db_path) as reporting:
+                    overview = reporting.run_overview('run')
+
+        self.assertEqual('failed', tick['status'])
+        self.assertEqual('coverage failed', tick['error'])
+        self.assertEqual(1, overview['failed_snapshot_ticks'])
+
+    def test_schema_adds_status_to_existing_snapshot_ticks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db = DB.open(Path(tmp_dir) / 'fuzzmeter.db')
+            try:
+                db.exec(
+                    '''
+                    CREATE TABLE snapshot_ticks(
+                      run_id TEXT NOT NULL,
+                      idx INTEGER NOT NULL,
+                      ts INTEGER NOT NULL,
+                      PRIMARY KEY(run_id, idx)
+                    )
+                    ''',
+                )
+                db.exec('INSERT INTO snapshot_ticks(run_id, idx, ts) VALUES(?,?,?)', ('run', 1, 10))
+
+                ensure_schema(db)
+
+                tick = db_snapshot.list_ticks(db, run_id='run')[0]
+            finally:
+                db.close()
+
+        self.assertEqual('pending', tick['status'])
+        self.assertIsNone(tick['error'])
+
     def test_trial_rows_are_idempotent_and_refresh_started_timestamp(self) -> None:
         '''Repeated trial creation returns the same row and updates start time.'''
         with _open_test_db() as db:
