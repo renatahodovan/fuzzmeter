@@ -36,6 +36,8 @@ logging.basicConfig(
 )
 LOG = logging.getLogger(__name__)
 PROFDATA_MERGE_CHUNK_SIZE = 512
+TOOL_DIAGNOSTIC_LINE_LIMIT = 200
+TOOL_TIMEOUT_ENV = 'FM_LLVM_TOOL_TIMEOUT_S'
 
 
 @dataclass(frozen=True)
@@ -389,20 +391,81 @@ def _merge_profiles(*, inputs: list[str], output: Path, work_dir: Path, out_dir:
 
 
 def _run(cmd: list[str], *, out_dir: Path, label: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    cp = subprocess.run(
-        cmd,
-        check=False,
-        text=True,
-        encoding='utf-8',
-        errors='replace',
-        capture_output=True,
-        timeout=600.0,
+    timeout_s = float(os.environ.get(TOOL_TIMEOUT_ENV, '600'))
+    try:
+        cp = subprocess.run(
+            cmd,
+            check=False,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            capture_output=True,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout or ''
+        stderr = exc.stderr or ''
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode('utf-8', errors='replace')
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode('utf-8', errors='replace')
+        if stdout:
+            (out_dir / f'{label}.stdout.txt').write_text(stdout, encoding='utf-8', errors='replace')
+        if stderr:
+            (out_dir / f'{label}.stderr.txt').write_text(stderr, encoding='utf-8', errors='replace')
+        _record_tool_diagnostics(
+            out_dir=out_dir,
+            label=label,
+            cmd=cmd,
+            returncode=None,
+            stderr=stderr,
+            timed_out=True,
+        )
+        raise RuntimeError(f'{label} timed out after {timeout_s:g} seconds') from exc
+
+    if cp.returncode != 0:
+        (out_dir / f'{label}.stdout.txt').write_text(cp.stdout or '', encoding='utf-8', errors='replace')
+    if cp.stderr:
+        (out_dir / f'{label}.stderr.txt').write_text(cp.stderr, encoding='utf-8', errors='replace')
+    _record_tool_diagnostics(
+        out_dir=out_dir,
+        label=label,
+        cmd=cmd,
+        returncode=cp.returncode,
+        stderr=cp.stderr or '',
     )
-    if cp.returncode == 0 or not check:
+    if cp.returncode == 0:
         return cp
-    (out_dir / f'{label}.stdout.txt').write_text(cp.stdout or '', encoding='utf-8', errors='replace')
-    (out_dir / f'{label}.stderr.txt').write_text(cp.stderr or '', encoding='utf-8', errors='replace')
+    if not check:
+        LOG.warning('%s failed rc=%d; continuing because checking is disabled', label, cp.returncode)
+        return cp
     raise RuntimeError(f'{label} failed rc={cp.returncode}')
+
+
+def _record_tool_diagnostics(
+    *,
+    out_dir: Path,
+    label: str,
+    cmd: list[str],
+    returncode: int | None,
+    stderr: str,
+    timed_out: bool = False,
+) -> None:
+    diagnostics_path = out_dir / 'tool_diagnostics.json'
+    diagnostics = json.loads(diagnostics_path.read_text(encoding='utf-8')) if diagnostics_path.exists() else {}
+    stderr_lines = stderr.splitlines()
+    entry: dict[str, Any] = {
+        'command': cmd,
+        'returncode': returncode,
+        'stderr_line_count': len(stderr_lines),
+        'warnings': stderr_lines[:TOOL_DIAGNOSTIC_LINE_LIMIT],
+    }
+    if len(stderr_lines) > TOOL_DIAGNOSTIC_LINE_LIMIT:
+        entry['truncated'] = True
+    if timed_out:
+        entry['timed_out'] = True
+    diagnostics[label] = entry
+    diagnostics_path.write_text(json.dumps(diagnostics, indent=2), encoding='utf-8', errors='replace')
 
 
 def _target_command(cfg: WorkerConfig, input_path: str) -> tuple[list[str], bytes | None]:

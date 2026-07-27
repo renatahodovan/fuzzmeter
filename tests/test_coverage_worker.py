@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -186,6 +187,119 @@ class CoverageWorkerTest(unittest.TestCase):
 
         self.assertEqual('out', stdout)
         self.assertEqual('err', stderr)
+
+    def test_run_persists_successful_tool_stderr_and_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            bin_dir = root / 'bin'
+            bin_dir.mkdir()
+            tool = bin_dir / 'llvm-profdata'
+            tool.write_text(
+                f'#!{sys.executable}\n'
+                'import sys\n'
+                'sys.stderr.write("malformed instrumentation profile data\\n")\n',
+                encoding='utf-8',
+            )
+            tool.chmod(tool.stat().st_mode | 0o111)
+            out_dir = root / 'out'
+            out_dir.mkdir()
+
+            with patch.dict(os.environ, {'PATH': f'{bin_dir}{os.pathsep}{os.environ["PATH"]}'}):
+                coverage_worker._run(
+                    ['llvm-profdata', 'merge'],
+                    out_dir=out_dir,
+                    label='llvm_profdata_merge_test',
+                )
+
+            stderr = (out_dir / 'llvm_profdata_merge_test.stderr.txt').read_text(encoding='utf-8')
+            diagnostics = json.loads((out_dir / 'tool_diagnostics.json').read_text(encoding='utf-8'))
+
+        self.assertEqual('malformed instrumentation profile data\n', stderr)
+        self.assertEqual(
+            {
+                'command': ['llvm-profdata', 'merge'],
+                'returncode': 0,
+                'stderr_line_count': 1,
+                'warnings': ['malformed instrumentation profile data'],
+            },
+            diagnostics['llvm_profdata_merge_test'],
+        )
+
+    def test_run_records_timeout_before_raising(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_dir = Path(tmp_dir)
+            timeout = subprocess.TimeoutExpired(
+                cmd=['llvm-cov', 'show'],
+                timeout=12,
+                output='partial output',
+                stderr='partial warning\n',
+            )
+
+            with patch.dict(os.environ, {'FM_LLVM_TOOL_TIMEOUT_S': '12'}), \
+                 patch.object(coverage_worker.subprocess, 'run', side_effect=timeout):
+                with self.assertRaisesRegex(RuntimeError, 'llvm_cov_show timed out after 12 seconds'):
+                    coverage_worker._run(
+                        ['llvm-cov', 'show'],
+                        out_dir=out_dir,
+                        label='llvm_cov_show',
+                        check=False,
+                    )
+
+            diagnostics = json.loads((out_dir / 'tool_diagnostics.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(
+            {
+                'command': ['llvm-cov', 'show'],
+                'returncode': None,
+                'stderr_line_count': 1,
+                'warnings': ['partial warning'],
+                'timed_out': True,
+            },
+            diagnostics['llvm_cov_show'],
+        )
+
+    def test_run_truncates_rollup_warnings_and_skips_empty_stderr_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_dir = Path(tmp_dir)
+            stderr = ''.join(f'warning {index}\n' for index in range(201))
+
+            with patch.object(
+                coverage_worker.subprocess,
+                'run',
+                side_effect=[
+                    subprocess.CompletedProcess(args=['tool'], returncode=0, stdout='', stderr=stderr),
+                    subprocess.CompletedProcess(args=['quiet-tool'], returncode=0, stdout='', stderr=''),
+                ],
+            ):
+                coverage_worker._run(['tool'], out_dir=out_dir, label='tool')
+                coverage_worker._run(['quiet-tool'], out_dir=out_dir, label='quiet_tool')
+
+            diagnostics = json.loads((out_dir / 'tool_diagnostics.json').read_text(encoding='utf-8'))
+            quiet_stderr_exists = (out_dir / 'quiet_tool.stderr.txt').exists()
+
+        self.assertEqual(201, diagnostics['tool']['stderr_line_count'])
+        self.assertEqual(200, len(diagnostics['tool']['warnings']))
+        self.assertTrue(diagnostics['tool']['truncated'])
+        self.assertFalse(quiet_stderr_exists)
+        self.assertEqual([], diagnostics['quiet_tool']['warnings'])
+
+    def test_run_logs_unchecked_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_dir = Path(tmp_dir)
+
+            with patch.object(
+                coverage_worker.subprocess,
+                'run',
+                return_value=subprocess.CompletedProcess(args=['llvm-cov'], returncode=1, stdout='', stderr='failed'),
+            ), self.assertLogs(coverage_worker.LOG, level='WARNING') as logs:
+                coverage_worker._run(
+                    ['llvm-cov', 'show'],
+                    out_dir=out_dir,
+                    label='llvm_cov_show',
+                    check=False,
+                )
+
+        self.assertIn('llvm_cov_show failed rc=1', logs.output[0])
 
 
 if __name__ == '__main__':
