@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Bounded Docker CLI operations for run-scoped containers.'''
+
 from __future__ import annotations
 
 import logging
@@ -18,6 +20,15 @@ from pathlib import Path
 from .runtime import DockerRuntime
 
 logger = logging.getLogger(__name__)
+
+# Control-plane operations must not wedge the process, so they get a deadline.
+# Passing timeout_s=None means unbounded, which is required both for the worker
+# containers that do the actual measuring and for cleanup that has to complete.
+DEFAULT_DOCKER_TIMEOUT_S = 30
+
+
+class DockerTimeoutError(RuntimeError):
+    '''Report a Docker CLI command that exceeded its deadline.'''
 
 
 @dataclass(frozen=True)
@@ -39,6 +50,9 @@ class ContainerSpec:
     memory_swap: str | None = None
     mounts: dict[Path, str] = field(default_factory=dict)
     mounts_ro: dict[Path, str] = field(default_factory=dict)
+    kind: str = 'trial'
+    trial_key: str | None = None
+    init: bool = False
 
 
 class DockerClient:
@@ -73,6 +87,8 @@ class DockerClient:
         if spec.detach:
             cmd.append('-d')
         cmd += self._common_run_args(
+            kind=spec.kind,
+            trial_key=spec.trial_key,
             name=spec.name,
             env=spec.env,
             volumes=spec.volumes,
@@ -81,6 +97,7 @@ class DockerClient:
             memory=spec.memory,
             memory_swap=spec.memory_swap,
             read_only_rootfs=spec.read_only_rootfs,
+            init=spec.init,
         )
         for host_path, container_path in spec.mounts.items():
             cmd += ['-v', f'{host_path}:{container_path}']
@@ -111,12 +128,16 @@ class DockerClient:
         check: bool = False,
         memory: str | None = None,
         memory_swap: str | None = None,
+        kind: str,
+        trial_key: str | None = None,
     ) -> subprocess.CompletedProcess:
         '''Run a docker container synchronously and return the completed process.'''
         args = ['docker', 'run', '--rm']
         if name:
             self._run(['docker', 'rm', '-f', name], check=False, capture=True)
         args += self._common_run_args(
+            kind=kind,
+            trial_key=trial_key,
             name=name,
             env=env or {},
             volumes=volumes or [],
@@ -129,19 +150,11 @@ class DockerClient:
         if cmd:
             args += list(cmd)
 
-        try:
-            result = subprocess.run(args, text=True, timeout=timeout_s, check=False, capture_output=True)
-        except subprocess.TimeoutExpired:
-            joined_args = ' '.join(args)
-            result = subprocess.CompletedProcess(
-                args,
-                returncode=-1,
-                stdout='',
-                stderr=f'Command timed out after {timeout_s} seconds: {joined_args}',
-            )
-            if check:
-                raise RuntimeError(result.stderr)
-            return result
+        # Worker containers do the measuring, and their runtime depends on the
+        # target and the corpus, so they stay unbounded unless a caller decides
+        # otherwise. Bounding them here would turn a slow measurement into a
+        # failed tick, which leaves a permanent hole in the cumulative coverage.
+        result = self._run(args, check=False, capture=True, timeout_s=timeout_s)
 
         if check and result.returncode != 0:
             joined_args = ' '.join(args)
@@ -160,31 +173,44 @@ class DockerClient:
     def wait(self, container_id_or_name: str, timeout_s: int | None = None) -> int:
         '''Wait for a docker container and return its exit code.'''
         if timeout_s is None:
-            result = self._run(['docker', 'wait', container_id_or_name], check=True, capture=True)
+            # docker wait blocks for the whole remaining container lifetime.
+            result = self._run(
+                ['docker', 'wait', container_id_or_name],
+                check=True,
+                capture=True,
+                timeout_s=None,
+            )
             return _parse_int(result.stdout.strip(), default=1)
 
         deadline = time.time() + timeout_s
         while time.time() < deadline:
-            running = subprocess.run(
+            remaining_s = max(0.001, deadline - time.time())
+            running = self._run(
                 ['docker', 'inspect', '-f', '{{.State.Running}}', container_id_or_name],
-                text=True,
-                capture_output=True,
+                check=False,
+                capture=True,
+                timeout_s=min(DEFAULT_DOCKER_TIMEOUT_S, remaining_s),
             )
             if running.returncode != 0:
                 return 1
             if running.stdout.strip().lower() != 'true':
-                exit_code = subprocess.run(
+                exit_code = self._run(
                     ['docker', 'inspect', '-f', '{{.State.ExitCode}}', container_id_or_name],
-                    text=True,
-                    capture_output=True,
+                    check=False,
+                    capture=True,
+                    timeout_s=min(DEFAULT_DOCKER_TIMEOUT_S, max(0.001, deadline - time.time())),
                 )
                 return _parse_int(exit_code.stdout.strip(), default=1)
             time.sleep(0.5)
         return 1
 
-    def create(self, image: str) -> str:
+    def create(self, image: str, *, kind: str = 'build') -> str:
         '''Create a docker container from an image and return its id.'''
-        result = self._run(['docker', 'create', image], check=True, capture=True)
+        result = self._run(
+            ['docker', 'create', *self._label_args(kind=kind), image],
+            check=True,
+            capture=True,
+        )
         return result.stdout.strip()
 
     def copy_from_image(self, *, image: str, src_path: str, dst_path: str | Path) -> None:
@@ -197,6 +223,7 @@ class DockerClient:
             'docker',
             'run',
             '--rm',
+            *self._label_args(kind='build'),
             image,
             'bash',
             '-lc',
@@ -206,7 +233,7 @@ class DockerClient:
         if kind == 'MISSING':
             raise RuntimeError(f'Docker image path is missing in {image}: {src_path}')
 
-        container_id = self.create(image)
+        container_id = self.create(image, kind='build')
         try:
             self._run(['docker', 'cp', f'{container_id}:{src_path}', str(dst)], check=True, capture=True)
         finally:
@@ -214,10 +241,10 @@ class DockerClient:
 
     def is_running(self, container_id_or_name: str) -> bool:
         '''Return whether a docker container is currently running.'''
-        result = subprocess.run(
+        result = self._run(
             ['docker', 'inspect', '-f', '{{.State.Running}}', container_id_or_name],
-            text=True,
-            capture_output=True,
+            check=False,
+            capture=True,
         )
         if result.returncode != 0:
             return False
@@ -225,28 +252,31 @@ class DockerClient:
 
     def rm(self, container_id_or_name: str) -> bool:
         '''Remove a docker container if it exists.'''
-        return subprocess.run(
+        # Unbounded on purpose: a half-finished cleanup leaves a container
+        # behind, and the repeated-signal path is the escape hatch if the
+        # daemon is wedged.
+        return self._run(
             ['docker', 'rm', '-f', container_id_or_name],
             check=False,
-            capture_output=True,
-            text=True,
+            capture=True,
+            timeout_s=None,
         ).returncode == 0
 
     def kill(self, container_id_or_name: str) -> bool:
         '''Kill a docker container if it is running.'''
-        return subprocess.run(
+        return self._run(
             ['docker', 'kill', container_id_or_name],
             check=False,
-            capture_output=True,
-            text=True,
+            capture=True,
+            timeout_s=None,
         ).returncode == 0
 
     def logs(self, container_id_or_name: str, tail: int = 200) -> str:
         '''Return docker logs for a container.'''
-        result = subprocess.run(
+        result = self._run(
             ['docker', 'logs', '--tail', str(int(tail)), container_id_or_name],
-            text=True,
-            capture_output=True,
+            check=False,
+            capture=True,
         )
         out = result.stdout or ''
         if result.stderr:
@@ -256,6 +286,8 @@ class DockerClient:
     def _common_run_args(
         self,
         *,
+        kind: str,
+        trial_key: str | None = None,
         name: str | None = None,
         env: dict[str, str],
         volumes: list[str],
@@ -264,10 +296,13 @@ class DockerClient:
         memory: str | None = None,
         memory_swap: str | None = None,
         read_only_rootfs: bool = False,
+        init: bool = False,
     ) -> list[str]:
-        args: list[str] = []
+        args = self._label_args(kind=kind, trial_key=trial_key)
         if name:
             args += ['--name', name]
+        if init:
+            args.append('--init')
         if read_only_rootfs:
             args += ['--read-only']
 
@@ -289,10 +324,58 @@ class DockerClient:
             args += ['-v', volume]
         return args
 
+    def _label_args(self, *, kind: str, trial_key: str | None = None) -> list[str]:
+        if self.runtime is None or self.runtime.run_id is None:
+            return []
+        args = [
+            '--label',
+            f'fuzzmeter.run={self.runtime.run_id}',
+            '--label',
+            f'fuzzmeter.kind={kind}',
+        ]
+        if trial_key is not None:
+            args += ['--label', f'fuzzmeter.trial={trial_key}']
+        return args
+
+    def sweep_run(self) -> int:
+        '''Force-remove all containers carrying this client's run label.'''
+        if self.runtime is None or self.runtime.run_id is None:
+            raise ValueError('A run-scoped Docker runtime is required for sweeping')
+        result = self._run(
+            ['docker', 'ps', '-aq', '--filter', f'label=fuzzmeter.run={self.runtime.run_id}'],
+            check=True,
+            capture=True,
+        )
+        container_ids = result.stdout.split()
+        if container_ids:
+            # Unbounded: removing many containers may take a while and this
+            # sweep is the only thing standing between an interrupt and a leak.
+            self._run(['docker', 'rm', '-f', *container_ids], check=False, capture=True, timeout_s=None)
+        return len(container_ids)
+
     @staticmethod
-    def _run(cmd: list[str], *, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess:
+    def _run(
+        cmd: list[str],
+        *,
+        check: bool = True,
+        capture: bool = False,
+        timeout_s: float | None = DEFAULT_DOCKER_TIMEOUT_S,
+        cwd: Path | None = None,
+    ) -> subprocess.CompletedProcess:
         try:
-            return subprocess.run(cmd, check=check, text=True, capture_output=capture)
+            return subprocess.run(
+                cmd,
+                check=check,
+                text=True,
+                capture_output=capture,
+                timeout=timeout_s,
+                start_new_session=True,
+                cwd=cwd,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise DockerTimeoutError(
+                f'Docker command timed out after {timeout_s} seconds: {" ".join(cmd)}'
+            ) from exc
         except subprocess.CalledProcessError as exc:
             out = ''
             if getattr(exc, 'stdout', None):

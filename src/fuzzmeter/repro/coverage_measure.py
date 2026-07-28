@@ -36,6 +36,8 @@ class CoverageBatch:
     profdata_path: Path
     diagnostics_dir: Path
     timeout_s: float
+    container_name: str | None = None
+    trial_key: str | None = None
 
 
 def build_coverage_replay_batches(
@@ -47,6 +49,8 @@ def build_coverage_replay_batches(
     state_dir: Path,
     batch_tag: str | int,
     timeout_s: float,
+    container_prefix: str | None = None,
+    trial_key: str | None = None,
 ) -> tuple[list[Path], list[CoverageBatch]]:
     '''Create host-side coverage replay batches for one input set.'''
     if not inputs:
@@ -70,6 +74,8 @@ def build_coverage_replay_batches(
             profdata_path=batch_profdata_paths[index],
             diagnostics_dir=diagnostics_root / f'{index:06d}',
             timeout_s=timeout_s,
+            container_name=f'{container_prefix}-{index:06d}' if container_prefix else None,
+            trial_key=trial_key,
         )
         for index, input_batch in enumerate(input_batches)
     ]
@@ -98,6 +104,8 @@ def replay_coverage_batches(
                 batch_profdata_path=batch.profdata_path,
                 diagnostics_dir=batch.diagnostics_dir,
                 timeout_s=batch.timeout_s,
+                container_name=batch.container_name,
+                trial_key=batch.trial_key,
             )
             for batch in batches
         ]
@@ -126,6 +134,8 @@ def replay_coverage_batch(
     batch_profdata_path: Path,
     diagnostics_dir: Path,
     timeout_s: float = 2.0,
+    container_name: str | None = None,
+    trial_key: str | None = None,
 ) -> None:
     '''Replay coverage inputs in one container and write their batch profile.'''
     if not inputs:
@@ -162,9 +172,12 @@ def replay_coverage_batch(
 
     docker.run(
         image=image,
+        name=container_name,
         env=env,
         volumes=[docker.out_volume()],
         check=True,
+        kind='coverage',
+        trial_key=trial_key,
         cmd=['python3', '/opt/fuzzmeter/coverage_worker.py'],
     )
 
@@ -182,6 +195,8 @@ def merge_coverage_outputs(
     profile_inputs: list[Path],
     render_html: bool = True,
     write_coverage_sets: bool = True,
+    container_name: str | None = None,
+    trial_key: str | None = None,
 ) -> dict:
     '''Merge batch profiles into one coverage output root and refresh its artifacts.'''
     docker = DockerClient(docker_runtime)
@@ -219,9 +234,12 @@ def merge_coverage_outputs(
 
     docker.run(
         image=image,
+        name=container_name,
         env=env,
         volumes=[docker.out_volume()],
         check=True,
+        kind='coverage',
+        trial_key=trial_key,
         cmd=['python3', '/opt/fuzzmeter/coverage_worker.py'],
     )
 

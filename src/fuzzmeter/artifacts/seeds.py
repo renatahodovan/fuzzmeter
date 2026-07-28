@@ -24,7 +24,12 @@ from ..trial.workspace import extract_seed_corpus_from_image
 LOG = logging.getLogger(__name__)
 
 
-def prepare_seed_corpora(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
+def prepare_seed_corpora(
+    *,
+    campaign_config: CampaignConfig,
+    run_dir: Path,
+    docker_runtime: DockerRuntime | None = None,
+) -> None:
     '''Prepare configured or image-provided seed corpora for a run.'''
     seeds_out = Path(run_dir) / 'seed_corpora'
     seeds_out.mkdir(parents=True, exist_ok=True)
@@ -42,6 +47,7 @@ def prepare_seed_corpora(*, campaign_config: CampaignConfig, run_dir: Path) -> N
             benchmark=entry.benchmark,
             fuzz_target=entry.fuzz_target,
             out_dir=seeds_out,
+            docker_runtime=docker_runtime,
         )
         if extracted is None:
             LOG.info(

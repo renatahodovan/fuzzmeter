@@ -43,6 +43,7 @@ def repro_crash_batch(
     snapshot_crashes_dir: Path,
     crash_tests: list[DetectedFile],
     batch_index: int,
+    tick_idx: int | None = None,
     repro_logs_dir: Path,
 ) -> None:
     '''Reproduce new crashes in the sanitizer image and persist bug hits.'''
@@ -56,6 +57,7 @@ def repro_crash_batch(
         crash_tests=crash_tests,
         repro_logs_dir=repro_logs_dir,
         batch_index=batch_index,
+        tick_idx=snapshot_id if tick_idx is None else tick_idx,
     )
     hits, bug_data_by_key = _collect_bug_hits(reproduced)
 
@@ -105,6 +107,7 @@ def _reproduce_crash_batch(
     crash_tests: list[DetectedFile],
     repro_logs_dir: Path,
     batch_index: int,
+    tick_idx: int,
 ) -> list[tuple[str, dict[str, Any], int]]:
     docker = DockerClient(docker_runtime)
     batch_root = snapshot_crashes_dir.parent / '.crash_repro_batches' / f'{batch_index:06d}'
@@ -120,6 +123,7 @@ def _reproduce_crash_batch(
 
     docker.run(
         image=trial.config.images.asan,
+        name=f'fm-{docker_runtime.run_id or "run"}-crash-{tick_idx}-{trial.config.trial_key}-{batch_index:06d}',
         volumes=[docker.out_volume()],
         env={
             'FM_TARGET_NAME': trial.config.fuzz_target,
@@ -129,6 +133,8 @@ def _reproduce_crash_batch(
             'FM_CRASH_OUTPUT_JSON': docker.container_path(output_json),
         },
         check=False,
+        kind='crash',
+        trial_key=trial.config.trial_key,
         cmd=['python3', '/opt/fuzzmeter/crash_worker.py'],
     )
 

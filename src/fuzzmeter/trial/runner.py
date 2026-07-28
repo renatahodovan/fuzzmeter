@@ -84,14 +84,17 @@ def run_one_trial(
     status: str | None = None
     started = False
     try:
-        trial_container.start()
-        started = True
+        started = trial_container.start(stop_event=stop_event)
+        if not started:
+            status = 'interrupted'
+            return
         with layout.fuzzer_log.open('a', encoding='utf-8', errors='replace') as log_file:
             log_proc = subprocess.Popen(
                 ['docker', 'logs', '-f', container_name],
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
+                start_new_session=True,
             )
             trial_container.monitor_until_deadline(stop_event=stop_event)
     except Exception:

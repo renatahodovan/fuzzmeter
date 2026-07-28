@@ -206,12 +206,20 @@ def prepare_artifacts(
 ) -> dict[tuple[str, str], Path]:
     '''Build images, extract binaries, prepare seeds, and measure seed baselines.'''
     _build_images(campaign_config=campaign_config, run_dir=run_dir, external_roots=external_roots)
-    fuzz_binaries = extract_fuzz_binaries(campaign_config=campaign_config, run_dir=run_dir)
+    fuzz_binaries = extract_fuzz_binaries(
+        campaign_config=campaign_config,
+        run_dir=run_dir,
+        docker_runtime=docker_runtime,
+    )
     save_records(
         db_path,
         collect_records(run_id=run_id, campaign_config=campaign_config, external_roots=external_roots),
     )
-    prepare_seed_corpora(campaign_config=campaign_config, run_dir=run_dir)
+    prepare_seed_corpora(
+        campaign_config=campaign_config,
+        run_dir=run_dir,
+        docker_runtime=docker_runtime,
+    )
     measure_seed_baselines(
         campaign_config=campaign_config,
         db_path=db_path,

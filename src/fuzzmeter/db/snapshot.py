@@ -124,6 +124,21 @@ def mark_tick_failed(db: DB, *, run_id: str, idx: int, error: str) -> None:
     )
 
 
+def mark_tick_aborted(db: DB, *, run_id: str, idx: int, error: str) -> None:
+    '''Record a snapshot tick abandoned because the run was shutting down.
+
+    Shutdown kills the worker containers under the tick, so the resulting error
+    describes the interrupt rather than a measurement problem. Keeping it apart
+    from 'failed' stops every interrupted run from reporting measurement
+    failures it did not have.
+    '''
+
+    db.exec(
+        "UPDATE snapshot_ticks SET status='aborted', error=? WHERE run_id=? AND idx=?",
+        (str(error), str(run_id), int(idx)),
+    )
+
+
 def get_latest_tick_idx(db: DB, *, run_id: str) -> int:
     '''Return the latest recorded snapshot tick index for a run.'''
 

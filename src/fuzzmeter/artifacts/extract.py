@@ -12,11 +12,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..config import CampaignCase, CampaignConfig, target_key
-from ..docker import DockerClient
+from ..docker import DockerClient, DockerRuntime
 from ..trial.models import TrialImages
 
 
-def extract_fuzz_binaries(*, campaign_config: CampaignConfig, run_dir: Path) -> dict[tuple[str, str], Path]:
+def extract_fuzz_binaries(
+    *,
+    campaign_config: CampaignConfig,
+    run_dir: Path,
+    docker_runtime: DockerRuntime,
+) -> dict[tuple[str, str], Path]:
     '''Extract built target binaries for a run.'''
     built_root = Path(run_dir) / 'built_bins'
     fuzz_root = built_root / 'fuzz'
@@ -26,7 +31,7 @@ def extract_fuzz_binaries(*, campaign_config: CampaignConfig, run_dir: Path) -> 
     for path in (fuzz_root, coverage_root, asan_root):
         path.mkdir(parents=True, exist_ok=True)
 
-    docker = DockerClient()
+    docker = DockerClient(docker_runtime)
     fuzz_binaries: dict[tuple[str, str], Path] = {}
     for entry in campaign_config.cases:
         target = target_key(entry.benchmark, entry.fuzz_target)

@@ -58,6 +58,7 @@ def process_snapshot_crashes(
                 snapshot_crashes_dir=snapshot.snapshot_dir / 'crashes',
                 crash_tests=crash_tests,
                 batch_index=batch_index,
+                tick_idx=tick_idx,
                 repro_logs_dir=run_dir / 'repro_logs',
             )
             for snapshot, batch_index, crash_tests in crash_batches

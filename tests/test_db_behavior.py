@@ -43,6 +43,30 @@ class DatabaseBehaviorTest(unittest.TestCase):
         self.assertEqual('coverage failed', tick['error'])
         self.assertEqual(1, overview['failed_snapshot_ticks'])
 
+    def test_aborted_ticks_are_not_counted_as_measurement_failures(self) -> None:
+        '''Shutdown-abandoned ticks stay out of the failed snapshot tick count.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / 'fuzzmeter.db'
+            with _open_test_db(db_path) as db:
+                for idx in (1, 2, 3):
+                    db_snapshot.insert_tick(db, run_id='run', idx=idx, ts=100 + idx)
+                db_snapshot.mark_tick_completed(db, run_id='run', idx=1)
+                db_snapshot.mark_tick_failed(db, run_id='run', idx=2, error='RuntimeError: llvm-cov failed')
+                db_snapshot.mark_tick_aborted(db, run_id='run', idx=3, error='RuntimeError: interrupted')
+                db.commit()
+
+                ticks = {int(row['idx']): row for row in db_snapshot.list_ticks(db, run_id='run')}
+
+            self.assertEqual('completed', ticks[1]['status'])
+            self.assertEqual('failed', ticks[2]['status'])
+            self.assertEqual('aborted', ticks[3]['status'])
+            self.assertEqual('RuntimeError: interrupted', ticks[3]['error'])
+
+            with ReportingDB(db_path) as reporting_db:
+                overview = reporting_db.run_overview('run')
+
+            self.assertEqual(1, overview['failed_snapshot_ticks'])
+
     def test_schema_adds_status_to_existing_snapshot_ticks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             db = DB.open(Path(tmp_dir) / 'fuzzmeter.db')

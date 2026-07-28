@@ -114,6 +114,8 @@ class CoverageMeasureTest(unittest.TestCase):
                 state_dir=state_dir,
                 batch_tag='tick-7',
                 timeout_s=1.0,
+                container_prefix='fm-run-cov-7-trial',
+                trial_key='trial',
             )
 
         self.assertEqual(
@@ -125,6 +127,8 @@ class CoverageMeasureTest(unittest.TestCase):
         )
         self.assertEqual(state_dir / '_batch_diag_tick-7' / '000000', batches[0].diagnostics_dir)
         self.assertEqual(state_dir / '_batch_diag_tick-7' / '000001', batches[1].diagnostics_dir)
+        self.assertEqual('fm-run-cov-7-trial-000000', batches[0].container_name)
+        self.assertEqual('trial', batches[0].trial_key)
 
     def test_replay_coverage_batches_calls_progress_for_each_batch(self) -> None:
         batches = [

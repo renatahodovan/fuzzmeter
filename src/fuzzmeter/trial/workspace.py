@@ -16,7 +16,7 @@ import zipfile
 
 from pathlib import Path
 
-from ..docker import DockerClient
+from ..docker import DockerClient, DockerRuntime
 from .models import TrialConfig, TrialLayout
 
 LOG = logging.getLogger(__name__)
@@ -55,9 +55,10 @@ def extract_seed_corpus_from_image(
     benchmark: str,
     fuzz_target: str,
     out_dir: Path,
+    docker_runtime: DockerRuntime | None = None,
 ) -> Path | None:
     '''Extract a seed corpus zip from a runner image, if present.'''
-    docker = DockerClient()
+    docker = DockerClient(docker_runtime)
     seed_root = out_dir / f'{fuzzer}__{benchmark}__{fuzz_target}'
     zip_name = f'{fuzz_target}_seed_corpus.zip'
     tmp_root = seed_root.with_suffix('.tmp')

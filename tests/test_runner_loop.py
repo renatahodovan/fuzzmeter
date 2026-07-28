@@ -221,7 +221,8 @@ class RunnerLoopTest(unittest.TestCase):
             replay_cfg = _trial_config(root, rep_idx=1, replay_dir=root / 'replay')
 
             with patch('fuzzmeter.run.runner.prepare_artifacts', return_value={}), \
-                 patch('fuzzmeter.run.runner.plan_trials', return_value=[live_cfg, replay_cfg]):
+                 patch('fuzzmeter.run.runner.plan_trials', return_value=[live_cfg, replay_cfg]), \
+                 patch('fuzzmeter.run.shutdown.DockerClient.sweep_run', return_value=0) as sweep:
                 with self.assertRaisesRegex(RuntimeError, 'Replay trials cannot be mixed'):
                     run_experiment(
                         campaign_config=config,
@@ -229,6 +230,7 @@ class RunnerLoopTest(unittest.TestCase):
                         external_roots=ExternalRoots.from_checkout(root),
                         config_src='config',
                     )
+            self.assertGreaterEqual(sweep.call_count, 1)
 
     def test_replay_run_registers_trials_runs_scheduler_and_marks_done(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -515,6 +517,54 @@ class RunnerLoopTest(unittest.TestCase):
 
         self.assertEqual('failed', tick['status'])
         self.assertIn('coverage exploded', tick['error'])
+
+    def test_tick_worker_records_shutdown_interruption_as_aborted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            db_path = root / 'state.db'
+            db = DB.open(db_path)
+            try:
+                ensure_schema(db)
+                db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
+                db_snapshot.insert_tick(db, run_id='run', idx=1, ts=100)
+                db.commit()
+            finally:
+                db.close()
+
+            # The signal handler sets the shared stop event before it sweeps the
+            # containers, so a tick killed by that sweep must not be reported as
+            # a measurement failure.
+            stop_event = threading.Event()
+            stop_event.set()
+            scheduler = SnapshotScheduler(
+                db_path=db_path,
+                run_dir=root,
+                run_id='run',
+                campaign_seconds=300,
+                every_seconds=60,
+                docker_runtime=None,
+                stop_event=stop_event,
+            )
+            scheduler._schedule_tick(
+                tick_idx=1,
+                ts=100,
+                render_heavy=False,
+                trials=(),
+                campaign_trials=(),
+            )
+            scheduler._tick_queue.put(None)
+
+            with patch.object(scheduler, '_process_tick', side_effect=RuntimeError('container removed')):
+                scheduler._tick_worker_loop()
+
+            db = DB.open(db_path)
+            try:
+                tick = db_snapshot.list_ticks(db, run_id='run')[0]
+            finally:
+                db.close()
+
+        self.assertEqual('aborted', tick['status'])
+        self.assertIn('container removed', tick['error'])
 
     def test_replay_scheduler_creates_periodic_and_last_ticks_from_replay_time(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

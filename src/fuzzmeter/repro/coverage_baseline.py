@@ -90,6 +90,7 @@ def measure_seed_baseline(
         state_dir=state_dir,
         batch_tag='seed',
         timeout_s=job.timeout_s * 2,
+        container_prefix=f'fm-{run_id}-cov-seed-{job.fuzzer}-{job.benchmark}-{job.fuzz_target}',
     )
     replay_coverage_batches(
         docker_runtime=docker_runtime,
@@ -106,6 +107,7 @@ def measure_seed_baseline(
         state_dir=state_dir,
         work_dir=state_dir / '_tmp_seed',
         profile_inputs=batch_profdata_paths,
+        container_name=f'fm-{run_id}-cov-seed-{job.fuzzer}-{job.benchmark}-{job.fuzz_target}-merge',
     )
 
     html_index = base_root / 'html' / 'index.html'

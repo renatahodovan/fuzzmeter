@@ -27,7 +27,7 @@ class TrialContainer:
     '''Run and stop fuzzer trial containers.'''
 
     _active_container_names: set[str] = set()
-    _active_lock = threading.Lock()
+    _active_lock = threading.RLock()
 
     def __init__(
         self,
@@ -99,8 +99,8 @@ class TrialContainer:
         exit $rc
         '''.strip()
 
-    def start(self) -> None:
-        '''Start a fuzzer trial container.'''
+    def start(self, *, stop_event: threading.Event | None = None) -> bool:
+        '''Start a fuzzer trial container unless shutdown has already begun.'''
         fuzz_target_bin = self._mounted_path(self.cfg.fuzz_target_bin)
         input_corpus_dir = self._mounted_path(self.input_corpus_dir)
         fuzz_dir = self.trial_mount_dir / FUZZ_DIR
@@ -118,24 +118,30 @@ class TrialContainer:
             'FM_LOG': str(fuzzer_log_in_container),
             'FM_LOG_LEVEL': str(logging.getLevelName(LOG.getEffectiveLevel())),
         }
-        self.docker.start(
-            ContainerSpec(
-                image=self.cfg.images.runner,
-                name=self.container_name,
-                workdir='/',
-                entrypoint='/bin/bash',
-                env=env,
-                volumes=[self.docker.out_volume('/tmp/fuzzmeter/out')],
-                mounts_ro={},
-                user=self.docker.run_user,
-                args=['-lc', self._container_start_cmd()],
-                detach=True,
+        with self._active_lock:
+            if stop_event is not None and stop_event.is_set():
+                return False
+            self._active_container_names.add(self.container_name)
+            self.docker.start(
+                ContainerSpec(
+                    image=self.cfg.images.runner,
+                    name=self.container_name,
+                    workdir='/',
+                    entrypoint='/bin/bash',
+                    env=env,
+                    volumes=[self.docker.out_volume('/tmp/fuzzmeter/out')],
+                    mounts_ro={},
+                    user=self.docker.run_user,
+                    args=['-lc', self._container_start_cmd()],
+                    detach=True,
+                    kind='trial',
+                    trial_key=self.cfg.trial_key,
+                    init=True,
+                )
             )
-        )
-        self._register_active_container(self.container_name)
         time.sleep(0.5)
         if self.docker.is_running(self.container_name):
-            return
+            return True
         try:
             self._append_immediate_exit_logs()
             self.docker.rm(self.container_name)
@@ -176,6 +182,12 @@ class TrialContainer:
             if log_proc.poll() is None:
                 log_proc.terminate()
             log_proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            try:
+                log_proc.kill()
+                log_proc.wait()
+            except Exception as exc:
+                LOG.warning('Failed to kill docker log stream for %s: %s', container_name, exc)
         except Exception as exc:
             LOG.warning('Failed to stop docker log stream for %s: %s', container_name, exc)
 
@@ -190,14 +202,22 @@ class TrialContainer:
             cls._active_container_names.discard(container_name)
 
     @classmethod
-    def force_stop_all_active(cls) -> None:
-        '''Stop all trial containers tracked by this process.'''
+    def force_stop_all_active(cls, docker_runtime: DockerRuntime | None = None) -> int:
+        '''Stop tracked trials and sweep run-labelled containers under one lock.'''
         with cls._active_lock:
-            active = list(cls._active_container_names)
-        docker = DockerClient()
-        for container_name in active:
-            try:
-                docker.kill(container_name)
-                docker.rm(container_name)
-            finally:
-                cls._unregister_active_container(container_name)
+            docker = DockerClient()
+            swept = 0
+            if docker_runtime is not None:
+                try:
+                    swept = DockerClient(docker_runtime).sweep_run()
+                except Exception as exc:
+                    LOG.error('Failed to sweep run containers: %s', exc)
+            for container_name in list(cls._active_container_names):
+                try:
+                    docker.kill(container_name)
+                    docker.rm(container_name)
+                except Exception as exc:
+                    LOG.error('Failed to force-stop trial container %s: %s', container_name, exc)
+                finally:
+                    cls._active_container_names.discard(container_name)
+            return swept

@@ -54,7 +54,9 @@ class SnapshotScheduler:
         docker_runtime: DockerRuntime,
         coverage_export_every: int = 1,
         jobs: int = 4,
+        stop_event: threading.Event | None = None,
     ) -> None:
+        self.stop_event = stop_event
         self.db_path = Path(db_path)
         self.run_dir = Path(run_dir)
         self.run_id = run_id
@@ -106,6 +108,25 @@ class SnapshotScheduler:
     def stop(self) -> None:
         '''Request the scheduler loop to stop after pending work.'''
         self._stop = True
+
+    @property
+    def _shutting_down(self) -> bool:
+        '''Report whether this scheduler or the whole run is stopping.
+
+        The signal handler sets the shared stop event before it sweeps the
+        containers, so consulting it is what lets a tick that a sweep killed be
+        recorded as aborted rather than as a measurement failure.
+        '''
+        return self._stop or (self.stop_event is not None and self.stop_event.is_set())
+
+    def _record_tick_error(self, db: DB, *, tick_idx: int, exc: BaseException) -> None:
+        '''Persist a tick error as aborted while stopping and as failed otherwise.'''
+        error = f'{type(exc).__name__}: {exc}'
+        if self._shutting_down:
+            db_snapshot.mark_tick_aborted(db, run_id=self.run_id, idx=tick_idx, error=error)
+        else:
+            db_snapshot.mark_tick_failed(db, run_id=self.run_id, idx=tick_idx, error=error)
+        db.commit()
 
     def schedule_final_tick(self, trial: TrialInstance, *, render_heavy: bool = True) -> None:
         '''Queue a final snapshot for one trial without blocking its worker slot.'''
@@ -339,13 +360,7 @@ class SnapshotScheduler:
                         )
                         LOG.debug('Finished snapshot processing for tick %s', snapshot_item.tick_idx)
                 except Exception as exc:
-                    db_snapshot.mark_tick_failed(
-                        db,
-                        run_id=self.run_id,
-                        idx=snapshot_item.tick_idx,
-                        error=f'{type(exc).__name__}: {exc}',
-                    )
-                    db.commit()
+                    self._record_tick_error(db, tick_idx=snapshot_item.tick_idx, exc=exc)
                     LOG.exception('Error during snapshot tick %s', snapshot_item.tick_idx)
         finally:
             db.close()
@@ -417,13 +432,7 @@ class ReplaySnapshotScheduler(SnapshotScheduler):
                             render_heavy=True,
                         )
                     except Exception as exc:
-                        db_snapshot.mark_tick_failed(
-                            db,
-                            run_id=self.run_id,
-                            idx=tick_idx,
-                            error=f'{type(exc).__name__}: {exc}',
-                        )
-                        db.commit()
+                        self._record_tick_error(db, tick_idx=tick_idx, exc=exc)
                         raise
         finally:
             db.close()

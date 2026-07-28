@@ -11,11 +11,15 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import subprocess
+import sys
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from fuzzmeter.config import CampaignCase
+from fuzzmeter.docker import DockerClient, DockerTimeoutError
+from fuzzmeter.docker.client import DEFAULT_DOCKER_TIMEOUT_S
 from fuzzmeter.docker.bake import _entry_args, fuzzer_source_dirs, generate_run_bake_hcl
 from fuzzmeter.docker.runtime import DockerRuntime
 from tests.support.bake import target_block
@@ -63,6 +67,51 @@ class DockerHelperTest(unittest.TestCase):
         self.assertEqual(f'/repo{os.pathsep}/existing', env['PYTHONPATH'])
         self.assertEqual('/repo/fuzzers', env['FM_FUZZERS_ROOT'])
         self.assertEqual('3', env['COUNT'])
+
+    def test_run_labels_and_sweep_use_the_runtime_run_id(self) -> None:
+        runtime = DockerRuntime(
+            fuzzers_root=Path('/repo/fuzzers'),
+            out_src='/out',
+            run_user=None,
+            run_id='run-7',
+        )
+        docker = DockerClient(runtime)
+
+        self.assertEqual(
+            [
+                '--label',
+                'fuzzmeter.run=run-7',
+                '--label',
+                'fuzzmeter.kind=coverage',
+                '--label',
+                'fuzzmeter.trial=trial-2',
+            ],
+            docker._label_args(kind='coverage', trial_key='trial-2'),
+        )
+
+        ps_result = subprocess.CompletedProcess([], 0, stdout='abc\ndef\n', stderr='')
+        rm_result = subprocess.CompletedProcess([], 0, stdout='', stderr='')
+        with patch.object(docker, '_run', side_effect=[ps_result, rm_result]) as run:
+            self.assertEqual(2, docker.sweep_run())
+
+        self.assertEqual(
+            [
+                call(
+                    ['docker', 'ps', '-aq', '--filter', 'label=fuzzmeter.run=run-7'],
+                    check=True,
+                    capture=True,
+                ),
+                call(['docker', 'rm', '-f', 'abc', 'def'], check=False, capture=True, timeout_s=None),
+            ],
+            run.call_args_list,
+        )
+
+    def test_run_raises_distinct_timeout_error(self) -> None:
+        with self.assertRaises(DockerTimeoutError):
+            DockerClient._run(
+                [sys.executable, '-c', 'import time; time.sleep(1)'],
+                timeout_s=0.01,
+            )
 
     def test_instrumentation_runners_use_runtime_only_base(self) -> None:
         """Verify sanitizer and coverage runners do not inherit the full clang build image."""
@@ -419,6 +468,43 @@ class DockerHelperTest(unittest.TestCase):
         self.assertIn('dockerfile = "Dockerfile"', local_block)
         self.assertNotIn('FM_LOCAL_REPO = "1"', local_block)
 
+
+    def test_worker_containers_stay_unbounded_while_control_plane_is_capped(self) -> None:
+        """Verify measuring containers get no deadline and cleanup completes."""
+        runtime = DockerRuntime(
+            fuzzers_root=Path('/repo/fuzzers'),
+            out_src='/out',
+            run_user=None,
+            run_id='run-1',
+        )
+        client = DockerClient(runtime)
+
+        with patch('fuzzmeter.docker.client.subprocess.run') as run:
+            run.return_value = subprocess.CompletedProcess([], 0, '', '')
+            client.run(image='img', kind='coverage', cmd=['python3', 'worker.py'])
+            self.assertIsNone(run.call_args.kwargs['timeout'])
+
+            run.reset_mock()
+            client.rm('c1')
+            self.assertIsNone(run.call_args.kwargs['timeout'])
+
+            run.reset_mock()
+            client.kill('c1')
+            self.assertIsNone(run.call_args.kwargs['timeout'])
+
+            run.reset_mock()
+            client.is_running('c1')
+            self.assertEqual(DEFAULT_DOCKER_TIMEOUT_S, run.call_args.kwargs['timeout'])
+
+    def test_control_plane_timeout_raises_docker_timeout_error(self) -> None:
+        """Verify a wedged control-plane command fails with a distinct error."""
+        client = DockerClient()
+        with patch(
+            'fuzzmeter.docker.client.subprocess.run',
+            side_effect=subprocess.TimeoutExpired(cmd=['docker', 'ps'], timeout=30),
+        ):
+            with self.assertRaises(DockerTimeoutError):
+                client.is_running('c1')
 
 if __name__ == '__main__':
     unittest.main()

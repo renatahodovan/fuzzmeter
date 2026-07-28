@@ -5,18 +5,21 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+'''Expose Docker runtime, client, and bake helpers.'''
+
 from .bake import (
     INSTRUMENTATION_PROFILES,
     fuzzer_local_repo_paths,
     fuzzer_source_dirs,
     generate_run_bake_hcl,
 )
-from .client import ContainerSpec, DockerClient
+from .client import ContainerSpec, DockerClient, DockerTimeoutError
 from .runtime import DockerRuntime
 
 __all__ = [
     'ContainerSpec',
     'DockerClient',
+    'DockerTimeoutError',
     'DockerRuntime',
     'INSTRUMENTATION_PROFILES',
     'fuzzer_local_repo_paths',

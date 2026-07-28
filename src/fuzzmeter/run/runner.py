@@ -28,7 +28,7 @@ from ..trial.builder import plan_trials
 from ..trial.models import TrialConfig
 from ..trial.replay import prepare_replay_trial
 from ..trial.runner import run_one_trial
-from ..trial.runtime import TrialContainer
+from .shutdown import RunShutdown, cleanup_containers
 from .workspace import initialize_run_dir
 
 LOG = logging.getLogger(__name__)
@@ -63,66 +63,69 @@ def run_experiment(
     config_src: str,
 ) -> Path:
     '''Run a fuzzing or replay experiment and return the run directory.'''
+    run_id = time.strftime('%Y-%m-%d_%H%M%S', time.localtime())
     docker_runtime = DockerRuntime.from_paths(
         fuzzers_root=external_roots.fuzzers_root,
         out_root=out_root,
+        run_id=run_id,
     ).with_docker_limits(
         memory=campaign_config.settings.memory,
         memory_swap=campaign_config.settings.memory_swap,
     )
-    run_id = time.strftime('%Y-%m-%d_%H%M%S', time.localtime())
     run_dir = Path(out_root) / 'runs' / run_id
-    run_dir.mkdir(parents=True)
+    with RunShutdown(docker_runtime) as shutdown:
+        run_dir.mkdir(parents=True)
 
-    db_path = (Path(run_dir) / 'fuzzmeter.db')
-    initialize_run_dir(
-        run_dir=run_dir,
-        run_id=run_id,
-        config_src=config_src,
-        campaign_config=campaign_config,
-    )
+        db_path = (Path(run_dir) / 'fuzzmeter.db')
+        initialize_run_dir(
+            run_dir=run_dir,
+            run_id=run_id,
+            config_src=config_src,
+            campaign_config=campaign_config,
+        )
 
-    fuzz_binaries = prepare_artifacts(
-        campaign_config=campaign_config,
-        db_path=db_path,
-        run_dir=run_dir,
-        run_id=run_id,
-        external_roots=external_roots,
-        docker_runtime=docker_runtime,
-    )
-    trial_configs = plan_trials(
-        campaign_config=campaign_config,
-        fuzzers_root=external_roots.fuzzers_root,
-        fuzz_binaries=fuzz_binaries,
-    )
-    replay_trial_configs = [cfg for cfg in trial_configs if cfg.replay_dir is not None]
+        fuzz_binaries = prepare_artifacts(
+            campaign_config=campaign_config,
+            db_path=db_path,
+            run_dir=run_dir,
+            run_id=run_id,
+            external_roots=external_roots,
+            docker_runtime=docker_runtime,
+        )
+        trial_configs = plan_trials(
+            campaign_config=campaign_config,
+            fuzzers_root=external_roots.fuzzers_root,
+            fuzz_binaries=fuzz_binaries,
+        )
+        replay_trial_configs = [cfg for cfg in trial_configs if cfg.replay_dir is not None]
 
-    if replay_trial_configs:
-        if len(replay_trial_configs) != len(trial_configs):
-            raise RuntimeError('Replay trials cannot be mixed with live fuzzing trials in the same run')
+        if replay_trial_configs:
+            if len(replay_trial_configs) != len(trial_configs):
+                raise RuntimeError('Replay trials cannot be mixed with live fuzzing trials in the same run')
 
-        _run_replay_experiment(
+            _run_replay_experiment(
+                db_path=db_path,
+                campaign_config=campaign_config,
+                run_dir=run_dir,
+                run_id=run_id,
+                docker_runtime=docker_runtime,
+                trial_configs=replay_trial_configs,
+            )
+            return run_dir
+
+        if not trial_configs:
+            raise RuntimeError('Does not found any valid experiment to run.')
+
+        _run_live_experiment(
             db_path=db_path,
             campaign_config=campaign_config,
             run_dir=run_dir,
             run_id=run_id,
             docker_runtime=docker_runtime,
-            trial_configs=replay_trial_configs,
+            trial_configs=trial_configs,
+            stop_event=shutdown.stop_event,
         )
         return run_dir
-
-    if not trial_configs:
-        raise RuntimeError('Does not found any valid experiment to run.')
-
-    _run_live_experiment(
-        db_path=db_path,
-        campaign_config=campaign_config,
-        run_dir=run_dir,
-        run_id=run_id,
-        docker_runtime=docker_runtime,
-        trial_configs=trial_configs,
-    )
-    return run_dir
 
 
 def _run_live_experiment(
@@ -133,6 +136,7 @@ def _run_live_experiment(
     run_id: str,
     docker_runtime: DockerRuntime,
     trial_configs: list[TrialConfig],
+    stop_event: threading.Event | None = None,
 ) -> Path:
     if not trial_configs:
         LOG.warning('No trials were planned for this live run')
@@ -149,6 +153,7 @@ def _run_live_experiment(
         max(2, int(campaign_config.settings.parallel_jobs)),
     )
 
+    stop_event = stop_event or threading.Event()
     scheduler = SnapshotScheduler(
         db_path=db_path,
         run_dir=run_dir,
@@ -158,9 +163,9 @@ def _run_live_experiment(
         coverage_export_every=campaign_config.settings.snapshot_export_every_ticks,
         docker_runtime=docker_runtime,
         jobs=snap_jobs,
+        stop_event=stop_event,
     )
     scheduler_thread = threading.Thread(target=scheduler.run_loop, name='snapshot-scheduler')
-    stop_event = threading.Event()
     executor: ThreadPoolExecutor | None = None
     futures: list[Future[None]] = []
     interrupted = False
@@ -184,7 +189,7 @@ def _run_live_experiment(
             for cfg in trial_configs
         ]
         _wait_for_futures(futures)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         interrupted = True
         LOG.warning('Interrupt received, stopping active trial containers...')
         for future in futures:
@@ -197,9 +202,12 @@ def _run_live_experiment(
     finally:
         if interrupted:
             try:
+                # Order matters: the scheduler has to know it is stopping before
+                # the sweep removes the containers under its in-flight tick, or
+                # the resulting error is recorded as a measurement failure.
                 stop_event.set()
-                TrialContainer.force_stop_all_active()
                 scheduler.stop()
+                cleanup_containers(docker_runtime)
             except Exception as exc:
                 LOG.error('Failed to stop snapshot scheduler: %s', exc)
         if executor is not None:
@@ -265,7 +273,7 @@ def _run_replay_experiment(
     status: str = 'done'
     try:
         scheduler.run_loop()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
         scheduler.stop()
         status = 'interrupted'
         raise
@@ -285,6 +293,7 @@ def _run_replay_experiment(
         finally:
             for prepared in prepared_trials:
                 scheduler.unregister(prepared.config.trial_key)
+            cleanup_containers(docker_runtime)
 
     return run_dir
 

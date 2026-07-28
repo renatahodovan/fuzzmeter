@@ -22,16 +22,18 @@ class DockerRuntime:
     fuzzers_root: Path
     out_src: str
     run_user: str | None
+    run_id: str | None = None
     memory: str | None = None
     memory_swap: str | None = None
 
     @classmethod
-    def from_paths(cls, *, fuzzers_root: Path, out_root: Path) -> 'DockerRuntime':
+    def from_paths(cls, *, fuzzers_root: Path, out_root: Path, run_id: str | None = None) -> 'DockerRuntime':
         '''Create Docker runtime settings from explicit host paths.'''
         return cls(
             fuzzers_root=Path(fuzzers_root).expanduser().resolve(),
             out_src=str(out_root.expanduser().resolve()),
             run_user=_host_user(),
+            run_id=run_id,
         )
 
     def with_docker_limits(self, *, memory: str | None = None, memory_swap: str | None = None) -> 'DockerRuntime':
@@ -40,6 +42,7 @@ class DockerRuntime:
             fuzzers_root=self.fuzzers_root,
             out_src=self.out_src,
             run_user=self.run_user,
+            run_id=self.run_id,
             memory=memory,
             memory_swap=memory_swap,
         )

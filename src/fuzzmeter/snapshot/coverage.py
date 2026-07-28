@@ -97,6 +97,8 @@ def process_snapshot_coverage(
             state_dir=state_dir,
             batch_tag=snapshot.snapshot_id,
             timeout_s=trial.config.fuzz_target_timeout * 2,
+            container_prefix=f'fm-{run_id}-cov-{tick_idx}-{trial.config.trial_key}',
+            trial_key=trial.config.trial_key,
         )
         coverage_state = TrialCoverageSnapshotState(
             snapshot=snapshot,
@@ -175,6 +177,7 @@ def process_snapshot_coverage(
             work_dir=state_dir / '_work',
             profile_inputs=profile_inputs,
             write_coverage_sets=write_export,
+            container_name=f'fm-{run_id}-cov-{tick_idx}-{fuzzer}-{benchmark}-{fuzz_target}-campaign',
         )
 
         coverage_sets_json_rel = None
@@ -236,6 +239,11 @@ def merge_trial_coverage_outputs(
         profile_inputs=coverage_state.batch_profdata_paths,
         render_html=False,
         write_coverage_sets=write_export,
+        container_name=(
+            f'fm-{docker_runtime.run_id or "run"}-cov-{snapshot.tick_idx}-'
+            f'{trial_config.trial_key}-merge'
+        ),
+        trial_key=trial_config.trial_key,
     )
     with open_db(db_path) as worker_db:
         apply_snapshot_summary(
