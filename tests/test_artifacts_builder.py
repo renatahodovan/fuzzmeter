@@ -63,6 +63,11 @@ class ArtifactBuilderTest(unittest.TestCase):
                 'COPY --from=build_base /opt/fuzzmeter/fuzzmeter /opt/fuzzmeter/fuzzmeter',
                 campaign_dockerfile,
             )
+            self.assertIn(
+                'COPY --from=campaign_builder /opt/fuzzmeter/meta/coverage-build.json '
+                '/opt/fuzzmeter/meta/coverage-build.json',
+                campaign_dockerfile,
+            )
 
     def test_buildx_bake_scopes_copied_sources_to_each_fuzzer(self) -> None:
         '''Verify that changing the campaign fuzzer set does not change unrelated fuzzer contexts.'''

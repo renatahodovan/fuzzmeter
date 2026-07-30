@@ -124,6 +124,7 @@ COPY --from=campaign_builder /src /src
 COPY --from=campaign_builder /work /work
 COPY --from=campaign_builder /out /out
 COPY --from=campaign_builder /benchmark.yaml /benchmark.yaml
+COPY --from=campaign_builder /opt/fuzzmeter/meta/coverage-build.json /opt/fuzzmeter/meta/coverage-build.json
 COPY --from=runtime_base /opt/fuzzmeter/coverage_sets.py /opt/fuzzmeter/coverage_sets.py
 COPY --from=runtime_base /opt/fuzzmeter/coverage_worker.py /opt/fuzzmeter/coverage_worker.py
 ENV PYTHONPATH=/opt/fuzzmeter

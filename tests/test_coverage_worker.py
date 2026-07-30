@@ -11,21 +11,87 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
-
-from pathlib import Path
 from unittest.mock import patch
 
+from fuzzmeter.resources.instrumentation.coverage import build as coverage_build
 from tests.support.entrypoints import load_entrypoint
 
+coverage_sets = load_entrypoint('coverage_sets')
 coverage_worker = load_entrypoint('coverage_worker')
 
 
 class CoverageWorkerTest(unittest.TestCase):
     '''Verify coverage worker batch execution behavior.'''
+
+    def test_coverage_set_observes_requested_counter_mode_from_build(self) -> None:
+        '''Verify coverage artifacts derive provenance from coverage build output.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            metadata_path = root / 'coverage-build.json'
+            artifact_path = root / 'coverage-sets.json'
+            with patch.dict('os.environ', {}, clear=True), \
+                 patch.object(coverage_build, 'COVERAGE_BUILD_METADATA_PATH', metadata_path), \
+                 patch.object(coverage_sets, 'COVERAGE_BUILD_METADATA_PATH', metadata_path), \
+                 patch.object(coverage_build.subprocess, 'check_output', return_value='clang version 18.1.3\n'), \
+                 patch.object(coverage_build.utils, 'get_build_env', return_value={}), \
+                 patch.object(coverage_build.utils, 'apply_configured_env'), \
+                 patch.object(coverage_build.utils, 'build_benchmark'):
+                coverage_build.build()
+                coverage_sets.write_coverage_sets(artifact_path, {}, {})
+            artifact = json.loads(artifact_path.read_text(encoding='utf-8'))
+
+        provenance = artifact['measurement_provenance']
+        self.assertEqual('atomic', provenance['requested_counter_update_mode'])
+        self.assertEqual('explicit_flag', provenance['requested_counter_update_mode_source'])
+        self.assertEqual('recorded', provenance['coverage_build']['status'])
+        self.assertEqual(' '.join(coverage_build.COVERAGE_CFLAGS), provenance['coverage_build']['cflags'])
+        self.assertEqual(' '.join(coverage_build.COVERAGE_CFLAGS), provenance['coverage_build']['cxxflags'])
+        self.assertEqual('clang version 18.1.3', provenance['coverage_build']['clang_version'])
+
+    def test_coverage_set_records_unknown_when_build_provenance_is_missing(self) -> None:
+        '''Verify missing build metadata warns and never claims atomic counters.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_path = root / 'coverage-sets.json'
+            with patch.object(coverage_sets, 'COVERAGE_BUILD_METADATA_PATH', root / 'missing.json'), \
+                 self.assertLogs(coverage_sets.LOG, level='WARNING') as logs:
+                coverage_sets.write_coverage_sets(artifact_path, {}, {})
+            artifact = json.loads(artifact_path.read_text(encoding='utf-8'))
+
+        provenance = artifact['measurement_provenance']
+        self.assertEqual('unknown', provenance['requested_counter_update_mode'])
+        self.assertEqual('unavailable', provenance['requested_counter_update_mode_source'])
+        self.assertEqual('unknown', provenance['coverage_build']['status'])
+        self.assertIn('Coverage build provenance is unavailable', logs.output[0])
+
+    def test_coverage_set_identifies_clang_default_counter_mode(self) -> None:
+        '''Verify absent profile update flags are recorded as Clang's single default.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            metadata_path = root / 'coverage-build.json'
+            metadata_path.write_text(
+                json.dumps(
+                    {
+                        'requested_cflags': '-O3',
+                        'requested_cxxflags': '-O3',
+                        'clang_version': 'clang version 18.1.3',
+                    }
+                ),
+                encoding='utf-8',
+            )
+            artifact_path = root / 'coverage-sets.json'
+            with patch.object(coverage_sets, 'COVERAGE_BUILD_METADATA_PATH', metadata_path):
+                coverage_sets.write_coverage_sets(artifact_path, {}, {})
+            artifact = json.loads(artifact_path.read_text(encoding='utf-8'))
+
+        provenance = artifact['measurement_provenance']
+        self.assertEqual('single', provenance['requested_counter_update_mode'])
+        self.assertEqual('clang_default', provenance['requested_counter_update_mode_source'])
 
     def test_coverage_summary_uses_real_total_after_total_prefixed_file(self) -> None:
         report = '''

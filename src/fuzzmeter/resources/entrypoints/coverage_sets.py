@@ -21,6 +21,7 @@ from typing import Any, Iterable
 LOG = logging.getLogger(__name__)
 
 COVERAGE_METRICS = ('lines', 'branches', 'functions', 'regions')
+COVERAGE_BUILD_METADATA_PATH = Path('/opt/fuzzmeter/meta/coverage-build.json')
 
 
 def coverage_metrics_from_export(export_obj: dict[str, Any]) -> dict[str, list[int]]:
@@ -74,10 +75,55 @@ def read_covered_keys(path: Path, metric: str) -> set[str]:
 def write_coverage_sets(path: Path, summary: dict[str, Any], metrics: dict[str, list[int]]) -> None:
     '''Write a compact coverage set artifact.'''
 
+    try:
+        build_metadata = json.loads(COVERAGE_BUILD_METADATA_PATH.read_text(encoding='utf-8'))
+        requested_cflags = build_metadata['requested_cflags']
+        requested_cxxflags = build_metadata['requested_cxxflags']
+        clang_version = build_metadata['clang_version']
+        if not all(isinstance(value, str) for value in (requested_cflags, requested_cxxflags, clang_version)):
+            raise TypeError('coverage build metadata fields must be strings')
+        requested_flags = [*requested_cflags.split(), *requested_cxxflags.split()]
+        profile_update_modes = [
+            flag.partition('=')[2]
+            for flag in requested_flags
+            if flag.startswith('-fprofile-update=') and flag.partition('=')[2]
+        ]
+        if profile_update_modes:
+            requested_counter_update_mode = profile_update_modes[-1]
+            requested_counter_update_mode_source = 'explicit_flag'
+        else:
+            requested_counter_update_mode = 'single'
+            requested_counter_update_mode_source = 'clang_default'
+        measurement_provenance = {
+            'schema_version': 1,
+            'requested_counter_update_mode': requested_counter_update_mode,
+            'requested_counter_update_mode_source': requested_counter_update_mode_source,
+            'coverage_build': {
+                'status': 'recorded',
+                'cflags': requested_cflags,
+                'cxxflags': requested_cxxflags,
+                'clang_version': clang_version,
+            },
+        }
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        LOG.warning('Coverage build provenance is unavailable from %s: %s', COVERAGE_BUILD_METADATA_PATH, exc)
+        measurement_provenance = {
+            'schema_version': 1,
+            'requested_counter_update_mode': 'unknown',
+            'requested_counter_update_mode_source': 'unavailable',
+            'coverage_build': {
+                'status': 'unknown',
+                'cflags': None,
+                'cxxflags': None,
+                'clang_version': None,
+            },
+        }
+
     doc = {
         'version': 1,
         'type': 'fuzzmeter.coverage.sets',
         'encoding': 'blake2b64-delta-uvarint-zlib-base64',
+        'measurement_provenance': measurement_provenance,
         'metrics': {
             metric: {
                 'covered_count': len(metrics.get(metric, [])),
