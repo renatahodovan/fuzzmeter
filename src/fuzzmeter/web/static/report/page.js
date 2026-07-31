@@ -15,6 +15,8 @@ import {
   aLink,
   buildCoverageSeries,
   buildCurveSeries,
+  comparisonMatrix,
+  comparisonMetric,
   COVERAGE_METRICS,
   createFuzzerNameButton,
   dedupeBugCount,
@@ -140,12 +142,12 @@ function headerCell(label, className, tooltip) {
   return setTooltip(el('th', className, label), tooltip);
 }
 
-function statsDetailLines(stats, formatter) {
+function statsDetailLines(stats, formatter, labelPrefix = '') {
   const lines = [];
   ['min', 'max', 'median'].forEach((label) => {
     const value = stats?.[label];
     if (value === null || value === undefined || Number.isNaN(Number(value))) return;
-    lines.push([label, formatter(value)]);
+    lines.push([`${labelPrefix}${label}`, formatter(value)]);
   });
   return lines;
 }
@@ -157,8 +159,17 @@ function exclusiveCoverageStats(target, fuzzer) {
   if (index < 0) return {};
   const value = Number((matrix.unique_counts || [])[index]);
   return {
-    total: Number.isFinite(value) ? value : null,
+    exclusive_any: Number.isFinite(value) ? value : null,
+    exclusive_any_bound: Number.isFinite(value) ? 'exact' : 'unknown',
   };
+}
+
+function formattedComparisonMetric(metric) {
+  if (metric.value === null) return '?';
+  if (metric.bound === 'lower') return `≥${fmtInt(metric.value)}`;
+  if (metric.bound === 'upper') return `≤${fmtInt(metric.value)}`;
+  if (metric.bound === 'indeterminate') return `~${fmtInt(metric.value)}`;
+  return fmtInt(metric.value);
 }
 
 function hasMultipleFuzzers(target) {
@@ -376,6 +387,8 @@ function renderFuzzerTable(section) {
     const branch10kValues = (fuzzer.trials || []).map((trial) => per10kExec(trial.branches_cov, trial.execs_done));
     const convergenceValues = (fuzzer.trials || []).map((trial) => trial.convergence_pct);
     const exclusiveCoverage = exclusiveCoverageStats(target, fuzzer);
+    const selectedCoverage = comparisonMetric(exclusiveCoverage, FM_APP.state.comparisonMode);
+    const selectedBugs = comparisonMetric(fuzzer.exclusive_bugs, FM_APP.state.comparisonMode);
     return {
       ...fuzzer,
       _section: section,
@@ -384,10 +397,10 @@ function renderFuzzerTable(section) {
       execs_done_median: median(fuzzer.distribution?.execs_done),
       branch_per_10k_median: median(branch10kValues),
       convergence_median: median(convergenceValues),
-      exclusive_coverage_total: exclusiveCoverage.total == null ? null : Number(exclusiveCoverage.total),
+      exclusive_coverage_total: selectedCoverage.value,
       corpus_median: median(fuzzer.distribution?.corpus_files_total),
       unique_bug_total: Number(fuzzer.final?.accumulated_bug_count ?? dedupeBugCount(fuzzer.bugs)),
-      exclusive_bug_total: Number(fuzzer.exclusive_bugs?.total),
+      exclusive_bug_total: selectedBugs.value,
       all_bug_hits_median: median(fuzzer.distribution?.bug_hits_total),
     };
   });
@@ -437,10 +450,11 @@ function renderFuzzerTable(section) {
       'median',
     );
     const exclusiveCoverage = exclusiveCoverageStats(target, fuzzer);
+    const selectedCoverage = comparisonMetric(exclusiveCoverage, FM_APP.state.comparisonMode);
     tr.appendChild(renderAggregateCell(
       el('td', 'num'),
-      `total ${fmtInt(exclusiveCoverage.total)}`,
-      statsDetailLines(exclusiveCoverage, fmtInt),
+      `total ${formattedComparisonMetric(selectedCoverage)}`,
+      statsDetailLines(exclusiveCoverage, fmtInt, 'trial '),
     ));
     appendAggregateCell(
       tr,
@@ -473,10 +487,11 @@ function renderFuzzerTable(section) {
       fmtInt,
       ['min', 'max', 'median'],
     );
+    const selectedBugs = comparisonMetric(fuzzer.exclusive_bugs, FM_APP.state.comparisonMode);
     tr.appendChild(renderAggregateCell(
       el('td', 'num'),
-      `total ${fmtInt(fuzzer.exclusive_bugs?.total)}`,
-      statsDetailLines(fuzzer.exclusive_bugs, fmtInt),
+      `total ${formattedComparisonMetric(selectedBugs)}`,
+      statsDetailLines(fuzzer.exclusive_bugs, fmtInt, 'trial '),
     ));
     appendAggregateCell(
       tr,
@@ -631,7 +646,7 @@ function createBugBlock(section) {
   });
   block.classList.add('block-topic', 'block-topic-bugs');
   const topRow = el('div', 'block-grid-2');
-  const bottomStack = el('div', 'block-grid-1');
+  const bottomStack = el('div', 'block-grid-2');
   const growthCard = makeCanvasCard({
     title: 'Unique bug growth',
     subtitle: 'Across snapshots',
@@ -648,6 +663,10 @@ function createBugBlock(section) {
     title: 'Unique bug discovery table',
     subtitle: 'Rows are bugs in first-discovery order, columns are fuzzers, cells show first hit time.',
   }) : null;
+  const pairwiseCard = hasMultipleFuzzers(section.target) ? makeMatrixCard({
+    title: 'Pairwise unique bug matrix',
+    subtitle: 'Cell = bugs found by the row fuzzer but not the column fuzzer.',
+  }) : null;
   const relCard = hasMultipleFuzzers(section.target) ? makeMatrixCard({
     title: 'RelBug matrix',
     subtitle: 'Cell = how much of the column fuzzer bug set is also found by the row fuzzer.',
@@ -655,13 +674,15 @@ function createBugBlock(section) {
   topRow.appendChild(growthCard.card);
   topRow.appendChild(crashesCard.card);
   if (matrixCard) bottomStack.appendChild(matrixCard.card);
+  if (pairwiseCard) bottomStack.appendChild(pairwiseCard.card);
   if (relCard) bottomStack.appendChild(relCard.card);
   body.appendChild(topRow);
   if (matrixCard || relCard) body.appendChild(bottomStack);
 
   matrixCard?.setExportName(`${section.target.key}-unique-bug-matrix`);
+  pairwiseCard?.setExportName(`${section.target.key}-pairwise-unique-bug-matrix`);
   relCard?.setExportName(`${section.target.key}-relbug-matrix`);
-  section.bugsBlock = { block, growthCard, crashesCard, matrixCard, relCard };
+  section.bugsBlock = { block, growthCard, crashesCard, matrixCard, pairwiseCard, relCard };
   return block;
 }
 
@@ -772,9 +793,15 @@ function defaultCoverageMetric(target) {
 
 function renderUniqueCoverageMatrix(host, uniqueMatrix, metric, mode) {
   host.textContent = '';
-  const matrix = resolveCoverageMatrix(uniqueMatrix, metric);
+  const matrix = comparisonMatrix(resolveCoverageMatrix(uniqueMatrix, metric), FM_APP.state.comparisonMode);
   if (!matrix || !matrix.fuzzers?.length || !matrix.matrix?.length) {
-    host.appendChild(el('div', 'matrix-empty', 'No unique coverage data.'));
+    host.appendChild(el(
+      'div',
+      'matrix-empty',
+      FM_APP.state.comparisonMode === 'all'
+        ? 'Strict per-trial coverage data is unavailable.'
+        : 'No unique coverage data.',
+    ));
     return;
   }
 
@@ -791,6 +818,21 @@ function renderUniqueCoverageMatrix(host, uniqueMatrix, metric, mode) {
     emptyMessage: 'No unique coverage data.',
     tint: 'rgba(120,180,255,ALPHA)',
   });
+}
+
+function renderCoverageComparison(section) {
+  const { target, coverageState, coverage } = section;
+  if (!coverage.matrixCard) return;
+  const metric = coverageState.metric;
+  const metricName = metricLabel(metric).toLowerCase();
+  renderUniqueCoverageMatrix(coverage.matrixCard.body, target.unique_matrix, metric, 'abs');
+  coverage.matrixCard.setTitle(`Unique ${metricName} matrix`);
+  coverage.matrixCard.setSubtitle(
+    FM_APP.state.comparisonMode === 'all'
+      ? `Cell = ${metricName} reached in every row-fuzzer trial but no column-fuzzer trial.`
+      : `Cell = ${metricName} reached in any row-fuzzer trial but no column-fuzzer trial.`,
+  );
+  coverage.matrixCard.setExportName(`${section.target.key}-unique-${metric}-matrix`);
 }
 
 function branchPValueCellStyle(value) {
@@ -1022,12 +1064,7 @@ function renderCoverageBlock(section) {
   });
 
   const metricName = metricLabel(metric).toLowerCase();
-  if (coverage.matrixCard) {
-    renderUniqueCoverageMatrix(coverage.matrixCard.body, target.unique_matrix, metric, 'abs');
-    coverage.matrixCard.setTitle(`Unique ${metricName} matrix`);
-    coverage.matrixCard.setSubtitle(`Cell = ${metricName} covered by the row fuzzer but not the column fuzzer.`);
-    coverage.matrixCard.setExportName(`${section.target.key}-unique-${metric}-matrix`);
-  }
+  renderCoverageComparison(section);
   if (coverage.relCard) {
     const relcovMatrix = resolveCoverageMatrix(target.relcov_matrix, metric);
     renderMatrixCard(coverage.relCard, relcovMatrix, {
@@ -1051,6 +1088,27 @@ function renderPerformanceBlock(section) {
   renderLineCard(performance.execCard, execSeries, { subtitle: 'median across trials' });
 }
 
+function renderBugComparison(section) {
+  const { target, bugsBlock } = section;
+  if (!bugsBlock.pairwiseCard) return;
+  renderMatrixCard(
+    bugsBlock.pairwiseCard,
+    comparisonMatrix(target.unique_bug_matrix, FM_APP.state.comparisonMode),
+    {
+      formatter: 'int',
+      emptyMessage: FM_APP.state.comparisonMode === 'all'
+        ? 'Strict per-trial unique bug data is unavailable.'
+        : 'No pairwise unique bug data.',
+      tint: 'rgba(255,116,143,ALPHA)',
+      title: 'Pairwise unique bug matrix',
+      subtitle: FM_APP.state.comparisonMode === 'all'
+        ? 'Cell = bugs found in every row-fuzzer trial but no column-fuzzer trial.'
+        : 'Cell = bugs found in any row-fuzzer trial but no column-fuzzer trial.',
+      exportName: `${section.target.key}-pairwise-unique-bug-matrix`,
+    },
+  );
+}
+
 function renderBugBlock(section) {
   const { target, bugsBlock } = section;
   const uniqueSeries = buildCurveSeries(target.fuzzers, 'unique_bugs_total');
@@ -1058,6 +1116,7 @@ function renderBugBlock(section) {
   renderLineCard(bugsBlock.growthCard, uniqueSeries, { subtitle: 'median across trials' });
   renderLineCard(bugsBlock.crashesCard, crashSeries, { subtitle: 'median across trials' });
   if (bugsBlock.matrixCard) renderUniqueBugTable(bugsBlock.matrixCard.body, target.unique_bug_table || null);
+  renderBugComparison(section);
   if (bugsBlock.relCard) {
     renderMatrixCard(bugsBlock.relCard, target.relbug_matrix || null, {
       formatter: 'pct',
@@ -1158,6 +1217,11 @@ export function createTargetSection(target) {
       if (section.resourceTelemetry) renderResourceTelemetryBlock(section);
       renderStatisticsBlock(section);
       renderTrialTableBlock(section);
+    },
+    renderComparisons() {
+      renderFuzzerTable(section);
+      renderCoverageComparison(section);
+      renderBugComparison(section);
     },
   };
 

@@ -9,10 +9,229 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from .metrics import median
+
+
+def empty_trial_set_comparison() -> dict[str, Any]:
+    '''Return the empty strict/non-strict set-comparison payload shape.'''
+
+    return trial_set_comparison([], {})
+
+
+def trial_set_comparison(
+    labels: list[str],
+    trial_sets_by_label: Mapping[str, Sequence[set[str] | None]],
+    *,
+    note: str | None = None,
+) -> dict[str, Any]:
+    '''Return strict and non-strict pairwise and exclusive set counts.'''
+
+    owners, reps, sample_sizes, usable_sample_sizes, missing_by_label = _trial_set_index(
+        labels,
+        trial_sets_by_label,
+    )
+    pairwise_any, pairwise_all, pairwise_any_bounds, pairwise_all_bounds = _pairwise_trial_set_counts(
+        labels,
+        owners,
+        reps,
+        missing_by_label,
+    )
+    exclusive_any, exclusive_all, exclusive_any_bounds, exclusive_all_bounds = _exclusive_trial_set_counts(
+        labels,
+        owners,
+        reps,
+        missing_by_label,
+    )
+
+    numeric_values = [
+        value
+        for matrix in (pairwise_any, pairwise_all)
+        for row in matrix
+        for value in row
+        if value is not None
+    ]
+    return {
+        'fuzzers': labels,
+        'pairwise_unique_any': pairwise_any,
+        'pairwise_unique_all': pairwise_all,
+        'pairwise_unique_any_bounds': pairwise_any_bounds,
+        'pairwise_unique_all_bounds': pairwise_all_bounds,
+        'exclusive': {
+            'exclusive_any': exclusive_any,
+            'exclusive_all': exclusive_all,
+            'exclusive_any_bounds': exclusive_any_bounds,
+            'exclusive_all_bounds': exclusive_all_bounds,
+        },
+        'covered_counts': [
+            sum(1 for owner_counts in owners.values() if owner_counts.get(label, 0) > 0)
+            if reps[label] else None
+            for label in labels
+        ],
+        'sample_sizes': sample_sizes,
+        'usable_sample_sizes': usable_sample_sizes,
+        'has_data': bool(owners),
+        'note': note or _trial_set_comparison_note(labels, usable_sample_sizes, missing_by_label),
+        'max_value': max(numeric_values, default=0),
+    }
+
+
+def _trial_set_comparison_note(
+    labels: list[str],
+    usable_sample_sizes: list[int],
+    missing_by_label: Mapping[str, int],
+) -> str | None:
+    '''Describe missing trial sets and uneven repetition counts once per matrix.
+
+    The counts depend on how many trials each fuzzer contributed, so an uneven
+    split makes two cells incomparable. Reporting it here keeps that out of every
+    individual cell, where a uniform count would only be noise.
+    '''
+
+    parts = []
+    if any(missing_by_label.values()):
+        parts.append(
+            'One or more trial sets are missing: non-strict values are marked as bounds or degraded, '
+            'and strict subject-side values are unknown.'
+        )
+    usable = [size for size in usable_sample_sizes if size]
+    if usable and min(usable) != max(usable):
+        uneven = ', '.join(
+            f'{label} n={size}'
+            for label, size in zip(labels, usable_sample_sizes, strict=True)
+        )
+        parts.append(f'Repetition counts differ, so counts are not directly comparable ({uneven}).')
+    return ' '.join(parts) or None
+
+
+def _trial_set_index(
+    labels: list[str],
+    trial_sets_by_label: Mapping[str, Sequence[set[str] | None]],
+) -> tuple[dict[str, dict[str, int]], dict[str, int], list[int], list[int], dict[str, int]]:
+    owners: dict[str, dict[str, int]] = {}
+    reps: dict[str, int] = {}
+    sample_sizes: list[int] = []
+    usable_sample_sizes: list[int] = []
+    missing_by_label: dict[str, int] = {}
+    for label in labels:
+        trial_sets = list(trial_sets_by_label.get(label, []))
+        usable = [values for values in trial_sets if values is not None]
+        reps[label] = len(usable)
+        sample_sizes.append(len(trial_sets))
+        usable_sample_sizes.append(len(usable))
+        missing_by_label[label] = len(trial_sets) - len(usable)
+        for values in usable:
+            for value in values:
+                owner_counts = owners.setdefault(value, {})
+                owner_counts[label] = owner_counts.get(label, 0) + 1
+    return owners, reps, sample_sizes, usable_sample_sizes, missing_by_label
+
+
+def _pairwise_trial_set_counts(
+    labels: list[str],
+    owners: Mapping[str, Mapping[str, int]],
+    reps: Mapping[str, int],
+    missing_by_label: Mapping[str, int],
+) -> tuple[list[list[int | None]], list[list[int | None]], list[list[str]], list[list[str]]]:
+    pairwise_any: list[list[int | None]] = []
+    pairwise_all: list[list[int | None]] = []
+    pairwise_any_bounds: list[list[str]] = []
+    pairwise_all_bounds: list[list[str]] = []
+
+    # Missing-set propagation:
+    # subject     comparison   any/union                         all/intersection
+    # complete    complete     exact                             exact
+    # partial     complete     lower bound                       UNKNOWN
+    # complete    partial      upper bound                       upper bound
+    # partial     partial      degraded, direction indeterminate UNKNOWN
+    # all missing any          UNKNOWN                           UNKNOWN
+    for row_label in labels:
+        any_row: list[int | None] = []
+        all_row: list[int | None] = []
+        any_bounds_row: list[str] = []
+        all_bounds_row: list[str] = []
+        for col_label in labels:
+            row_missing = missing_by_label[row_label]
+            col_missing = missing_by_label[col_label]
+            if reps[row_label] == 0:
+                any_row.append(None)
+                any_bounds_row.append('unknown')
+            else:
+                any_row.append(sum(
+                    1
+                    for owner_counts in owners.values()
+                    if owner_counts.get(row_label, 0) > 0 and owner_counts.get(col_label, 0) == 0
+                ))
+                any_bounds_row.append(
+                    'indeterminate' if row_missing and col_missing
+                    else 'lower' if row_missing
+                    else 'upper' if col_missing
+                    else 'exact'
+                )
+            if reps[row_label] == 0 or row_missing:
+                all_row.append(None)
+                all_bounds_row.append('unknown')
+            else:
+                all_row.append(sum(
+                    1
+                    for owner_counts in owners.values()
+                    if owner_counts.get(row_label, 0) == reps[row_label] and owner_counts.get(col_label, 0) == 0
+                ))
+                all_bounds_row.append('upper' if col_missing else 'exact')
+        pairwise_any.append(any_row)
+        pairwise_all.append(all_row)
+        pairwise_any_bounds.append(any_bounds_row)
+        pairwise_all_bounds.append(all_bounds_row)
+    return pairwise_any, pairwise_all, pairwise_any_bounds, pairwise_all_bounds
+
+
+def _exclusive_trial_set_counts(
+    labels: list[str],
+    owners: Mapping[str, Mapping[str, int]],
+    reps: Mapping[str, int],
+    missing_by_label: Mapping[str, int],
+) -> tuple[list[int | None], list[int | None], list[str], list[str]]:
+    exclusive_any: list[int | None] = []
+    exclusive_all: list[int | None] = []
+    exclusive_any_bounds: list[str] = []
+    exclusive_all_bounds: list[str] = []
+    for row_label in labels:
+        row_missing = missing_by_label[row_label]
+        other_missing = any(missing_by_label[label] for label in labels if label != row_label)
+        if reps[row_label] == 0:
+            exclusive_any.append(None)
+            exclusive_any_bounds.append('unknown')
+        else:
+            exclusive_any.append(sum(
+                1
+                for owner_counts in owners.values()
+                if (
+                    owner_counts.get(row_label, 0) > 0
+                    and not any(owner_counts.get(label, 0) > 0 for label in labels if label != row_label)
+                )
+            ))
+            exclusive_any_bounds.append(
+                'indeterminate' if row_missing and other_missing
+                else 'lower' if row_missing
+                else 'upper' if other_missing
+                else 'exact'
+            )
+        if reps[row_label] == 0 or row_missing:
+            exclusive_all.append(None)
+            exclusive_all_bounds.append('unknown')
+        else:
+            exclusive_all.append(sum(
+                1
+                for owner_counts in owners.values()
+                if (
+                    owner_counts.get(row_label, 0) == reps[row_label]
+                    and not any(owner_counts.get(label, 0) > 0 for label in labels if label != row_label)
+                )
+            ))
+            exclusive_all_bounds.append('upper' if other_missing else 'exact')
+    return exclusive_any, exclusive_all, exclusive_any_bounds, exclusive_all_bounds
 
 
 def unique_matrix(labels: list[str], sets: Mapping[str, set[str]], *, note: str | None = None) -> dict[str, Any]:

@@ -19,6 +19,93 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 class ReportFrontendTest(unittest.TestCase):
     """Verify browser-side summary and ranking derivation."""
 
+    def test_comparison_mode_selects_payload_variants_without_losing_unknowns(self) -> None:
+        script = r"""
+            import assert from 'node:assert/strict';
+            import { cloneMatrixForSelected } from './src/fuzzmeter/web/static/report/filters.js';
+            import { comparisonMatrix, comparisonMetric } from './src/fuzzmeter/web/static/report/report-data.js';
+
+            const payload = {
+              fuzzers: ['alpha', 'beta'],
+              pairwise_unique_any: [[0, 2], [1, 0]],
+              pairwise_unique_all: [[0, null], [1, 0]],
+              pairwise_unique_all_bounds: [['exact', 'unknown'], ['upper', 'exact']],
+              sample_sizes: [2, 2],
+              usable_sample_sizes: [1, 2],
+              exclusive: {
+                exclusive_any: [2, 1],
+                exclusive_all: [null, 1],
+              },
+            };
+            const cloned = cloneMatrixForSelected(payload, new Set(['alpha', 'beta']));
+            assert.equal(cloned.pairwise_unique_all[0][1], null);
+            assert.equal(cloned.exclusive.exclusive_all[0], null);
+            assert.deepEqual(comparisonMatrix(cloned, 'all').matrix, [[0, null], [1, 0]]);
+            assert.deepEqual(
+              comparisonMetric(
+                {
+                  exclusive_any: 2,
+                  exclusive_all: null,
+                  exclusive_any_bound: 'lower',
+                  exclusive_all_bound: 'unknown',
+                },
+                'any',
+              ),
+              { value: 2, bound: 'lower' },
+            );
+            assert.deepEqual(comparisonMetric({ exclusive_all: null }, 'all'), { value: null, bound: 'unknown' });
+        """
+        subprocess.run(
+            ['node', '--no-warnings', '--input-type=module', '-e', script],
+            cwd=REPO_ROOT,
+            check=True,
+        )
+
+    def test_matrix_cells_render_bounds_and_unknown_values(self) -> None:
+        script = r"""
+            import assert from 'node:assert/strict';
+            import { renderMatrixTable } from './src/fuzzmeter/web/static/report/charts.js';
+
+            function node() {
+              return {
+                children: [],
+                className: '',
+                style: { cssText: '' },
+                textContent: '',
+                title: '',
+                appendChild(child) { this.children.push(child); return child; },
+              };
+            }
+            globalThis.document = { createElement() { return node(); } };
+            const host = node();
+            renderMatrixTable(
+              host,
+              {
+                fuzzers: ['alpha', 'beta'],
+                matrix: [[0, null], [2, 0]],
+                cell_bounds: [['exact', 'unknown'], ['lower', 'exact']],
+                sample_sizes: [2, 3],
+              },
+              { formatter: 'int' },
+            );
+
+            const table = host.children[0];
+            const firstDataRow = table.children[1].children[0];
+            const unknownCell = firstDataRow.children[2];
+            assert.equal(unknownCell.children[0].textContent, '?');
+            const boundedCell = table.children[1].children[1].children[1];
+            assert.equal(boundedCell.children[0].textContent, '≥2');
+            // Sample sizes belong in the matrix note, not in every cell, so a
+            // uniform repetition count is not repeated once per fuzzer pair.
+            assert.equal(unknownCell.children.length, 1);
+            assert.equal(boundedCell.children.length, 1);
+        """
+        subprocess.run(
+            ['node', '--no-warnings', '--input-type=module', '-e', script],
+            cwd=REPO_ROOT,
+            check=True,
+        )
+
     def test_failed_tick_notice_marks_coverage_holes(self) -> None:
         script = r"""
             import assert from 'node:assert/strict';
@@ -54,7 +141,7 @@ class ReportFrontendTest(unittest.TestCase):
                     execs_done_median: 100,
                   },
                   distribution: { regions_pct: [80, 90] },
-                  exclusive_bugs: { total: 1 },
+                  exclusive_bugs: { exclusive_any: 1, exclusive_all: 0 },
                   exclusive_coverage: { total: 3 },
                 },
                 {
@@ -66,7 +153,7 @@ class ReportFrontendTest(unittest.TestCase):
                     execs_done_median: 50,
                   },
                   distribution: { regions_pct: [30, 50] },
-                  exclusive_bugs: { total: 0 },
+                  exclusive_bugs: { exclusive_any: 0, exclusive_all: 0 },
                   exclusive_coverage: { total: 1 },
                 },
               ],
@@ -77,7 +164,7 @@ class ReportFrontendTest(unittest.TestCase):
             assert.equal(enriched.fuzzers[1].rank_regions_median, 2);
             assert.equal(enriched.significance_vs_best, undefined);
 
-            const summary = computeSummary([enriched]);
+            const summary = computeSummary([enriched], 'any');
             assert.deepEqual(summary.rankings, [
               {
                 fuzzer: 'alpha',
@@ -86,8 +173,10 @@ class ReportFrontendTest(unittest.TestCase):
                 relcov_score: 2,
                 relbug_score: 0,
                 exclusive_coverage_count: 3,
+                exclusive_coverage_count_bound: 'exact',
                 unique_bug_count: 2,
                 exclusive_bug_count: 1,
+                exclusive_bug_count_bound: 'exact',
                 median_execs_done: 100,
               },
               {
@@ -97,11 +186,18 @@ class ReportFrontendTest(unittest.TestCase):
                 relcov_score: 1,
                 relbug_score: 1,
                 exclusive_coverage_count: 1,
+                exclusive_coverage_count_bound: 'exact',
                 unique_bug_count: 1,
                 exclusive_bug_count: 0,
+                exclusive_bug_count_bound: 'exact',
                 median_execs_done: 50,
               },
             ]);
+
+            const strictSummary = computeSummary([enriched], 'all');
+            assert.equal(strictSummary.rankings[0].exclusive_coverage_count, null);
+            assert.equal(strictSummary.rankings[0].exclusive_coverage_count_bound, 'unknown');
+            assert.equal(strictSummary.rankings[0].exclusive_bug_count, 0);
         """
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],

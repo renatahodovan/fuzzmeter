@@ -32,6 +32,7 @@ import {
   installElementExportMenu,
 } from './charts.js';
 import {
+  computeSummary,
   deriveReportData,
   installBenchmarkFilter,
   installFuzzerFilter,
@@ -139,18 +140,34 @@ function buildSummaryRows(data) {
     const relcovCell = el('td', 'num', row.relcov_score === null ? '—' : fmt(row.relcov_score, 2));
     relcovCell.hidden = !showPairwiseColumns;
     tr.appendChild(relcovCell);
-    tr.appendChild(el('td', 'num', fmtInt(row.exclusive_coverage_count)));
+    tr.appendChild(el(
+      'td',
+      'num',
+      formatComparisonCount(row.exclusive_coverage_count, row.exclusive_coverage_count_bound),
+    ));
     const relbugCell = el('td', 'num', row.relbug_score === null ? '—' : fmt(row.relbug_score, 2));
     relbugCell.hidden = !showPairwiseColumns;
     tr.appendChild(relbugCell);
     tr.appendChild(el('td', 'num', fmtInt(row.unique_bug_count)));
-    tr.appendChild(el('td', 'num', fmtInt(row.exclusive_bug_count)));
+    tr.appendChild(el(
+      'td',
+      'num',
+      formatComparisonCount(row.exclusive_bug_count, row.exclusive_bug_count_bound),
+    ));
     tr.appendChild(el('td', 'num', formatExecCount(row.median_execs_done)));
     rankingsBody.appendChild(tr);
   });
 
   updateSummarySortIndicators();
   installRankingExport();
+}
+
+function formatComparisonCount(value, bound) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
+  if (bound === 'lower') return `≥${fmtInt(value)}`;
+  if (bound === 'upper') return `≤${fmtInt(value)}`;
+  if (bound === 'indeterminate') return `~${fmtInt(value)}`;
+  return fmtInt(value);
 }
 
 function bestRowByKey(rows, key) {
@@ -191,7 +208,7 @@ function winnerCard(title, description, winner, formatter) {
   valueRow.appendChild(swatch);
   const text = el('div', 'winner-value-text');
   text.appendChild(el('div', null, winner.fuzzer));
-  text.appendChild(el('div', 'muted small', formatter(winner.value)));
+  text.appendChild(el('div', 'muted small', formatter(winner.value, winner)));
   valueRow.appendChild(text);
   value.appendChild(valueRow);
   card.appendChild(value);
@@ -206,7 +223,11 @@ function buildWinnerCards(data) {
   const rankingRows = data.summary?.rankings || [];
   const execRows = summarizeTargetMetric(data.targets || [], (entry) => entry.final?.execs_per_sec_median);
   const relCovRows = rankingRows.map((row) => ({ fuzzer: row.fuzzer, value: row.relcov_score }));
-  const exclusiveCoverageRows = rankingRows.map((row) => ({ fuzzer: row.fuzzer, value: row.exclusive_coverage_count }));
+  const exclusiveCoverageRows = rankingRows.map((row) => ({
+    fuzzer: row.fuzzer,
+    value: row.exclusive_coverage_count,
+    bound: row.exclusive_coverage_count_bound,
+  }));
 
   const cards = [
     {
@@ -232,9 +253,11 @@ function buildWinnerCards(data) {
     },
     {
       title: 'Exclusive Coverage',
-      description: 'Reaches the largest total branch set that no other fuzzer reaches.',
+      description: FM_APP.state.comparisonMode === 'all'
+        ? 'Reaches the largest branch set in every trial that no other fuzzer reaches in any trial.'
+        : 'Reaches the largest branch set in any trial that no other fuzzer reaches in any trial.',
       winner: bestRowByKey(exclusiveCoverageRows.map((row) => ({ ...row, value: row.value })), 'value'),
-      formatter: (value) => `${fmtInt(value)} branches`,
+      formatter: (value, winner) => `${formatComparisonCount(value, winner.bound)} branches`,
       key: 'value',
     },
     {
@@ -266,6 +289,67 @@ function buildWinnerCards(data) {
     if (!Number.isFinite(Number(value))) return;
     host.appendChild(winnerCard(card.title, card.description, { fuzzer: card.winner.fuzzer, value }, card.formatter));
   });
+}
+
+function comparisonSampleSizes(data) {
+  return (data.targets || []).flatMap((target) => {
+    const matrixSizes = target.unique_bug_matrix?.sample_sizes;
+    if (Array.isArray(matrixSizes)) return matrixSizes.map(Number).filter(Number.isFinite);
+    return (target.fuzzers || []).map((entry) => (entry.trials || []).length);
+  });
+}
+
+function syncComparisonModeControl(data) {
+  const anyButton = byId('comparisonModeAny');
+  const allButton = byId('comparisonModeAll');
+  const sampleLabel = byId('comparisonModeSamples');
+  if (!anyButton || !allButton || !sampleLabel) return;
+  const sizes = comparisonSampleSizes(data).filter((value) => value >= 0);
+  const minN = sizes.length ? Math.min(...sizes) : 0;
+  const maxN = sizes.length ? Math.max(...sizes) : 0;
+  const inert = maxN <= 1;
+  if (inert) FM_APP.state.comparisonMode = 'any';
+  anyButton.classList.toggle('active', FM_APP.state.comparisonMode === 'any');
+  allButton.classList.toggle('active', FM_APP.state.comparisonMode === 'all');
+  anyButton.setAttribute('aria-pressed', String(FM_APP.state.comparisonMode === 'any'));
+  allButton.setAttribute('aria-pressed', String(FM_APP.state.comparisonMode === 'all'));
+  allButton.disabled = inert;
+  // A uniform repetition count says nothing a reader can act on. Only report it
+  // when the toggle cannot do anything, or when the fuzzers are not equally
+  // sampled and their counts are therefore not directly comparable.
+  const uneven = minN !== maxN;
+  sampleLabel.textContent = inert ? `n=${maxN}` : uneven ? `n=${minN}–${maxN}` : '';
+  sampleLabel.title = inert
+    ? 'Strict and non-strict comparisons are identical when n=1.'
+    : uneven
+      ? 'Fuzzers have different repetition counts, so their counts are not directly comparable.'
+      : '';
+}
+
+function renderComparisonMode() {
+  if (!FM_APP.data) return;
+  syncComparisonModeControl(FM_APP.data);
+  FM_APP.data.summary = computeSummary(FM_APP.data.targets || [], FM_APP.state.comparisonMode);
+  buildSummaryRows(FM_APP.data);
+  buildWinnerCards(FM_APP.data);
+  FM_APP.sections.forEach((section) => section.renderComparisons());
+}
+
+function installComparisonModeControl() {
+  const anyButton = byId('comparisonModeAny');
+  const allButton = byId('comparisonModeAll');
+  if (!anyButton || !allButton || anyButton.dataset.bound === '1') return;
+  anyButton.addEventListener('click', () => {
+    FM_APP.state.comparisonMode = 'any';
+    renderComparisonMode();
+  });
+  allButton.addEventListener('click', () => {
+    if (allButton.disabled) return;
+    FM_APP.state.comparisonMode = 'all';
+    renderComparisonMode();
+  });
+  anyButton.dataset.bound = '1';
+  allButton.dataset.bound = '1';
 }
 
 function installActiveTargetTracking() {
@@ -335,6 +419,8 @@ function installSidebarNavigation() {
 }
 
 function renderView(data) {
+  syncComparisonModeControl(data);
+  data.summary = computeSummary(data.targets || [], FM_APP.state.comparisonMode);
   FM_APP.data = data;
   const meta = data.meta || {};
   const overview = data.overview || {};
@@ -410,6 +496,7 @@ async function render() {
   installFuzzerFilter(data, renderFromState);
   installBenchmarkFilter(data, renderFromState);
   installSummarySorting(renderFromState);
+  installComparisonModeControl();
   FM_APP.redrawAll = () => renderFromState();
   byId('searchBox').oninput = applySearch;
   byId('themeToggle').onclick = () => applyTheme(FM_APP.state.theme === 'light' ? 'dark' : 'light');

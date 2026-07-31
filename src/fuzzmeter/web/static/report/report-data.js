@@ -19,6 +19,43 @@ export function tickFailureNotice(overview) {
   return `Warning: ${count} snapshot tick${count === 1 ? '' : 's'} failed. Coverage and crash curves may contain unmeasured gaps.`;
 }
 
+export function comparisonMetric(stats, mode) {
+  const strict = mode === 'all';
+  const valueKey = strict ? 'exclusive_all' : 'exclusive_any';
+  const boundKey = `${valueKey}_bound`;
+  const value = stats?.[valueKey];
+  if (value !== null && value !== undefined && Number.isFinite(Number(value))) {
+    return {
+      value: Number(value),
+      bound: String(stats?.[boundKey] || 'exact'),
+    };
+  }
+  if (!strict && stats?.total !== null && stats?.total !== undefined && Number.isFinite(Number(stats.total))) {
+    return { value: Number(stats.total), bound: 'exact' };
+  }
+  return { value: null, bound: 'unknown' };
+}
+
+export function comparisonMatrix(matrixData, mode) {
+  if (!matrixData) return null;
+  const strict = mode === 'all';
+  const matrixKey = strict ? 'pairwise_unique_all' : 'pairwise_unique_any';
+  const boundsKey = `${matrixKey}_bounds`;
+  const selected = Array.isArray(matrixData[matrixKey])
+    ? matrixData[matrixKey]
+    : (!strict && Array.isArray(matrixData.matrix) ? matrixData.matrix : []);
+  const numericValues = selected.flat().filter((value) => (
+    value !== null && value !== undefined && Number.isFinite(Number(value))
+  )).map(Number);
+  return {
+    ...matrixData,
+    matrix: selected,
+    cell_bounds: Array.isArray(matrixData[boundsKey]) ? matrixData[boundsKey] : undefined,
+    max_value: Math.max(0, ...numericValues),
+    comparison_mode: strict ? 'all' : 'any',
+  };
+}
+
 export const FM_PALETTE = [
   'rgba(120,180,255,0.95)',
   'rgba(255,160,120,0.95)',

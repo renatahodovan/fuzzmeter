@@ -21,6 +21,7 @@ from .data.coverage_data import CoverageData
 from .keys import COV_METRICS
 from .metrics import dt
 from .payload import build_payload
+from .set_comparison import empty_trial_set_comparison
 
 
 def build_composite_payload(
@@ -310,7 +311,7 @@ def _attach_empty_matrices(target: dict[str, Any]) -> None:
     target['branch_a12_matrix'] = empty_metric_group
     target['relcov_score_by_fuzzer'] = {}
     target['unique_bug_table'] = {'fuzzers': [], 'rows': [], 'has_data': False}
-    target['unique_bug_matrix'] = empty_matrix
+    target['unique_bug_matrix'] = empty_trial_set_comparison()
     target['relbug_matrix'] = empty_matrix
     target['relbug_score_by_fuzzer'] = {}
 

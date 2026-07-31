@@ -9,14 +9,16 @@
 
 from __future__ import annotations
 
+import random
 import unittest
 
 from fuzzmeter.reporting.analyzers import coverage_curves
 from fuzzmeter.reporting.analyzers.bug_analysis import BugAnalysis
 from fuzzmeter.reporting.analyzers.trial_analysis import TrialAnalysis
-from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.keys import SNAPSHOT_COVERAGE_FIELDS
 from fuzzmeter.reporting.metrics import median
+from fuzzmeter.reporting.payload import _PayloadBuilder
+from fuzzmeter.reporting.set_comparison import trial_set_comparison
 
 COV_METRICS = ('branches',)
 FINAL_DIST_KEYS = (
@@ -171,10 +173,66 @@ class BugAnalysisBehaviorTest(unittest.TestCase):
             ]
         }
 
+        matrix = BugAnalysis.compute_unique_bug_matrix(target)
+        target['unique_bug_matrix'] = matrix
         BugAnalysis.attach_exclusive_bug_stats(target)
 
-        self.assertEqual({'total': 1, 'min': 0, 'max': 1, 'median': 0.5}, target['fuzzers'][0]['exclusive_bugs'])
-        self.assertEqual({'total': 0, 'min': 0, 'max': 0, 'median': 0.0}, target['fuzzers'][1]['exclusive_bugs'])
+        self.assertEqual([[0, 1], [0, 0]], matrix['pairwise_unique_any'])
+        self.assertEqual([[0, 0], [0, 0]], matrix['pairwise_unique_all'])
+        self.assertEqual(
+            {
+                'exclusive_any': 1,
+                'exclusive_all': 0,
+                'exclusive_any_bound': 'exact',
+                'exclusive_all_bound': 'exact',
+                'min': 0,
+                'max': 1,
+                'median': 0.5,
+                'sample_size': 2,
+                'usable_sample_size': 2,
+            },
+            target['fuzzers'][0]['exclusive_bugs'],
+        )
+        self.assertEqual(
+            {
+                'exclusive_any': 0,
+                'exclusive_all': 0,
+                'exclusive_any_bound': 'exact',
+                'exclusive_all_bound': 'exact',
+                'min': 0,
+                'max': 0,
+                'median': 0.0,
+                'sample_size': 1,
+                'usable_sample_size': 1,
+            },
+            target['fuzzers'][1]['exclusive_bugs'],
+        )
+
+    def test_missing_bug_trial_propagates_unknown_and_degraded_states(self) -> None:
+        target = {
+            'fuzzers': [
+                {
+                    'fuzzer': 'alpha',
+                    'trials': [{'trial_id': 1}, {'trial_id': 2, 'bug_set_missing': True}],
+                    'bugs': [{'bug_key': 'a', 'trial_ids': [1]}],
+                },
+                {
+                    'fuzzer': 'beta',
+                    'trials': [{'trial_id': 3}, {'trial_id': 4}],
+                    'bugs': [{'bug_key': 'b', 'trial_ids': [3, 4]}],
+                },
+            ]
+        }
+
+        target['unique_bug_matrix'] = BugAnalysis.compute_unique_bug_matrix(target)
+        BugAnalysis.attach_exclusive_bug_stats(target)
+
+        alpha = target['fuzzers'][0]['exclusive_bugs']
+        beta = target['fuzzers'][1]['exclusive_bugs']
+        self.assertEqual((1, 'lower'), (alpha['exclusive_any'], alpha['exclusive_any_bound']))
+        self.assertEqual((None, 'unknown'), (alpha['exclusive_all'], alpha['exclusive_all_bound']))
+        self.assertEqual((1, 'upper'), (beta['exclusive_any'], beta['exclusive_any_bound']))
+        self.assertEqual((1, 'upper'), (beta['exclusive_all'], beta['exclusive_all_bound']))
 
     def test_relative_bug_matrix_and_scores_use_trial_sets(self) -> None:
         matrix, scores = BugAnalysis.compute_rel_bug_matrix(
@@ -204,6 +262,91 @@ class BugAnalysisBehaviorTest(unittest.TestCase):
     def test_integer_bug_median_matches_shared_metric_median_cases(self) -> None:
         for values in ([], [0], [0, 0], [1, 2, 3]):
             self.assertEqual(median(values), _bug_exclusive_median(values))
+
+
+class TrialSetComparisonTest(unittest.TestCase):
+    '''Verify strict/non-strict set comparison semantics and uncertainty.'''
+
+    def test_disagreeing_trials_exclude_flaky_values_from_strict_counts(self) -> None:
+        result = trial_set_comparison(
+            ['alpha', 'beta'],
+            {
+                'alpha': [{'a', 'shared', 'flaky'}, {'a', 'shared'}],
+                'beta': [{'shared', 'b'}, {'shared', 'b'}],
+            },
+        )
+
+        self.assertEqual([[0, 2], [1, 0]], result['pairwise_unique_any'])
+        self.assertEqual([[0, 1], [1, 0]], result['pairwise_unique_all'])
+        self.assertEqual([2, 1], result['exclusive']['exclusive_any'])
+        self.assertEqual([1, 1], result['exclusive']['exclusive_all'])
+
+    def test_single_repetition_makes_strict_and_non_strict_identical(self) -> None:
+        result = trial_set_comparison(
+            ['alpha', 'beta'],
+            {'alpha': [{'a', 'shared'}], 'beta': [{'b', 'shared'}]},
+        )
+
+        self.assertEqual(result['pairwise_unique_any'], result['pairwise_unique_all'])
+        self.assertEqual(
+            result['exclusive']['exclusive_any'],
+            result['exclusive']['exclusive_all'],
+        )
+
+    def test_randomized_strict_counts_never_exceed_non_strict_counts(self) -> None:
+        rng = random.Random(1234)
+        for _ in range(100):
+            trial_sets = {
+                label: [
+                    {str(value) for value in range(12) if rng.random() < 0.35}
+                    for _ in range(rng.randint(1, 5))
+                ]
+                for label in ('alpha', 'beta', 'gamma')
+            }
+            result = trial_set_comparison(list(trial_sets), trial_sets)
+            for any_row, all_row in zip(
+                result['pairwise_unique_any'],
+                result['pairwise_unique_all'],
+                strict=True,
+            ):
+                self.assertTrue(all(strict <= non_strict for non_strict, strict in zip(any_row, all_row, strict=True)))
+            self.assertTrue(all(
+                strict <= non_strict
+                for non_strict, strict in zip(
+                    result['exclusive']['exclusive_any'],
+                    result['exclusive']['exclusive_all'],
+                    strict=True,
+                )
+            ))
+
+    def test_missing_trial_keeps_degraded_any_but_makes_strict_unknown(self) -> None:
+        result = trial_set_comparison(
+            ['alpha', 'beta'],
+            {'alpha': [{'a'}, None], 'beta': [{'b'}, {'b'}]},
+        )
+
+        self.assertEqual([1, 1], result['exclusive']['exclusive_any'])
+        self.assertEqual(['lower', 'upper'], result['exclusive']['exclusive_any_bounds'])
+        self.assertEqual([None, 1], result['exclusive']['exclusive_all'])
+        self.assertEqual(['unknown', 'upper'], result['exclusive']['exclusive_all_bounds'])
+        self.assertEqual([None, None], trial_set_comparison(
+            ['alpha', 'beta'],
+            {'alpha': [None], 'beta': [{'b'}]},
+        )['pairwise_unique_any'][0])
+
+    def test_comparison_side_always_uses_union(self) -> None:
+        result = trial_set_comparison(
+            ['alpha', 'beta'],
+            {
+                'alpha': [{'shared'}, {'shared'}],
+                'beta': [{'shared'} for _ in range(9)] + [set()],
+            },
+        )
+
+        self.assertEqual(0, result['pairwise_unique_any'][0][1])
+        self.assertEqual(0, result['pairwise_unique_all'][0][1])
+        self.assertEqual(0, result['exclusive']['exclusive_any'][0])
+        self.assertEqual(0, result['exclusive']['exclusive_all'][0])
 
 
 class CoverageAnalysisBehaviorTest(unittest.TestCase):
@@ -386,6 +529,8 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         self.assertIn('exclusive_bugs', target['fuzzers'][0])
         self.assertTrue(target['unique_matrix']['has_data'])
         self.assertTrue(target['unique_bug_table']['has_data'])
+        self.assertEqual([[0, 1], [1, 0]], target['unique_bug_matrix']['pairwise_unique_any'])
+        self.assertEqual([[0, 1], [1, 0]], target['unique_bug_matrix']['pairwise_unique_all'])
 
     def test_create_matrices_uses_aggregate_relcov_fallback_when_trial_sets_missing(self) -> None:
         builder = _PayloadBuilder.__new__(_PayloadBuilder)

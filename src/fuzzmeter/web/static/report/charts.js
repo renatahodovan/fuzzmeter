@@ -1322,16 +1322,26 @@ export function renderMatrixTable(host, matrixData, options = {}) {
     const tr = el('tr');
     tr.appendChild(el('td', null, rowLabel));
     labels.forEach((colLabel, colIndex) => {
-      const value = number((matrixData.matrix[rowIndex] || [])[colIndex]);
+      const rawValue = (matrixData.matrix[rowIndex] || [])[colIndex];
+      const unknown = rawValue === null || rawValue === undefined || !finite(rawValue);
+      const value = unknown ? null : number(rawValue);
       const self = rowIndex === colIndex;
-      const text = matrixText(value, options);
-      const td = el('td', 'num', self && options.allowSelfDash !== false ? '-' : text);
+      const bound = (matrixData.cell_bounds?.[rowIndex] || [])[colIndex] || 'exact';
+      const formatted = unknown ? '?' : matrixText(value, options);
+      const text = bound === 'lower' ? `≥${formatted}`
+        : bound === 'upper' ? `≤${formatted}`
+        : bound === 'indeterminate' ? `~${formatted}`
+        : formatted;
+      const td = el('td', 'num');
+      td.appendChild(el('div', null, self && options.allowSelfDash !== false ? '-' : text));
       td.style.cssText = self && options.allowSelfDash !== false
         ? 'background:#ffffff; color:#111827; font-weight:700;'
-        : (typeof options.styleForValue === 'function'
+        : (!unknown && typeof options.styleForValue === 'function'
           ? options.styleForValue(value, { colIndex, colLabel, matrixData, maxValue, rowIndex, rowLabel })
-          : matrixStyle(value, maxValue, options.tint || 'rgba(120,180,255,ALPHA)'));
-      td.title = self && options.allowSelfDash !== false ? `${rowLabel}: same row` : `${rowLabel} - ${colLabel}: ${text}`;
+          : (!unknown ? matrixStyle(value, maxValue, options.tint || 'rgba(120,180,255,ALPHA)') : ''));
+      td.title = self && options.allowSelfDash !== false
+        ? `${rowLabel}: same row`
+        : `${rowLabel} - ${colLabel}: ${unknown ? 'unknown' : text}`;
       tr.appendChild(td);
     });
     tbody.appendChild(tr);

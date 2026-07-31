@@ -24,6 +24,7 @@ from .data.run_data import RunData
 from .keys import COV_METRICS, FINAL_DIST_KEYS, SNAPSHOT_COVERAGE_FIELDS, TRIAL_METADATA_FIELDS
 from .metrics import dt, safe_int
 from .plugin_sections import attach_extra_sections
+from .set_comparison import empty_trial_set_comparison
 
 LOG = logging.getLogger(__name__)
 CURVE_MAX_POINTS = 240
@@ -418,7 +419,7 @@ class _PayloadBuilder:
                 target['branch_a12_matrix'] = empty_metric_group
                 target['relcov_score_by_fuzzer'] = {}
                 target['unique_bug_table'] = empty_bug_table
-                target['unique_bug_matrix'] = empty_matrix
+                target['unique_bug_matrix'] = empty_trial_set_comparison()
                 target['relbug_matrix'] = empty_matrix
                 target['relbug_score_by_fuzzer'] = {}
         return targets

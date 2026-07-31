@@ -16,6 +16,7 @@ import {
   FM_APP,
   byId,
   cleanFloats,
+  comparisonMetric,
   el,
   rankdataDesc,
 } from './report-utils.js';
@@ -63,34 +64,76 @@ export function allBenchmarkNames(data) {
 }
 
 export function cloneMatrixForSelected(matrixData, selectedSet) {
-  if (!matrixData || !Array.isArray(matrixData.fuzzers) || !Array.isArray(matrixData.matrix)) return null;
+  if (!matrixData || !Array.isArray(matrixData.fuzzers)) return null;
   const indices = matrixData.fuzzers
     .map((fuzzer, index) => [String(fuzzer), index])
     .filter(([fuzzer]) => selectedSet.has(fuzzer));
   if (!indices.length) return null;
   const filteredFuzzers = indices.map(([fuzzer]) => fuzzer);
-  const filteredMatrix = indices.map(([, rowIndex]) => (
-    indices.map(([, colIndex]) => Number((matrixData.matrix[rowIndex] || [])[colIndex] || 0))
-  ));
+  const filterNumericMatrix = (matrix) => (
+    Array.isArray(matrix)
+      ? indices.map(([, rowIndex]) => indices.map(([, colIndex]) => {
+        const value = (matrix[rowIndex] || [])[colIndex];
+        return value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value);
+      }))
+      : undefined
+  );
+  const filterTextMatrix = (matrix) => (
+    Array.isArray(matrix)
+      ? indices.map(([, rowIndex]) => indices.map(([, colIndex]) => (
+        (matrix[rowIndex] || [])[colIndex]
+      )))
+      : undefined
+  );
+  const filteredMatrix = filterNumericMatrix(matrixData.matrix);
   const filteredCoveredCounts = Array.isArray(matrixData.covered_counts)
-    ? indices.map(([, index]) => Number(matrixData.covered_counts[index] || 0))
-    : undefined;
-  const filteredUniqueCounts = Array.isArray(matrixData.unique_counts)
-    ? indices.map(([, index]) => Number(matrixData.unique_counts[index] || 0))
+    ? indices.map(([, index]) => {
+      const value = matrixData.covered_counts[index];
+      return value === null || value === undefined ? null : Number(value);
+    })
     : undefined;
   const filteredSampleSizes = Array.isArray(matrixData.sample_sizes)
     ? indices.map(([, index]) => Number(matrixData.sample_sizes[index] || 0))
     : undefined;
-  const maxValue = Math.max(0, ...filteredMatrix.flat().map((value) => Number(value) || 0));
+  const filteredUsableSampleSizes = Array.isArray(matrixData.usable_sample_sizes)
+    ? indices.map(([, index]) => Number(matrixData.usable_sample_sizes[index] || 0))
+    : undefined;
+  const pairwiseAny = filterNumericMatrix(matrixData.pairwise_unique_any);
+  const pairwiseAll = filterNumericMatrix(matrixData.pairwise_unique_all);
+  const numericValues = [filteredMatrix, pairwiseAny, pairwiseAll]
+    .filter(Array.isArray)
+    .flat(2)
+    .filter((value) => value !== null && Number.isFinite(Number(value)))
+    .map(Number);
+  const exclusive = matrixData.exclusive ? {
+    ...matrixData.exclusive,
+    exclusive_any: Array.isArray(matrixData.exclusive.exclusive_any)
+      ? indices.map(([, index]) => matrixData.exclusive.exclusive_any[index] ?? null)
+      : undefined,
+    exclusive_all: Array.isArray(matrixData.exclusive.exclusive_all)
+      ? indices.map(([, index]) => matrixData.exclusive.exclusive_all[index] ?? null)
+      : undefined,
+    exclusive_any_bounds: Array.isArray(matrixData.exclusive.exclusive_any_bounds)
+      ? indices.map(([, index]) => matrixData.exclusive.exclusive_any_bounds[index])
+      : undefined,
+    exclusive_all_bounds: Array.isArray(matrixData.exclusive.exclusive_all_bounds)
+      ? indices.map(([, index]) => matrixData.exclusive.exclusive_all_bounds[index])
+      : undefined,
+  } : undefined;
   return {
     ...matrixData,
     fuzzers: filteredFuzzers,
     matrix: filteredMatrix,
+    pairwise_unique_any: pairwiseAny,
+    pairwise_unique_all: pairwiseAll,
+    pairwise_unique_any_bounds: filterTextMatrix(matrixData.pairwise_unique_any_bounds),
+    pairwise_unique_all_bounds: filterTextMatrix(matrixData.pairwise_unique_all_bounds),
+    exclusive,
     covered_counts: filteredCoveredCounts,
-    unique_counts: filteredUniqueCounts,
     sample_sizes: filteredSampleSizes,
-    max_value: maxValue,
-    has_data: filteredMatrix.some((row) => row.some((value) => value > 0)) || filteredFuzzers.length > 0,
+    usable_sample_sizes: filteredUsableSampleSizes,
+    max_value: Math.max(0, ...numericValues),
+    has_data: numericValues.some((value) => value > 0) || filteredFuzzers.length > 0,
   };
 }
 
@@ -181,7 +224,29 @@ export function enrichTargetForSelection(target) {
   };
 }
 
-export function computeSummary(targets) {
+function addComparisonTotal(totals, fuzzer, stats, mode) {
+  const metric = comparisonMetric(stats, mode);
+  const current = totals.get(fuzzer);
+  if (!current || metric.value === null) {
+    if (current) current.unknown = true;
+    return;
+  }
+  current.value += metric.value;
+  current.hasValue = true;
+  if (metric.bound !== 'exact') {
+    current.bound = current.bound === 'exact' ? metric.bound : (
+      current.bound === metric.bound ? current.bound : 'indeterminate'
+    );
+  }
+}
+
+function comparisonTotal(totals, fuzzer) {
+  const total = totals.get(fuzzer);
+  if (!total?.hasValue || total.unknown) return { value: null, bound: 'unknown' };
+  return { value: total.value, bound: total.bound };
+}
+
+export function computeSummary(targets, comparisonMode = FM_APP.state.comparisonMode) {
   const fuzzers = Array.from(new Set(
     targets.flatMap((target) => (target.fuzzers || []).map((entry) => entry.fuzzer)),
   )).sort();
@@ -190,9 +255,15 @@ export function computeSummary(targets) {
   const aucScores = new Map(fuzzers.map((fuzzer) => [fuzzer, []]));
   const relcovScores = new Map(fuzzers.map((fuzzer) => [fuzzer, []]));
   const relbugScores = new Map(fuzzers.map((fuzzer) => [fuzzer, []]));
-  const exclusiveCoverage = new Map(fuzzers.map((fuzzer) => [fuzzer, 0]));
+  const exclusiveCoverage = new Map(fuzzers.map((fuzzer) => [
+    fuzzer,
+    { value: 0, bound: 'exact', hasValue: false, unknown: false },
+  ]));
   const uniqueBugs = new Map(fuzzers.map((fuzzer) => [fuzzer, 0]));
-  const exclusiveBugs = new Map(fuzzers.map((fuzzer) => [fuzzer, 0]));
+  const exclusiveBugs = new Map(fuzzers.map((fuzzer) => [
+    fuzzer,
+    { value: 0, bound: 'exact', hasValue: false, unknown: false },
+  ]));
   const execs = new Map(fuzzers.map((fuzzer) => [fuzzer, []]));
   targets.forEach((target) => {
     const medians = (target.fuzzers || [])
@@ -220,26 +291,23 @@ export function computeSummary(targets) {
       if (hasPairwiseFuzzers && Number.isFinite(Number(target.relbug_score_by_fuzzer?.[entry.fuzzer]))) {
         relbugScores.get(entry.fuzzer)?.push(Number(target.relbug_score_by_fuzzer[entry.fuzzer]));
       }
-      exclusiveCoverage.set(
-        entry.fuzzer,
-        Number(exclusiveCoverage.get(entry.fuzzer) || 0) + Number(entry.exclusive_coverage?.total || 0),
-      );
+      addComparisonTotal(exclusiveCoverage, entry.fuzzer, entry.exclusive_coverage, comparisonMode);
       uniqueBugs.set(
         entry.fuzzer,
         Number(uniqueBugs.get(entry.fuzzer) || 0) + Number(entry.final?.accumulated_bug_count || 0),
       );
-      exclusiveBugs.set(
-        entry.fuzzer,
-        Number(exclusiveBugs.get(entry.fuzzer) || 0) + Number(entry.exclusive_bugs?.total || 0),
-      );
+      addComparisonTotal(exclusiveBugs, entry.fuzzer, entry.exclusive_bugs, comparisonMode);
       if (Number.isFinite(Number(entry.final?.execs_done_median))) {
         execs.get(entry.fuzzer)?.push(Number(entry.final.execs_done_median));
       }
     });
   });
   return {
-    rankings: fuzzers.map((fuzzer) => ({
-      fuzzer,
+    rankings: fuzzers.map((fuzzer) => {
+      const coverageExclusive = comparisonTotal(exclusiveCoverage, fuzzer);
+      const bugExclusive = comparisonTotal(exclusiveBugs, fuzzer);
+      return {
+        fuzzer,
       coverage_score: scores.get(fuzzer)?.length
         ? cleanFloats(scores.get(fuzzer)).reduce((sum, value) => sum + value, 0) / scores.get(fuzzer).length
         : null,
@@ -252,11 +320,14 @@ export function computeSummary(targets) {
       relbug_score: relbugScores.get(fuzzer)?.length
         ? cleanFloats(relbugScores.get(fuzzer)).reduce((sum, value) => sum + value, 0) / relbugScores.get(fuzzer).length
         : null,
-      exclusive_coverage_count: Number(exclusiveCoverage.get(fuzzer) || 0),
+      exclusive_coverage_count: coverageExclusive.value,
+      exclusive_coverage_count_bound: coverageExclusive.bound,
       unique_bug_count: Number(uniqueBugs.get(fuzzer) || 0),
-      exclusive_bug_count: Number(exclusiveBugs.get(fuzzer) || 0),
+      exclusive_bug_count: bugExclusive.value,
+      exclusive_bug_count_bound: bugExclusive.bound,
       median_execs_done: medianOfValues(execs.get(fuzzer) || []),
-    })),
+      };
+    }),
   };
 }
 

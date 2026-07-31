@@ -22,6 +22,7 @@ export const FM_APP = {
     selectedFuzzers: new Set(),
     selectedBenchmarks: new Set(),
     coverageByTarget: new Map(),
+    comparisonMode: 'any',
     summarySort: { key: 'coverage_score', direction: 'desc' },
   },
   sections: [],

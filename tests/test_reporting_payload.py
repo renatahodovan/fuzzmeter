@@ -20,7 +20,7 @@ import unittest
 from fuzzmeter.reporting import build_payload, write_report
 from tests.support.dbs import reporting_run_db
 
-PAYLOAD_HASH = 'e013cfbb23cdb9b08c247b53eee67a65645b470bea8ab98898dcc59b28356936'
+PAYLOAD_HASH = '0b737c80fc06c6d52ec7e6c5b38f5fd10114c46ca3639482d8f3df3522ce75c8'
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _BUNDLE_SMOKE_SCRIPT = r"""
 import fs from 'node:fs';
@@ -141,6 +141,14 @@ class ReportingPayloadTest(unittest.TestCase):
             )
             self.assertIn(
                 '<script src="report.js"></script>',
+                (report_dir / 'report.html').read_text(encoding='utf-8'),
+            )
+            self.assertIn(
+                'id="comparisonModeAny"',
+                (report_dir / 'report.html').read_text(encoding='utf-8'),
+            )
+            self.assertIn(
+                'id="comparisonModeAll"',
                 (report_dir / 'report.html').read_text(encoding='utf-8'),
             )
 

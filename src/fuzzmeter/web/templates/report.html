@@ -62,6 +62,12 @@
         </div>
       </div>
       <button id="compositeAddToggle" class="btn" type="button" hidden>Add measurements</button>
+      <div class="comparison-mode" role="group" aria-label="Exclusive and pairwise uniqueness mode">
+        <span class="comparison-mode-label">Reliability</span>
+        <button id="comparisonModeAny" class="comparison-mode-btn" type="button" aria-pressed="true">Non-strict</button>
+        <button id="comparisonModeAll" class="comparison-mode-btn" type="button" aria-pressed="false">Strict</button>
+        <span id="comparisonModeSamples" class="comparison-mode-samples"></span>
+      </div>
       <button id="themeToggle" class="btn" type="button" aria-label="Toggle light and dark theme">Theme</button>
     </div>
   </header>
@@ -130,7 +136,7 @@
                   class="sort-btn"
                   type="button"
                   data-sort-key="exclusive_coverage_count"
-                  title="Sum of branch coverage reached only by this fuzzer across the visible targets."
+                  title="Sum of branch coverage reached only by this fuzzer across visible targets, using the report-wide reliability mode."
                 >
                   <span>Exclusive coverage</span>
                   <span class="sort-arrow" data-sort-arrow="exclusive_coverage_count"></span>
@@ -163,7 +169,7 @@
                   class="sort-btn"
                   type="button"
                   data-sort-key="exclusive_bug_count"
-                  title="Sum of bug counts that only this fuzzer found across the visible targets."
+                  title="Sum of bug counts that only this fuzzer found across visible targets, using the report-wide reliability mode."
                 >
                   <span>Exclusive bugs</span>
                   <span class="sort-arrow" data-sort-arrow="exclusive_bug_count"></span>
@@ -286,7 +292,7 @@
               <span>AUC Score</span>
             </div>
           </th>
-          <th class="num" data-sort-key="exclusive_coverage_total" title="Branches covered by this fuzzer across any trial and by no other fuzzer on this target.">
+          <th class="num" data-sort-key="exclusive_coverage_total" title="Branches exclusive to this fuzzer under the report-wide reliability mode.">
             <div class="th-stack">
               <span>Exclusive Coverage</span>
             </div>
@@ -311,7 +317,7 @@
               <span>Unique Bugs</span>
             </div>
           </th>
-          <th class="num" data-sort-key="exclusive_bug_total" title="Bugs found by this fuzzer that no other fuzzer found on this target. The large number is the total across all trials, with per-trial min, max, and median shown below.">
+          <th class="num" data-sort-key="exclusive_bug_total" title="Bugs exclusive to this fuzzer under the report-wide reliability mode. Per-trial min, max, and median are shown below.">
             <div class="th-stack">
               <span>Exclusive Bugs</span>
             </div>

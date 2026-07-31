@@ -13,7 +13,7 @@ import json
 from typing import Any
 
 from ..metrics import dt, median, safe_int
-from ..set_comparison import exclusive_total, novelty_scores, relative_containment_matrix
+from ..set_comparison import novelty_scores, relative_containment_matrix, trial_set_comparison
 
 
 class BugAnalysis:
@@ -63,42 +63,40 @@ class BugAnalysis:
         '''Attach per-fuzzer exclusive bug totals and trial distributions to a target.'''
 
         entries = target.get('fuzzers') or []
-        bug_sets_by_fuzzer: dict[str, set[str]] = {}
-        trial_bug_sets_by_fuzzer: dict[str, dict[int, set[str]]] = {}
-
-        for entry in entries:
-            fuzzer = str(entry.get('fuzzer') or '')
-            if not fuzzer:
-                continue
-            bug_sets_by_fuzzer[fuzzer] = set()
-            trial_bug_sets_by_fuzzer[fuzzer] = {}
-            for bug in entry.get('bugs') or []:
-                bug_key = str(bug.get('bug_key') or '')
-                if not bug_key:
-                    continue
-                bug_sets_by_fuzzer[fuzzer].add(bug_key)
-                for trial_id in bug.get('trial_ids') or []:
-                    if not isinstance(trial_id, int):
-                        continue
-                    trial_bug_sets_by_fuzzer[fuzzer].setdefault(trial_id, set()).add(bug_key)
+        fuzzers, trial_bug_sets = _trial_bug_sets(target)
+        comparison = target.get('unique_bug_matrix') or trial_set_comparison(fuzzers, trial_bug_sets)
+        exclusive = comparison.get('exclusive') or {}
+        index_by_fuzzer = {fuzzer: index for index, fuzzer in enumerate(comparison.get('fuzzers') or [])}
+        unions = {
+            fuzzer: set().union(*(values for values in trial_bug_sets.get(fuzzer, []) if values is not None))
+            for fuzzer in fuzzers
+        }
 
         for entry in entries:
             fuzzer = str(entry.get('fuzzer') or '')
             other_bug_union = set().union(
-                *(bug_sets for other_fuzzer, bug_sets in bug_sets_by_fuzzer.items() if other_fuzzer != fuzzer)
+                *(bug_sets for other_fuzzer, bug_sets in unions.items() if other_fuzzer != fuzzer)
             )
-            trial_counts: list[int] = []
-            for trial in entry.get('trials') or []:
-                trial_id = trial.get('trial_id')
-                if not isinstance(trial_id, int):
-                    continue
-                own_trial_bugs = trial_bug_sets_by_fuzzer.get(fuzzer, {}).get(trial_id, set())
-                trial_counts.append(len(own_trial_bugs - other_bug_union))
+            trial_counts = [
+                len(values - other_bug_union)
+                for values in trial_bug_sets.get(fuzzer, [])
+                if values is not None
+            ]
+            index = index_by_fuzzer.get(fuzzer, -1)
+            any_values = exclusive.get('exclusive_any') or []
+            all_values = exclusive.get('exclusive_all') or []
+            any_bounds = exclusive.get('exclusive_any_bounds') or []
+            all_bounds = exclusive.get('exclusive_all_bounds') or []
             entry['exclusive_bugs'] = {
-                'total': exclusive_total(fuzzer, bug_sets_by_fuzzer),
+                'exclusive_any': any_values[index] if 0 <= index < len(any_values) else None,
+                'exclusive_all': all_values[index] if 0 <= index < len(all_values) else None,
+                'exclusive_any_bound': any_bounds[index] if 0 <= index < len(any_bounds) else 'unknown',
+                'exclusive_all_bound': all_bounds[index] if 0 <= index < len(all_bounds) else 'unknown',
                 'min': min(trial_counts) if trial_counts else None,
                 'max': max(trial_counts) if trial_counts else None,
                 'median': median(trial_counts),
+                'sample_size': len(trial_bug_sets.get(fuzzer, [])),
+                'usable_sample_size': len(trial_counts),
             }
         return target
 
@@ -106,30 +104,12 @@ class BugAnalysis:
     def compute_unique_bug_matrix(target: dict[str, Any]) -> dict[str, Any]:
         '''Compute pairwise unique bug counts between fuzzers.'''
 
-        fuzzers = sorted({entry.get('fuzzer') for entry in (target.get('fuzzers') or []) if entry.get('fuzzer')})
-        bug_sets: dict[str, set[str]] = {fuzzer: set() for fuzzer in fuzzers}
-        for entry in target.get('fuzzers') or []:
-            fuzzer = entry.get('fuzzer')
-            if not fuzzer:
-                continue
-            for bug in entry.get('bugs') or []:
-                bug_key = bug.get('bug_key')
-                if bug_key:
-                    bug_sets[fuzzer].add(str(bug_key))
-        matrix: list[list[int]] = []
-        max_value = 0
-        for row_fuzzer in fuzzers:
-            row_set = bug_sets.get(row_fuzzer, set())
-            row_vals = [len(row_set - bug_sets.get(col_fuzzer, set())) for col_fuzzer in fuzzers]
-            if row_vals:
-                max_value = max(max_value, max(row_vals))
-            matrix.append(row_vals)
+        fuzzers, trial_bug_sets = _trial_bug_sets(target)
+        comparison = trial_set_comparison(fuzzers, trial_bug_sets)
         return {
-            'fuzzers': fuzzers,
-            'matrix': matrix,
-            'has_data': any(bool(values) for values in bug_sets.values()),
-            'note': None,
-            'max_value': max_value,
+            **comparison,
+            'format': 'int',
+            'aggregation': 'per-fuzzer trial bug sets',
         }
 
     @staticmethod
@@ -254,32 +234,7 @@ class BugAnalysis:
     def compute_rel_bug_matrix(target: dict[str, Any]) -> tuple[dict[str, Any], dict[str, float]]:
         '''Compute pairwise relative bug containment and novelty-weighted bug scores.'''
 
-        fuzzers = sorted({entry.get('fuzzer') for entry in (target.get('fuzzers') or []) if entry.get('fuzzer')})
-        trial_bug_sets_by_fuzzer: dict[str, dict[int, set[str]]] = {fuzzer: {} for fuzzer in fuzzers}
-
-        for entry in target.get('fuzzers') or []:
-            fuzzer = entry.get('fuzzer')
-            if not fuzzer:
-                continue
-            trial_ids = {
-                int(trial.get('trial_id'))
-                for trial in entry.get('trials') or []
-                if isinstance(trial.get('trial_id'), int)
-            }
-            trial_bug_sets_by_fuzzer[fuzzer] = {trial_id: set() for trial_id in sorted(trial_ids)}
-            for bug in entry.get('bugs') or []:
-                bug_key = bug.get('bug_key')
-                if not bug_key:
-                    continue
-                key = str(bug_key)
-                for trial_id in bug.get('trial_ids') or []:
-                    if isinstance(trial_id, int) and trial_id in trial_bug_sets_by_fuzzer[fuzzer]:
-                        trial_bug_sets_by_fuzzer[fuzzer][trial_id].add(key)
-
-        trial_bug_sets = {
-            fuzzer: list(trial_bug_sets_by_fuzzer.get(fuzzer, {}).values())
-            for fuzzer in fuzzers
-        }
+        fuzzers, trial_bug_sets = _trial_bug_sets(target)
         missing_any = any(not trial_bug_sets.get(fuzzer) for fuzzer in fuzzers)
         matrix = relative_containment_matrix(
             fuzzers,
@@ -298,3 +253,30 @@ class BugAnalysis:
             },
             novelty_scores(fuzzers, trial_bug_sets),
         )
+
+
+def _trial_bug_sets(target: dict[str, Any]) -> tuple[list[str], dict[str, list[set[str] | None]]]:
+    '''Return ordered per-trial bug sets for every fuzzer in a target.'''
+
+    fuzzers = sorted({str(entry.get('fuzzer')) for entry in target.get('fuzzers') or [] if entry.get('fuzzer')})
+    by_fuzzer: dict[str, dict[int, set[str] | None]] = {fuzzer: {} for fuzzer in fuzzers}
+    for entry in target.get('fuzzers') or []:
+        fuzzer = str(entry.get('fuzzer') or '')
+        if not fuzzer:
+            continue
+        for trial in entry.get('trials') or []:
+            trial_id = trial.get('trial_id')
+            if isinstance(trial_id, int):
+                by_fuzzer[fuzzer][trial_id] = None if trial.get('bug_set_missing') is True else set()
+        for bug in entry.get('bugs') or []:
+            bug_key = str(bug.get('bug_key') or '')
+            if not bug_key:
+                continue
+            for trial_id in bug.get('trial_ids') or []:
+                trial_set = by_fuzzer[fuzzer].get(trial_id)
+                if isinstance(trial_set, set):
+                    trial_set.add(bug_key)
+    return fuzzers, {
+        fuzzer: [values for _, values in sorted(by_fuzzer[fuzzer].items())]
+        for fuzzer in fuzzers
+    }

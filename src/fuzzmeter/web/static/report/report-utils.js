@@ -39,6 +39,8 @@ import {
   assignFuzzerColors,
   buildCoverageSeries,
   buildCurveSeries,
+  comparisonMatrix,
+  comparisonMetric,
   configPayload,
   dedupeBugCount,
   distributionValues,
@@ -75,7 +77,7 @@ import {
 export { aLink, byId, debounce, el, fetchJSON, fromTemplate, part, sanitizeId };
 export { fmt, fmtInt, fmtPct, formatDuration, formatExecCount, formatGroupedNumber, formatShortNumber, maximum, minimum };
 export { COVERAGE_METRICS, FM_PALETTE, VALUE_OPTIONS, assignFuzzerColors, buildCoverageSeries, buildCurveSeries };
-export { configPayload, dedupeBugCount, distributionValues, finalMetricValue, fuzzerColor, hashString };
+export { comparisonMatrix, comparisonMetric, configPayload, dedupeBugCount, distributionValues, finalMetricValue, fuzzerColor, hashString };
 export { metricCovKey, metricLabel, metricTotalKey, pctValue, per10kExec };
 export { FM_APP, THEME_STORAGE_KEY };
 export { cleanFloats, erf, mannWhitneyUPValue, median, quantile, rankdataDesc };
