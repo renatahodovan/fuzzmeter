@@ -139,9 +139,32 @@ class TrialAnalysis:
                 "started_at": dt(started_ts),
                 "ended_at": dt(ended_ts),
                 "elapsed_seconds": self._elapsed_seconds(row, coverage),
-                "coverage": coverage,
                 "bug_hits_total": int(bug_hits_total),
                 "unique_bugs_total": int(unique_bugs_total),
+                **{
+                    f'{metric}_cov': coverage.get(f'{metric}_covered')
+                    for metric in self._snapshot_coverage_fields
+                },
+                **{
+                    f'{metric}_{suffix}': coverage.get(f'{metric}_{suffix}')
+                    for metric in self._snapshot_coverage_fields
+                    for suffix in ('total', 'pct')
+                },
+                **{
+                    key: coverage.get(key)
+                    for key in (
+                        'last_snapshot_idx',
+                        'last_snapshot_ts',
+                        'last_snapshot_at',
+                        'corpus_files_delta',
+                        'corpus_files_total',
+                        'execs_done',
+                        'crashes',
+                        'hangs',
+                        'coverage_html',
+                        'coverage_html_rel',
+                    )
+                },
             }
             for key in self._trial_version_fields:
                 trial[key] = row.get(key)

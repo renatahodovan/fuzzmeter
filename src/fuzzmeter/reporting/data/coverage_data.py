@@ -105,7 +105,7 @@ class CoverageData:
             ):
                 continue
             coverage_path = self.coverage_sets_from_coverage_html_rel(
-                (trial.get('coverage') or {}).get('coverage_html_rel')
+                trial.get('coverage_html_rel')
             )
             if coverage_path is not None:
                 out[fuzzer].append(self.covered_elements(coverage_path, metric))

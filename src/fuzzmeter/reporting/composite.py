@@ -269,7 +269,7 @@ def _recompute_matrices(
         trials = _target_trials(target, benchmark, fuzz_target)
         coverage_sets_by_metric = _coverage_sets_by_metric(target, source_dirs)
         trial_coverage_sets_by_metric = _trial_coverage_sets_by_metric(target, source_dirs)
-        trial_coverage_sets_by_metric = _with_aggregate_trial_fallback(
+        trial_coverage_sets_by_metric, aggregate_fallback_fuzzers_by_metric = _with_aggregate_trial_fallback(
             trial_coverage_sets_by_metric,
             coverage_sets_by_metric,
             fuzzers,
@@ -287,6 +287,7 @@ def _recompute_matrices(
             benchmark=benchmark,
             fuzz_target=fuzz_target,
             trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
+            aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
         )
         target['branch_mwu_matrix'], target['branch_a12_matrix'] = coverage_matrices.compute_branch_stat_matrices(
             trials=trials,
@@ -368,7 +369,7 @@ def _trial_coverage_sets_by_metric(
         coverage_data = caches.setdefault(Path(source_dir), CoverageData(source_dir))
         for trial in entry.get('trials') or []:
             coverage_path = coverage_data.coverage_sets_from_coverage_html_rel(
-                ((trial or {}).get('coverage') or {}).get('coverage_html_rel')
+                (trial or {}).get('coverage_html_rel')
             )
             if coverage_path is None:
                 continue
@@ -381,10 +382,11 @@ def _with_aggregate_trial_fallback(
     trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str]]]],
     coverage_sets_by_metric: dict[str, dict[str, set[str]]],
     fuzzers: list[str],
-) -> dict[str, dict[str, list[set[str]]]]:
+) -> tuple[dict[str, dict[str, list[set[str]]]], dict[str, set[str]]]:
     '''Use final aggregate coverage sets when trial compact sets are unavailable.'''
 
     out: dict[str, dict[str, list[set[str]]]] = {}
+    fallback_fuzzers_by_metric: dict[str, set[str]] = {}
     for metric in COV_METRICS:
         trial_sets = trial_coverage_sets_by_metric.get(metric, {})
         aggregate_sets = coverage_sets_by_metric.get(metric, {})
@@ -398,8 +400,9 @@ def _with_aggregate_trial_fallback(
             aggregate_set = aggregate_sets.get(fuzzer)
             if aggregate_set:
                 merged[fuzzer] = [set(aggregate_set)]
+                fallback_fuzzers_by_metric.setdefault(metric, set()).add(fuzzer)
         out[metric] = merged
-    return out
+    return out, fallback_fuzzers_by_metric
 
 
 def _coverage_report_relpath(value: Any) -> str | None:

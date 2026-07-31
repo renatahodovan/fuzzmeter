@@ -1029,12 +1029,15 @@ function renderCoverageBlock(section) {
     coverage.matrixCard.setExportName(`${section.target.key}-unique-${metric}-matrix`);
   }
   if (coverage.relCard) {
-    renderMatrixCard(coverage.relCard, resolveCoverageMatrix(target.relcov_matrix, metric), {
+    const relcovMatrix = resolveCoverageMatrix(target.relcov_matrix, metric);
+    renderMatrixCard(coverage.relCard, relcovMatrix, {
       formatter: 'pct',
       emptyMessage: 'No relative coverage matrix data.',
       tint: 'rgba(110,226,240,ALPHA)',
       title: `RelCov ${metricName} matrix`,
-      subtitle: 'Cell = how much of the column fuzzer union coverage is also covered by the row fuzzer.',
+      subtitle: relcovMatrix?.uses_aggregate_fallback
+        ? 'Per-trial sets are unavailable for some fuzzers; aggregate coverage fallback is shown.'
+        : 'Cell = how much of the column fuzzer union coverage is also covered by the row fuzzer.',
       exportName: `${section.target.key}-relcov-${metric}-matrix`,
     });
   }

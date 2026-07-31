@@ -20,7 +20,7 @@ import unittest
 from fuzzmeter.reporting import build_payload, write_report
 from tests.support.dbs import reporting_run_db
 
-PAYLOAD_HASH = 'a9aa52b0109766ab68be39e922ca1073a02e013b723fdf65171b137d89cf2a61'
+PAYLOAD_HASH = 'e013cfbb23cdb9b08c247b53eee67a65645b470bea8ab98898dcc59b28356936'
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _BUNDLE_SMOKE_SCRIPT = r"""
 import fs from 'node:fs';

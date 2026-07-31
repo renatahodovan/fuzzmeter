@@ -154,11 +154,10 @@ def aggregate_finals(
 
     finals: dict[str, list[float]] = {key: [] for key in final_output_dist_keys}
     for trial in reps:
-        coverage = trial.get("coverage") or {}
         for metric in cov_metrics:
-            cov_value = coverage.get(f"{metric}_covered")
-            total_value = coverage.get(f"{metric}_total")
-            pct_value = coverage.get(f"{metric}_pct")
+            cov_value = trial.get(f"{metric}_cov")
+            total_value = trial.get(f"{metric}_total")
+            pct_value = trial.get(f"{metric}_pct")
             if cov_value is not None:
                 finals[f"{metric}_cov"].append(float(cov_value))
             if total_value is not None:
@@ -302,7 +301,6 @@ def build_trial_rows(
 
     for trial in sorted(reps, key=sort_key):
         trial_id = int(trial['trial_id'])
-        coverage = trial.get('coverage') or {}
         points = sorted(points_by_trial.get(trial_id, []), key=lambda point: int(point.get('idx') or 0))
         last_point = points[-1] if points else {}
         elapsed_seconds = safe_int(trial.get('elapsed_seconds'))
@@ -333,7 +331,7 @@ def build_trial_rows(
         )
         convergence_pct = _convergence_pct(
             branches_cov_auc,
-            safe_int(coverage.get('branches_covered')),
+            safe_int(trial.get('branches_cov')),
             elapsed_seconds,
         )
 
@@ -351,10 +349,12 @@ def build_trial_rows(
                 "elapsed_seconds": elapsed_seconds,
                 "execs_done": execs_done,
                 "execs_per_sec": execs_per_sec,
-                "regions_cov": coverage.get("regions_covered"),
-                "regions_pct": coverage.get("regions_pct"),
-                "branches_cov": coverage.get("branches_covered"),
-                "branches_pct": coverage.get("branches_pct"),
+                "regions_cov": trial.get("regions_cov"),
+                "regions_pct": trial.get("regions_pct"),
+                "branches_cov": trial.get("branches_cov"),
+                "branches_pct": trial.get("branches_pct"),
+                "coverage_html": trial.get("coverage_html"),
+                "coverage_html_rel": trial.get("coverage_html_rel"),
                 "regions_cov_auc": regions_cov_auc,
                 "regions_cov_auc_norm": regions_cov_auc_norm,
                 "branches_cov_auc": branches_cov_auc,

@@ -282,6 +282,8 @@ class ReportFrontendTest(unittest.TestCase):
 
         self.assertIn('blocks.appendChild(perTrialBlock);', text)
         self.assertIn("['Trials', `#t-${targetId}-trials`]", text)
+        self.assertIn('relcovMatrix?.uses_aggregate_fallback', text)
+        self.assertIn('aggregate coverage fallback is shown', text)
 
     def test_report_source_compatibility_helpers_render_modal_details(self) -> None:
         script = r"""

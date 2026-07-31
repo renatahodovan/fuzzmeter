@@ -180,6 +180,7 @@ def compute_relcov_matrix(
     benchmark: str,
     fuzz_target: str,
     trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str]]]],
+    aggregate_fallback_fuzzers_by_metric: dict[str, set[str]] | None = None,
 ) -> tuple[dict[str, Any], dict[str, float]]:
     '''Compute pairwise relative coverage and novelty-weighted branch scores.'''
 
@@ -199,6 +200,9 @@ def compute_relcov_matrix(
             fuzzers=fuzzers,
             metric=metric,
             trial_coverage_sets=trial_coverage_sets_by_metric.get(metric, {}),
+            aggregate_fallback_fuzzers=(
+                aggregate_fallback_fuzzers_by_metric or {}
+            ).get(metric, set()),
         )
         for metric in cov_metrics
     }
@@ -222,23 +226,47 @@ def _compute_relcov_matrix_for_metric(
     fuzzers: list[str],
     metric: str,
     trial_coverage_sets: dict[str, list[set[str]]],
+    aggregate_fallback_fuzzers: set[str],
 ) -> dict[str, Any]:
     missing_any = len(trial_coverage_sets) != len(fuzzers) or any(
         not trial_coverage_sets.get(fuzzer)
         for fuzzer in fuzzers
     )
+    fallback_fuzzers = sorted(aggregate_fallback_fuzzers)
+    note_parts = []
+    if fallback_fuzzers:
+        note_parts.append(
+            'Trial compact coverage sets are unavailable for '
+            f'{", ".join(fallback_fuzzers)}; aggregate coverage sets are used instead.'
+        )
+    if missing_any:
+        note_parts.append(
+            'Coverage sets are missing for one or more fuzzers; '
+            'relative coverage may be partial.'
+        )
     matrix = relative_containment_matrix(
         fuzzers,
         trial_coverage_sets,
-        note=(
-            'Trial compact coverage sets missing for one or more fuzzers; '
-            'relative coverage may be partial.'
-        ) if missing_any else None,
+        note=' '.join(note_parts) or None,
     )
+    if not fallback_fuzzers:
+        aggregation = f'per-trial median compact {metric} coverage sets'
+    elif len(fallback_fuzzers) == len(fuzzers):
+        aggregation = (
+            f'per-fuzzer aggregate compact {metric} coverage sets '
+            '(per-trial sets unavailable)'
+        )
+    else:
+        aggregation = (
+            f'mixed per-trial median and per-fuzzer aggregate compact {metric} coverage sets '
+            '(per-trial sets partially unavailable)'
+        )
     return {
         **matrix,
         'format': 'pct',
-        'aggregation': f'per-trial median compact {metric} coverage sets',
+        'aggregation': aggregation,
+        'uses_aggregate_fallback': bool(fallback_fuzzers),
+        'aggregate_fallback_fuzzers': fallback_fuzzers,
     }
 
 
@@ -267,7 +295,7 @@ def _branch_coverage_distributions(
         fuzzer = str(trial.get('fuzzer') or '')
         if fuzzer not in distributions:
             continue
-        value = safe_int((trial.get('coverage') or {}).get('branches_covered'))
+        value = safe_int(trial.get('branches_cov'))
         if value is None:
             missing_any = True
             continue

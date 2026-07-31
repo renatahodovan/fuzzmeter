@@ -195,10 +195,10 @@ class CoverageReportingTest(unittest.TestCase):
 
     def test_branch_stat_matrices_use_final_trial_branch_coverage(self) -> None:
         trials = [
-            {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha', 'coverage': {'branches_covered': 100}},
-            {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha', 'coverage': {'branches_covered': 101}},
-            {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta', 'coverage': {'branches_covered': 10}},
-            {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta', 'coverage': {'branches_covered': 11}},
+            {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha', 'branches_cov': 100},
+            {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha', 'branches_cov': 101},
+            {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta', 'branches_cov': 10},
+            {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta', 'branches_cov': 11},
         ]
 
         branch_mwu_matrix, branch_a12_matrix = coverage_matrices.compute_branch_stat_matrices(

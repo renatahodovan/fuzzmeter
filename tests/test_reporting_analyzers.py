@@ -75,9 +75,9 @@ class TrialAnalysisTest(unittest.TestCase):
 
         self.assertEqual(1, len(trials))
         self.assertEqual(50, trials[0]['elapsed_seconds'])
-        self.assertEqual(2, trials[0]['coverage']['branches_covered'])
-        self.assertEqual(50.0, trials[0]['coverage']['branches_pct'])
-        self.assertEqual('url:coverage/index.html', trials[0]['coverage']['coverage_html'])
+        self.assertEqual(2, trials[0]['branches_cov'])
+        self.assertEqual(50.0, trials[0]['branches_pct'])
+        self.assertEqual('url:coverage/index.html', trials[0]['coverage_html'])
         self.assertEqual(3, trials[0]['bug_hits_total'])
         self.assertEqual(2, trials[0]['unique_bugs_total'])
 
@@ -215,7 +215,9 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
                 {
                     'trial_id': 1,
                     'elapsed_seconds': 10,
-                    'coverage': {'branches_covered': 5, 'branches_total': 10, 'branches_pct': 50.0},
+                    'branches_cov': 5,
+                    'branches_total': 10,
+                    'branches_pct': 50.0,
                 }
             ],
             points_by_trial={
@@ -245,12 +247,11 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
                     'fuzz_target': 'target',
                     'rep': 0,
                     'elapsed_seconds': 10,
-                    'coverage': {
-                        'branches_covered': 10,
-                        'branches_pct': 50.0,
-                        'regions_covered': 5,
-                        'regions_pct': 25.0,
-                    },
+                    'branches_cov': 10,
+                    'branches_pct': 50.0,
+                    'regions_cov': 5,
+                    'regions_pct': 25.0,
+                    'coverage_html_rel': 'coverage/trial/html/index.html',
                 }
             ],
             points_by_trial={
@@ -280,6 +281,7 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         self.assertEqual(70.0, rows[0]['branches_cov_auc'])
         self.assertEqual(7.0, rows[0]['branches_cov_auc_norm'])
         self.assertEqual(70.0, rows[0]['convergence_pct'])
+        self.assertEqual('coverage/trial/html/index.html', rows[0]['coverage_html_rel'])
 
     def test_collect_target_view_groups_trials_bugs_versions_and_baselines(self) -> None:
         targets = coverage_curves.collect_target_view(
@@ -295,7 +297,9 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
                     'build_config': {'opt': 'a'},
                     'runtime_config': {'jobs': 1},
                     'fuzzer_image': 'image',
-                    'coverage': {'branches_covered': 5, 'branches_total': 10, 'branches_pct': 50.0},
+                    'branches_cov': 5,
+                    'branches_total': 10,
+                    'branches_pct': 50.0,
                 }
             ],
             timeseries={'per_trial': {1: {'trial_id': 1, 'points': [{'idx': 1, 'execs_done': 10}]}}},
@@ -355,8 +359,8 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         result = builder.create_matrices(
             [target],
             [
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha', 'coverage': {'branches_covered': 2}},
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta', 'coverage': {'branches_covered': 1}},
+                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha', 'branches_cov': 2},
+                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta', 'branches_cov': 1},
             ],
         )
 
@@ -410,6 +414,12 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         relcov = target['relcov_matrix']['by_metric']['branches']
         self.assertTrue(relcov['has_data'])
         self.assertEqual([[100.0, 50.0], [50.0, 100.0]], relcov['matrix'])
+        self.assertEqual(
+            'per-fuzzer aggregate compact branches coverage sets (per-trial sets unavailable)',
+            relcov['aggregation'],
+        )
+        self.assertTrue(relcov['uses_aggregate_fallback'])
+        self.assertEqual(['alpha', 'beta'], relcov['aggregate_fallback_fuzzers'])
         self.assertEqual({'alpha': 1.0, 'beta': 1.0}, target['relcov_score_by_fuzzer'])
 
 
