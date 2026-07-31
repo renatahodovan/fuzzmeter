@@ -14,7 +14,10 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
+from fuzzmeter.db import DB, ensure_schema
+from fuzzmeter.db import snapshot as db_snapshot
 from fuzzmeter.fuzzers.models import OutputPaths
+from fuzzmeter.repro.coverage_state import apply_snapshot_summary
 from fuzzmeter.snapshot.coverage import process_snapshot_coverage
 from fuzzmeter.snapshot.trial_snapshot import TrialCoverageSnapshot
 from fuzzmeter.trial.models import TrialImages, TrialInstance, TrialLayout
@@ -56,6 +59,63 @@ class SnapshotCoverageTest(unittest.TestCase):
                 )
 
         self.assertEqual(0, replay_batches.call_count)
+
+    def test_trial_coverage_sets_path_is_stored_without_html_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            run_dir = Path(tmp_dir)
+            out_root = run_dir / 'coverage' / 'fz' / 'bench' / 'target' / 'trial'
+            out_root.mkdir(parents=True)
+            (out_root / 'coverage-sets.json').write_text('{}', encoding='utf-8')
+            db = DB.open(run_dir / 'fuzzmeter.db')
+            try:
+                ensure_schema(db)
+                db.exec('INSERT INTO runs(run_id) VALUES(?)', ('run',))
+                db.exec(
+                    '''
+                    INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep)
+                    VALUES(?,?,?,?,?)
+                    ''',
+                    ('run', 'fz', 'bench', 'target', 0),
+                )
+                trial_id = int(db.scalar('SELECT trial_id FROM trials'))
+                snapshot_id = db_snapshot.save_snapshot_data(
+                    db,
+                    db_snapshot.SnapshotRecord(
+                        trial_db_id=trial_id,
+                        tick_idx=1,
+                        end_ts=10,
+                        corpus_files=1,
+                        execs_done=1,
+                        stats=None,
+                        crashes=0,
+                        hangs=0,
+                    ),
+                )
+
+                apply_snapshot_summary(
+                    db=db,
+                    run_dir=run_dir,
+                    snapshot_id=snapshot_id,
+                    out_root=out_root,
+                    summary={
+                        'cov_lines_covered': 1,
+                        'cov_lines_total': 1,
+                        'cov_branches_covered': 1,
+                        'cov_branches_total': 2,
+                    },
+                )
+                row = db.q1(
+                    'SELECT coverage_html_dir, coverage_sets_json_rel FROM snapshots WHERE snapshot_id=?',
+                    (snapshot_id,),
+                )
+            finally:
+                db.close()
+
+        self.assertIsNone(row['coverage_html_dir'])
+        self.assertEqual(
+            'coverage/fz/bench/target/trial/coverage-sets.json',
+            row['coverage_sets_json_rel'],
+        )
 
 
 def _trial_instance(root: Path) -> TrialInstance:

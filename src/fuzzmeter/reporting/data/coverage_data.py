@@ -45,7 +45,9 @@ class CoverageData:
             path = self.run_dir / str(rel_path)
             if path.exists():
                 return path
-        return self.coverage_sets_from_coverage_html_rel(snapshot.get('coverage_html_dir'))
+        return self.coverage_sets_from_coverage_html_rel(
+            snapshot.get('coverage_html_dir') or snapshot.get('coverage_html_rel')
+        )
 
     def covered_elements(self, coverage_path: Path, metric: str) -> set[str]:
         '''Return cached covered element keys for one compact coverage set metric.'''
@@ -104,9 +106,7 @@ class CoverageData:
                 or trial.get('fuzz_target') != fuzz_target
             ):
                 continue
-            coverage_path = self.coverage_sets_from_coverage_html_rel(
-                trial.get('coverage_html_rel')
-            )
+            coverage_path = self.coverage_sets_for_snapshot(trial)
             if coverage_path is not None:
                 out[fuzzer].append(self.covered_elements(coverage_path, metric))
         return {fuzzer: sets for fuzzer, sets in out.items() if sets}

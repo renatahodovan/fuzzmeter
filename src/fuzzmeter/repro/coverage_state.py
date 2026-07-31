@@ -46,9 +46,14 @@ def load_coverage_summary(summary_path: Path) -> dict:
 def apply_snapshot_summary(*, db: DB, run_dir: Path, snapshot_id: int, out_root: Path, summary: dict) -> None:
     '''Store coverage summary fields for one snapshot.'''
     idx_path = out_root / 'html' / 'index.html'
+    coverage_sets_path = out_root / 'coverage-sets.json'
     rel_html = str(idx_path.relative_to(run_dir)) if idx_path.exists() else None
+    coverage_sets_json_rel = (
+        str(coverage_sets_path.relative_to(run_dir)) if coverage_sets_path.exists() else None
+    )
     set_snapshot_coverage_fields(
         db=db,
         snapshot_id=snapshot_id,
         coverage=CoverageSummary.from_mapping(coverage_html_dir=rel_html, summary=summary),
+        coverage_sets_json_rel=coverage_sets_json_rel,
     )

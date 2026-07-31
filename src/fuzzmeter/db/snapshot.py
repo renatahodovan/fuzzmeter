@@ -231,6 +231,7 @@ def copy_previous_coverage_fields(db: DB, *, trial_row_id: int, snapshot_id: int
     previous = db.q(
         """
         SELECT coverage_html_dir,
+               coverage_sets_json_rel,
                cov_lines_covered,
                cov_lines_total,
                cov_branches_covered,
@@ -255,7 +256,12 @@ def copy_previous_coverage_fields(db: DB, *, trial_row_id: int, snapshot_id: int
     )
     if not previous:
         return
-    _update_snapshot_coverage(db, snapshot_id=snapshot_id, coverage=CoverageSummary.from_row(previous[0]))
+    _update_snapshot_coverage(
+        db,
+        snapshot_id=snapshot_id,
+        coverage=CoverageSummary.from_row(previous[0]),
+        coverage_sets_json_rel=previous[0].get('coverage_sets_json_rel'),
+    )
 
 
 def copy_seed_baseline_coverage_fields(
@@ -271,6 +277,7 @@ def copy_seed_baseline_coverage_fields(
     baseline = db.q(
         """
         SELECT coverage_html_dir,
+               coverage_sets_json_rel,
                cov_lines_covered,
                cov_lines_total,
                cov_branches_covered,
@@ -291,11 +298,22 @@ def copy_seed_baseline_coverage_fields(
     )
     if not baseline:
         return False
-    _update_snapshot_coverage(db, snapshot_id=snapshot_id, coverage=CoverageSummary.from_row(baseline[0]))
+    _update_snapshot_coverage(
+        db,
+        snapshot_id=snapshot_id,
+        coverage=CoverageSummary.from_row(baseline[0]),
+        coverage_sets_json_rel=baseline[0].get('coverage_sets_json_rel'),
+    )
     return True
 
 
-def set_snapshot_coverage_fields(db: DB, *, snapshot_id: int, coverage: CoverageSummary) -> None:
+def set_snapshot_coverage_fields(
+    db: DB,
+    *,
+    snapshot_id: int,
+    coverage: CoverageSummary,
+    coverage_sets_json_rel: str | None = None,
+) -> None:
     '''Store coverage summary fields on one snapshot row.'''
 
     if any(
@@ -316,27 +334,45 @@ def set_snapshot_coverage_fields(db: DB, *, snapshot_id: int, coverage: Coverage
             coverage.cov_branches_total,
         )
 
-    _update_snapshot_coverage(db, snapshot_id=snapshot_id, coverage=coverage)
+    _update_snapshot_coverage(
+        db,
+        snapshot_id=snapshot_id,
+        coverage=coverage,
+        coverage_sets_json_rel=coverage_sets_json_rel,
+    )
 
 
-def _update_snapshot_coverage(db: DB, *, snapshot_id: int, coverage: CoverageSummary) -> None:
-    '''Store coverage fields on one snapshot row without extra validation.'''
+def _update_snapshot_coverage(
+    db: DB,
+    *,
+    snapshot_id: int,
+    coverage: CoverageSummary,
+    coverage_sets_json_rel: str | None = None,
+) -> None:
+    '''Store coverage fields on one snapshot row without extra validation.
 
+    The column list and the bound values are derived from one mapping so that
+    adding a field cannot silently shift values into neighbouring columns. Every
+    column here is nullable and holds either text or an integer, so SQLite would
+    accept a shifted row without complaint.
+    '''
+
+    assignments: dict[str, Any] = {
+        'coverage_html_dir': coverage.coverage_html_dir,
+        'coverage_sets_json_rel': coverage_sets_json_rel,
+        'cov_lines_covered': coverage.cov_lines_covered,
+        'cov_lines_total': coverage.cov_lines_total,
+        'cov_branches_covered': coverage.cov_branches_covered,
+        'cov_branches_total': coverage.cov_branches_total,
+        'cov_regions_covered': coverage.cov_regions_covered,
+        'cov_regions_total': coverage.cov_regions_total,
+        'cov_functions_covered': coverage.cov_functions_covered,
+        'cov_functions_total': coverage.cov_functions_total,
+    }
+    columns = ', '.join(f'{column}=?' for column in assignments)
     db.exec(
-        """
-        UPDATE snapshots
-           SET coverage_html_dir=?,
-               cov_lines_covered=?,
-               cov_lines_total=?,
-               cov_branches_covered=?,
-               cov_branches_total=?,
-               cov_regions_covered=?,
-               cov_regions_total=?,
-               cov_functions_covered=?,
-               cov_functions_total=?
-         WHERE snapshot_id=?
-        """,
-        (*coverage.values(), int(snapshot_id)),
+        f'UPDATE snapshots SET {columns} WHERE snapshot_id=?',
+        (*assignments.values(), int(snapshot_id)),
     )
 
 

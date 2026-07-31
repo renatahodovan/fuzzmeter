@@ -82,6 +82,35 @@ class CoverageDataTest(unittest.TestCase):
                 data.coverage_sets_for_snapshot({'coverage_html_dir': 'coverage/fz/html/index.html'}),
             )
 
+    def test_loads_trial_sets_from_explicit_paths_without_html_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            coverage_path = run_dir / 'coverage' / 'fz' / 'trial' / 'coverage-sets.json'
+            coverage_path.parent.mkdir(parents=True)
+            coverage_path.write_text('{}', encoding='utf-8')
+            data = CoverageData(run_dir)
+
+            with patch('fuzzmeter.reporting.data.coverage_data.read_covered_keys') as read_covered_keys:
+                read_covered_keys.return_value = {'branch-a'}
+                result = data.trial_coverage_sets_by_fuzzer(
+                    trials=[
+                        {
+                            'fuzzer': 'fz',
+                            'benchmark': 'bench',
+                            'fuzz_target': 'target',
+                            'coverage_sets_json_rel': 'coverage/fz/trial/coverage-sets.json',
+                            'coverage_html_rel': None,
+                        }
+                    ],
+                    fuzzers=['fz'],
+                    benchmark='bench',
+                    fuzz_target='target',
+                    metric='branches',
+                )
+
+            self.assertEqual({'fz': [{'branch-a'}]}, result)
+            read_covered_keys.assert_called_once_with(coverage_path.resolve(), 'branches')
+
     def test_returns_empty_counts_for_missing_coverage_sets(self) -> None:
         data = CoverageData(Path('/missing/run'))
 

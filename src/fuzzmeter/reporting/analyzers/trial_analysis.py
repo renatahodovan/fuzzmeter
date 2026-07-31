@@ -121,6 +121,7 @@ class TrialAnalysis:
             coverage = self.coverage_summary_from_snapshot(latest)
             coverage["coverage_html"] = rel_to_url(coverage_html_rel)
             coverage["coverage_html_rel"] = coverage_html_rel
+            coverage["coverage_sets_json_rel"] = latest.get("coverage_sets_json_rel")
             started_ts = safe_int(row.get('started_ts'))
             ended_ts = safe_int(row.get('ended_ts'))
             time_seconds = safe_int(row.get('time_seconds'))
@@ -166,6 +167,8 @@ class TrialAnalysis:
                     )
                 },
             }
+            if coverage.get('coverage_sets_json_rel'):
+                trial['coverage_sets_json_rel'] = coverage['coverage_sets_json_rel']
             for key in self._trial_version_fields:
                 trial[key] = row.get(key)
             trial["build_config"] = _parse_json_text(row.get("build_config_json"))

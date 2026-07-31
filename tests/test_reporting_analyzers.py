@@ -67,6 +67,7 @@ class TrialAnalysisTest(unittest.TestCase):
                     'crashes': 1,
                     'hangs': 0,
                     'coverage_html_dir': 'coverage/index.html',
+                    'coverage_sets_json_rel': 'coverage/coverage-sets.json',
                     'cov_branches_covered': 2,
                     'cov_branches_total': 4,
                 },
@@ -80,6 +81,7 @@ class TrialAnalysisTest(unittest.TestCase):
         self.assertEqual(2, trials[0]['branches_cov'])
         self.assertEqual(50.0, trials[0]['branches_pct'])
         self.assertEqual('url:coverage/index.html', trials[0]['coverage_html'])
+        self.assertEqual('coverage/coverage-sets.json', trials[0]['coverage_sets_json_rel'])
         self.assertEqual(3, trials[0]['bug_hits_total'])
         self.assertEqual(2, trials[0]['unique_bugs_total'])
 

@@ -75,6 +75,7 @@ _SCHEMA = [
       hangs INTEGER NOT NULL DEFAULT 0,
 
       coverage_html_dir TEXT,
+      coverage_sets_json_rel TEXT,
 
       cov_lines_covered INTEGER,
       cov_lines_total INTEGER,
@@ -201,6 +202,7 @@ def ensure_schema(db: DB) -> None:
         db.exec(stmt)
     _ensure_metadata_schema_version_column(db)
     _ensure_snapshot_tick_status_columns(db)
+    _ensure_snapshot_coverage_sets_column(db)
     db.commit()
 
 
@@ -216,3 +218,9 @@ def _ensure_snapshot_tick_status_columns(db: DB) -> None:
         db.exec("ALTER TABLE snapshot_ticks ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'")
     if columns and 'error' not in columns:
         db.exec('ALTER TABLE snapshot_ticks ADD COLUMN error TEXT')
+
+
+def _ensure_snapshot_coverage_sets_column(db: DB) -> None:
+    columns = {str(row['name']) for row in db.q('PRAGMA table_info(snapshots)')}
+    if columns and 'coverage_sets_json_rel' not in columns:
+        db.exec('ALTER TABLE snapshots ADD COLUMN coverage_sets_json_rel TEXT')

@@ -92,6 +92,30 @@ class DatabaseBehaviorTest(unittest.TestCase):
         self.assertEqual('pending', tick['status'])
         self.assertIsNone(tick['error'])
 
+    def test_schema_adds_coverage_sets_path_to_existing_snapshots(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db = DB.open(Path(tmp_dir) / 'fuzzmeter.db')
+            try:
+                db.exec(
+                    '''
+                    CREATE TABLE snapshots(
+                      snapshot_id INTEGER PRIMARY KEY,
+                      trial_id INTEGER NOT NULL,
+                      idx INTEGER NOT NULL,
+                      ts INTEGER NOT NULL,
+                      corpus_files INTEGER NOT NULL DEFAULT 0
+                    )
+                    ''',
+                )
+
+                ensure_schema(db)
+
+                columns = {str(row['name']) for row in db.q('PRAGMA table_info(snapshots)')}
+            finally:
+                db.close()
+
+        self.assertIn('coverage_sets_json_rel', columns)
+
     def test_trial_rows_are_idempotent_and_refresh_started_timestamp(self) -> None:
         '''Repeated trial creation returns the same row and updates start time.'''
         with _open_test_db() as db:
@@ -141,6 +165,7 @@ class DatabaseBehaviorTest(unittest.TestCase):
                     cov_functions_covered=2,
                     cov_functions_total=4,
                 ),
+                coverage_sets_json_rel='coverage/covered/coverage-sets.json',
             )
 
             copied_id = db_snapshot.save_snapshot_data(
@@ -152,6 +177,7 @@ class DatabaseBehaviorTest(unittest.TestCase):
 
         self.assertIsNone(target_without_metrics['coverage_html_dir'])
         self.assertEqual('coverage/covered/html/index.html', copied['coverage_html_dir'])
+        self.assertEqual('coverage/covered/coverage-sets.json', copied['coverage_sets_json_rel'])
         self.assertEqual(7, copied['cov_lines_covered'])
         self.assertEqual(11, copied['cov_lines_total'])
         self.assertEqual(3, copied['cov_branches_covered'])
@@ -228,6 +254,10 @@ class DatabaseBehaviorTest(unittest.TestCase):
         self.assertFalse(copied_without_baseline)
         self.assertTrue(copied_with_baseline)
         self.assertEqual('coverage_seed/fz/bench/target/html/index.html', copied['coverage_html_dir'])
+        self.assertEqual(
+            'coverage_seed/fz/bench/target/coverage-sets.json',
+            copied['coverage_sets_json_rel'],
+        )
         self.assertEqual(5, copied['cov_lines_covered'])
         self.assertEqual(8, copied['cov_lines_total'])
 
@@ -667,6 +697,7 @@ def _snapshot_coverage_row(db: DB, snapshot_id: int) -> dict:
     row = db.q1(
         '''
         SELECT coverage_html_dir,
+               coverage_sets_json_rel,
                cov_lines_covered,
                cov_lines_total,
                cov_branches_covered,
