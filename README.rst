@@ -5,6 +5,8 @@ FuzzMeter
 
 .. image:: https://img.shields.io/badge/python-%3E%3D3.10-blue?logo=python&logoColor=white
    :target: https://www.python.org/
+.. image:: https://img.shields.io/coverallsCoverage/github/renatahodovan/fuzzmeter/main?logo=coveralls&logoColor=white
+   :target: https://coveralls.io/github/renatahodovan/fuzzmeter
 .. image:: https://img.shields.io/badge/license-BSD--3--Clause-blue?logo=open-source-initiative&logoColor=white
    :target: LICENSE.rst
 .. image:: https://img.shields.io/badge/docker-required-2496ed?logo=docker&logoColor=white
