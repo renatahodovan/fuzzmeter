@@ -53,7 +53,7 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path, external_ro
         resources.as_file(docker_resources()) as docker_resources_path,
         resources.as_file(entrypoint_resources()) as entrypoint_resources_path,
     ):
-        fuzzmeter_resources_path = Path(__file__).resolve().parents[1] / 'resources'
+        fuzzmeter_resources_path = Path(__file__).resolve().parents[1]
         bake_hcl = generate_run_bake_hcl(
             fuzzers_root=external_roots.fuzzers_root,
             targets_root=external_roots.targets_root,

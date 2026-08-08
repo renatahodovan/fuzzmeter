@@ -15,13 +15,27 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ..db.fields import TRIAL_METADATA_FIELDS
 from .analyzers import coverage_curves, coverage_matrices
 from .analyzers.bug_analysis import BugAnalysis
 from .analyzers.custom_metrics import attach_custom_metric_sections, has_custom_metric_sections
 from .analyzers.trial_analysis import TrialAnalysis
 from .data.coverage_data import CoverageData
 from .data.run_data import RunData
-from .keys import COV_METRICS, FINAL_DIST_KEYS, SNAPSHOT_COVERAGE_FIELDS, TRIAL_METADATA_FIELDS
+from .keys import (
+    BRANCH_A12_MATRIX_KEY,
+    BRANCH_COVERAGE_METRIC,
+    BRANCH_MWU_MATRIX_KEY,
+    COV_METRICS,
+    RELBUG_MATRIX_KEY,
+    RELBUG_SCORE_BY_FUZZER_KEY,
+    RELCOV_MATRIX_KEY,
+    RELCOV_SCORE_BY_FUZZER_KEY,
+    SNAPSHOT_COVERAGE_FIELDS,
+    UNIQUE_BUG_MATRIX_KEY,
+    UNIQUE_BUG_TABLE_KEY,
+    UNIQUE_MATRIX_KEY,
+)
 from .metrics import dt, safe_int
 from .plugin_sections import attach_extra_sections
 from .set_comparison import empty_trial_set_comparison
@@ -200,7 +214,7 @@ class _PayloadBuilder:
                 continue
             summary_count = int(summary_covered)
             current_count = aggregated_coverage.get(f'{metric}_covered')
-            if current_count is None or metric == 'branches' or summary_count > int(current_count):
+            if current_count is None or metric == BRANCH_COVERAGE_METRIC or summary_count > int(current_count):
                 aggregated_coverage[f'{metric}_covered'] = summary_count
         return aggregated_coverage
 
@@ -304,7 +318,6 @@ class _PayloadBuilder:
         aggregated_coverage_by_fuzzer, seed_baseline_by_fuzzer = self._target_coverage_inputs(trials)
         targets = coverage_curves.collect_target_view(
             cov_metrics=COV_METRICS,
-            final_output_dist_keys=FINAL_DIST_KEYS,
             curve_max_points=CURVE_MAX_POINTS,
             trials=trials,
             timeseries=timeseries,
@@ -390,38 +403,38 @@ class _PayloadBuilder:
                         fuzzers,
                     )
                 )
-                target['unique_matrix'] = self.compute_unique_matrix(
+                target[UNIQUE_MATRIX_KEY] = self.compute_unique_matrix(
                     trials, benchmark, fuzz_target, coverage_sets_by_metric
                 )
-                target['relcov_matrix'], target['relcov_score_by_fuzzer'] = self.compute_relcov_matrix(
+                target[RELCOV_MATRIX_KEY], target[RELCOV_SCORE_BY_FUZZER_KEY] = self.compute_relcov_matrix(
                     trials,
                     benchmark,
                     fuzz_target,
                     trial_coverage_sets_by_metric,
                     aggregate_fallback_fuzzers_by_metric,
                 )
-                target['branch_mwu_matrix'], target['branch_a12_matrix'] = self.compute_branch_stat_matrices(
+                target[BRANCH_MWU_MATRIX_KEY], target[BRANCH_A12_MATRIX_KEY] = self.compute_branch_stat_matrices(
                     trials,
                     benchmark,
                     fuzz_target,
                 )
                 coverage_matrices.attach_exclusive_coverage_stats(target=target)
-                target['unique_bug_table'] = self._bug_analysis.compute_unique_bug_table(target)
-                target['unique_bug_matrix'] = self._bug_analysis.compute_unique_bug_matrix(target)
-                target['relbug_matrix'], target['relbug_score_by_fuzzer'] = self._bug_analysis.compute_rel_bug_matrix(
-                    target,
+                target[UNIQUE_BUG_TABLE_KEY] = self._bug_analysis.compute_unique_bug_table(target)
+                target[UNIQUE_BUG_MATRIX_KEY] = self._bug_analysis.compute_unique_bug_matrix(target)
+                target[RELBUG_MATRIX_KEY], target[RELBUG_SCORE_BY_FUZZER_KEY] = (
+                    self._bug_analysis.compute_rel_bug_matrix(target)
                 )
                 self._bug_analysis.attach_exclusive_bug_stats(target)
             else:
-                target['unique_matrix'] = empty_metric_group
-                target['relcov_matrix'] = empty_metric_group
-                target['branch_mwu_matrix'] = empty_metric_group
-                target['branch_a12_matrix'] = empty_metric_group
-                target['relcov_score_by_fuzzer'] = {}
-                target['unique_bug_table'] = empty_bug_table
-                target['unique_bug_matrix'] = empty_trial_set_comparison()
-                target['relbug_matrix'] = empty_matrix
-                target['relbug_score_by_fuzzer'] = {}
+                target[UNIQUE_MATRIX_KEY] = empty_metric_group
+                target[RELCOV_MATRIX_KEY] = empty_metric_group
+                target[BRANCH_MWU_MATRIX_KEY] = empty_metric_group
+                target[BRANCH_A12_MATRIX_KEY] = empty_metric_group
+                target[RELCOV_SCORE_BY_FUZZER_KEY] = {}
+                target[UNIQUE_BUG_TABLE_KEY] = empty_bug_table
+                target[UNIQUE_BUG_MATRIX_KEY] = empty_trial_set_comparison()
+                target[RELBUG_MATRIX_KEY] = empty_matrix
+                target[RELBUG_SCORE_BY_FUZZER_KEY] = {}
         return targets
 
     @staticmethod

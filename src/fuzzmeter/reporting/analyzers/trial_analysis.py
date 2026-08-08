@@ -42,13 +42,8 @@ class TrialAnalysis:
         '''Return whether a snapshot row contains coverage counters.'''
 
         return any(
-            safe_int(row.get(key)) is not None
-            for key in (
-                "cov_lines_covered",
-                "cov_branches_covered",
-                "cov_functions_covered",
-                "cov_regions_covered",
-            )
+            safe_int(row.get(covered_key)) is not None
+            for covered_key, _ in self._snapshot_coverage_fields.values()
         )
 
     def latest_effective_snapshot_for_trial(

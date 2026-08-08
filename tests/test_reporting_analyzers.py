@@ -21,20 +21,20 @@ from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.set_comparison import trial_set_comparison
 
 COV_METRICS = ('branches',)
-FINAL_DIST_KEYS = (
-    'branches_cov',
-    'branches_total',
-    'branches_pct',
-    'execs_done',
-    'execs_per_sec',
-    'unique_bugs_total',
-    'resource_memory_mib',
-)
 CURVE_MAX_POINTS = 100
 
 
 class TrialAnalysisTest(unittest.TestCase):
     '''Verify trial and time-series analysis behavior.'''
+
+    def test_snapshot_coverage_detection_uses_configured_fields(self) -> None:
+        analysis = TrialAnalysis(
+            snapshot_coverage_fields={'custom': ('custom_covered', 'custom_total')},
+            trial_version_fields=(),
+        )
+
+        self.assertTrue(analysis.snapshot_has_coverage({'custom_covered': 1}))
+        self.assertFalse(analysis.snapshot_has_coverage({'cov_branches_covered': 1}))
 
     def test_collect_trials_uses_latest_snapshot_and_clamps_elapsed_time(self) -> None:
         analysis = _trial_analysis()
@@ -372,7 +372,6 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
                 ]
             },
             cov_metrics=COV_METRICS,
-            final_output_dist_keys=FINAL_DIST_KEYS,
         )
 
         self.assertEqual([5.0], finals['branches_cov'])
@@ -431,7 +430,6 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
     def test_collect_target_view_groups_trials_bugs_versions_and_baselines(self) -> None:
         targets = coverage_curves.collect_target_view(
             cov_metrics=COV_METRICS,
-            final_output_dist_keys=FINAL_DIST_KEYS,
             curve_max_points=CURVE_MAX_POINTS,
             trials=[
                 {

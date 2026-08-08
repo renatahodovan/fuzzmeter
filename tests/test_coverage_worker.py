@@ -12,12 +12,14 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
+from fuzzmeter.reporting.keys import COV_METRICS
 from fuzzmeter.resources.instrumentation.coverage import build as coverage_build
 from tests.support.entrypoints import load_entrypoint
 
@@ -27,6 +29,34 @@ coverage_worker = load_entrypoint('coverage_worker')
 
 class CoverageWorkerTest(unittest.TestCase):
     '''Verify coverage worker batch execution behavior.'''
+
+    def test_coverage_metrics_match_reporting_keys(self) -> None:
+        '''Verify the container copy of the metric names has not drifted.'''
+        # The container entrypoint cannot import reporting.keys, so the two are
+        # separate literals kept equal by this check rather than by an import.
+        self.assertEqual(COV_METRICS, coverage_sets.COVERAGE_METRICS)
+
+    def test_container_entrypoints_import_with_only_shipped_files(self) -> None:
+        '''Verify the workers load from the file set the runtime image receives.'''
+        shipped = ('coverage_sets.py', 'coverage_worker.py', 'crash_worker.py', 'run_fuzzer.py')
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            source_dir = Path(coverage_sets.__file__).parent
+            for name in shipped:
+                shutil.copy2(source_dir / name, root / name)
+            result = subprocess.run(
+                [sys.executable, '-E', '-S', '-c', 'import coverage_worker, crash_worker'],
+                cwd=root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(
+            0,
+            result.returncode,
+            f'Container entrypoints need a file the runtime image does not ship:\n{result.stderr}',
+        )
 
     def test_coverage_set_observes_requested_counter_mode_from_build(self) -> None:
         '''Verify coverage artifacts derive provenance from coverage build output.'''

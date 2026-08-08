@@ -14,6 +14,7 @@
 import {
   COVERAGE_METRICS,
   FM_APP,
+  MATRIX_PAYLOAD_KEYS,
   byId,
   cleanFloats,
   comparisonMetric,
@@ -22,6 +23,18 @@ import {
 } from './report-utils.js';
 import { filterExtraSections } from './extras.js';
 import { cloneMatrixForSelected } from './matrix.js';
+
+const {
+  uniqueMatrix,
+  relcovMatrix,
+  branchMwuMatrix,
+  branchA12Matrix,
+  relcovScoreByFuzzer,
+  uniqueBugTable,
+  uniqueBugMatrix,
+  relbugMatrix,
+  relbugScoreByFuzzer,
+} = MATRIX_PAYLOAD_KEYS;
 
 function medianOfValues(values) {
   const sorted = cleanFloats(values).sort((left, right) => left - right);
@@ -212,11 +225,11 @@ export function computeSummary(targets, comparisonMode = FM_APP.state.comparison
       if (bestAuc != null && bestAuc > 0 && Number.isFinite(Number(aucValue))) {
         aucScores.get(entry.fuzzer)?.push(100 * Number(aucValue) / bestAuc);
       }
-      if (hasPairwiseFuzzers && Number.isFinite(Number(target.relcov_score_by_fuzzer?.[entry.fuzzer]))) {
-        relcovScores.get(entry.fuzzer)?.push(Number(target.relcov_score_by_fuzzer[entry.fuzzer]));
+      if (hasPairwiseFuzzers && Number.isFinite(Number(target[relcovScoreByFuzzer]?.[entry.fuzzer]))) {
+        relcovScores.get(entry.fuzzer)?.push(Number(target[relcovScoreByFuzzer][entry.fuzzer]));
       }
-      if (hasPairwiseFuzzers && Number.isFinite(Number(target.relbug_score_by_fuzzer?.[entry.fuzzer]))) {
-        relbugScores.get(entry.fuzzer)?.push(Number(target.relbug_score_by_fuzzer[entry.fuzzer]));
+      if (hasPairwiseFuzzers && Number.isFinite(Number(target[relbugScoreByFuzzer]?.[entry.fuzzer]))) {
+        relbugScores.get(entry.fuzzer)?.push(Number(target[relbugScoreByFuzzer][entry.fuzzer]));
       }
       addComparisonTotal(exclusiveCoverage, entry.fuzzer, entry.exclusive_coverage, comparisonMode);
       uniqueBugs.set(
@@ -270,27 +283,27 @@ export function deriveReportData(rawData, selectedFuzzers) {
       const enrichedTarget = enrichTargetForSelection({
         ...target,
         fuzzers: filteredFuzzers,
-        unique_matrix: hasPairwiseFuzzers
-          ? cloneUniqueCoverageMatrix(target.unique_matrix, selectedSet)
+        [uniqueMatrix]: hasPairwiseFuzzers
+          ? cloneUniqueCoverageMatrix(target[uniqueMatrix], selectedSet)
           : emptyMetricMatrixGroup(),
-        relcov_matrix: hasPairwiseFuzzers
-          ? cloneMetricMatrixGroup(target.relcov_matrix, selectedSet)
+        [relcovMatrix]: hasPairwiseFuzzers
+          ? cloneMetricMatrixGroup(target[relcovMatrix], selectedSet)
           : emptyMetricMatrixGroup(),
-        branch_mwu_matrix: hasPairwiseFuzzers
-          ? cloneMetricMatrixGroup(target.branch_mwu_matrix, selectedSet)
+        [branchMwuMatrix]: hasPairwiseFuzzers
+          ? cloneMetricMatrixGroup(target[branchMwuMatrix], selectedSet)
           : emptyMetricMatrixGroup(),
-        branch_a12_matrix: hasPairwiseFuzzers
-          ? cloneMetricMatrixGroup(target.branch_a12_matrix, selectedSet)
+        [branchA12Matrix]: hasPairwiseFuzzers
+          ? cloneMetricMatrixGroup(target[branchA12Matrix], selectedSet)
           : emptyMetricMatrixGroup(),
-        unique_bug_table: hasPairwiseFuzzers
-          ? cloneUniqueBugTableForSelected(target.unique_bug_table, selectedSet)
+        [uniqueBugTable]: hasPairwiseFuzzers
+          ? cloneUniqueBugTableForSelected(target[uniqueBugTable], selectedSet)
           : emptyUniqueBugTable(),
-        unique_bug_matrix: hasPairwiseFuzzers
-          ? cloneMatrixForSelected(target.unique_bug_matrix, selectedSet)
+        [uniqueBugMatrix]: hasPairwiseFuzzers
+          ? cloneMatrixForSelected(target[uniqueBugMatrix], selectedSet)
           : emptyMatrix(),
-        relbug_matrix: hasPairwiseFuzzers ? cloneMatrixForSelected(target.relbug_matrix, selectedSet) : emptyMatrix(),
-        relcov_score_by_fuzzer: hasPairwiseFuzzers ? target.relcov_score_by_fuzzer : {},
-        relbug_score_by_fuzzer: hasPairwiseFuzzers ? target.relbug_score_by_fuzzer : {},
+        [relbugMatrix]: hasPairwiseFuzzers ? cloneMatrixForSelected(target[relbugMatrix], selectedSet) : emptyMatrix(),
+        [relcovScoreByFuzzer]: hasPairwiseFuzzers ? target[relcovScoreByFuzzer] : {},
+        [relbugScoreByFuzzer]: hasPairwiseFuzzers ? target[relbugScoreByFuzzer] : {},
         extra_sections: filterExtraSections(target.extra_sections, selectedSet),
       });
       enrichedTarget.fuzzers = enrichedTarget.fuzzers.map((entry) => ({

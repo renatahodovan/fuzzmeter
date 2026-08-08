@@ -18,7 +18,18 @@ from ..composite import CompositeMeasurement, CompositeSelection
 from .analyzers import coverage_matrices
 from .analyzers.bug_analysis import BugAnalysis
 from .data.coverage_data import CoverageData
-from .keys import COV_METRICS
+from .keys import (
+    BRANCH_A12_MATRIX_KEY,
+    BRANCH_MWU_MATRIX_KEY,
+    COV_METRICS,
+    RELBUG_MATRIX_KEY,
+    RELBUG_SCORE_BY_FUZZER_KEY,
+    RELCOV_MATRIX_KEY,
+    RELCOV_SCORE_BY_FUZZER_KEY,
+    UNIQUE_BUG_MATRIX_KEY,
+    UNIQUE_BUG_TABLE_KEY,
+    UNIQUE_MATRIX_KEY,
+)
 from .metrics import dt
 from .payload import build_payload
 from .set_comparison import empty_trial_set_comparison
@@ -275,14 +286,14 @@ def _recompute_matrices(
             coverage_sets_by_metric,
             fuzzers,
         )
-        target['unique_matrix'] = coverage_matrices.compute_unique_matrix(
+        target[UNIQUE_MATRIX_KEY] = coverage_matrices.compute_unique_matrix(
             cov_metrics=COV_METRICS,
             trials=trials,
             benchmark=benchmark,
             fuzz_target=fuzz_target,
             coverage_sets_by_metric=coverage_sets_by_metric,
         )
-        target['relcov_matrix'], target['relcov_score_by_fuzzer'] = coverage_matrices.compute_relcov_matrix(
+        target[RELCOV_MATRIX_KEY], target[RELCOV_SCORE_BY_FUZZER_KEY] = coverage_matrices.compute_relcov_matrix(
             cov_metrics=COV_METRICS,
             trials=trials,
             benchmark=benchmark,
@@ -290,30 +301,30 @@ def _recompute_matrices(
             trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
             aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
         )
-        target['branch_mwu_matrix'], target['branch_a12_matrix'] = coverage_matrices.compute_branch_stat_matrices(
+        target[BRANCH_MWU_MATRIX_KEY], target[BRANCH_A12_MATRIX_KEY] = coverage_matrices.compute_branch_stat_matrices(
             trials=trials,
             benchmark=benchmark,
             fuzz_target=fuzz_target,
         )
         coverage_matrices.attach_exclusive_coverage_stats(target=target)
-        target['unique_bug_table'] = bug_analysis.compute_unique_bug_table(target)
-        target['unique_bug_matrix'] = bug_analysis.compute_unique_bug_matrix(target)
-        target['relbug_matrix'], target['relbug_score_by_fuzzer'] = bug_analysis.compute_rel_bug_matrix(target)
+        target[UNIQUE_BUG_TABLE_KEY] = bug_analysis.compute_unique_bug_table(target)
+        target[UNIQUE_BUG_MATRIX_KEY] = bug_analysis.compute_unique_bug_matrix(target)
+        target[RELBUG_MATRIX_KEY], target[RELBUG_SCORE_BY_FUZZER_KEY] = bug_analysis.compute_rel_bug_matrix(target)
         bug_analysis.attach_exclusive_bug_stats(target)
 
 
 def _attach_empty_matrices(target: dict[str, Any]) -> None:
     empty_metric_group = {'by_metric': {}, 'has_data': False, 'available_metrics': []}
     empty_matrix = {'fuzzers': [], 'matrix': [], 'max_value': 0, 'has_data': False}
-    target['unique_matrix'] = empty_metric_group
-    target['relcov_matrix'] = empty_metric_group
-    target['branch_mwu_matrix'] = empty_metric_group
-    target['branch_a12_matrix'] = empty_metric_group
-    target['relcov_score_by_fuzzer'] = {}
-    target['unique_bug_table'] = {'fuzzers': [], 'rows': [], 'has_data': False}
-    target['unique_bug_matrix'] = empty_trial_set_comparison()
-    target['relbug_matrix'] = empty_matrix
-    target['relbug_score_by_fuzzer'] = {}
+    target[UNIQUE_MATRIX_KEY] = empty_metric_group
+    target[RELCOV_MATRIX_KEY] = empty_metric_group
+    target[BRANCH_MWU_MATRIX_KEY] = empty_metric_group
+    target[BRANCH_A12_MATRIX_KEY] = empty_metric_group
+    target[RELCOV_SCORE_BY_FUZZER_KEY] = {}
+    target[UNIQUE_BUG_TABLE_KEY] = {'fuzzers': [], 'rows': [], 'has_data': False}
+    target[UNIQUE_BUG_MATRIX_KEY] = empty_trial_set_comparison()
+    target[RELBUG_MATRIX_KEY] = empty_matrix
+    target[RELBUG_SCORE_BY_FUZZER_KEY] = {}
 
 
 def _target_trials(target: dict[str, Any], benchmark: str, fuzz_target: str) -> list[dict[str, Any]]:

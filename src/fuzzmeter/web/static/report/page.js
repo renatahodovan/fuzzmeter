@@ -772,7 +772,7 @@ function defaultCoverageMetric(target) {
     Number(fuzzer.aggregate?.[`${metric}_covered`]) > 0
     || (fuzzer.curve || []).some((point) => Number(point?.[`${metric}_cov`]) > 0)
   ));
-  return ['branches', 'regions', 'lines', 'functions'].find(hasMetricData) || 'branches';
+  return COVERAGE_METRICS.find(([metric]) => hasMetricData(metric))?.[0] || COVERAGE_METRICS[0][0];
 }
 
 function renderUniqueCoverageMatrix(host, uniqueMatrix, metric, mode) {

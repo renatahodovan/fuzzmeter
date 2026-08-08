@@ -9,9 +9,8 @@
 
 from __future__ import annotations
 
-from ..db.fields import TRIAL_METADATA_FIELDS
-
-COV_METRICS = ('lines', 'branches', 'functions', 'regions')
+BRANCH_COVERAGE_METRIC = 'branches'
+COV_METRICS = (BRANCH_COVERAGE_METRIC, 'lines', 'functions', 'regions')
 
 FINAL_DIST_KEYS = (
     'lines_cov',
@@ -39,8 +38,30 @@ FINAL_DIST_KEYS = (
 )
 
 SNAPSHOT_COVERAGE_FIELDS = {
+    BRANCH_COVERAGE_METRIC: ('cov_branches_covered', 'cov_branches_total'),
     'lines': ('cov_lines_covered', 'cov_lines_total'),
-    'branches': ('cov_branches_covered', 'cov_branches_total'),
     'functions': ('cov_functions_covered', 'cov_functions_total'),
     'regions': ('cov_regions_covered', 'cov_regions_total'),
 }
+
+UNIQUE_MATRIX_KEY = 'unique_matrix'
+RELCOV_MATRIX_KEY = 'relcov_matrix'
+BRANCH_MWU_MATRIX_KEY = 'branch_mwu_matrix'
+BRANCH_A12_MATRIX_KEY = 'branch_a12_matrix'
+RELCOV_SCORE_BY_FUZZER_KEY = 'relcov_score_by_fuzzer'
+UNIQUE_BUG_TABLE_KEY = 'unique_bug_table'
+UNIQUE_BUG_MATRIX_KEY = 'unique_bug_matrix'
+RELBUG_MATRIX_KEY = 'relbug_matrix'
+RELBUG_SCORE_BY_FUZZER_KEY = 'relbug_score_by_fuzzer'
+
+MATRIX_PAYLOAD_KEYS = (
+    UNIQUE_MATRIX_KEY,
+    RELCOV_MATRIX_KEY,
+    BRANCH_MWU_MATRIX_KEY,
+    BRANCH_A12_MATRIX_KEY,
+    RELCOV_SCORE_BY_FUZZER_KEY,
+    UNIQUE_BUG_TABLE_KEY,
+    UNIQUE_BUG_MATRIX_KEY,
+    RELBUG_MATRIX_KEY,
+    RELBUG_SCORE_BY_FUZZER_KEY,
+)

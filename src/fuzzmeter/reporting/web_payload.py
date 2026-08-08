@@ -9,23 +9,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any, Sequence, get_args
 
-from .plugin_api import ChartSeries, ChartSpec, DataPoint, ExtraSection, MatrixData
+from .plugin_api import ChartSeries, ChartSpec, ChartType, DataPoint, ExtraSection, MatrixData, SectionPlacement
 
-ALLOWED_CHART_TYPES = {
-    'bar',
-    'distribution',
-    'line',
-    'line_shadow',
-    'lines_with_shadows',
-    'matrix',
-    'stacked_area',
-    'stacked_bar',
-    'table',
-}
+ALLOWED_CHART_TYPES = set(get_args(ChartType))
 ALLOWED_FILTER_MODES = {'series', 'recompute', 'static'}
-ALLOWED_PLACEMENTS = {'after:coverage', 'after:performance', 'after:bugs', 'after:target'}
+ALLOWED_PLACEMENTS = set(get_args(SectionPlacement))
 ALLOWED_SCOPES = {'target', 'fuzzer'}
 
 

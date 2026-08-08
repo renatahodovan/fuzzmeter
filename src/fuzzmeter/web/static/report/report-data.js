@@ -86,6 +86,18 @@ export const COVERAGE_METRICS = [
   ['regions', 'Region coverage'],
 ];
 
+export const MATRIX_PAYLOAD_KEYS = Object.freeze({
+  uniqueMatrix: 'unique_matrix',
+  relcovMatrix: 'relcov_matrix',
+  branchMwuMatrix: 'branch_mwu_matrix',
+  branchA12Matrix: 'branch_a12_matrix',
+  relcovScoreByFuzzer: 'relcov_score_by_fuzzer',
+  uniqueBugTable: 'unique_bug_table',
+  uniqueBugMatrix: 'unique_bug_matrix',
+  relbugMatrix: 'relbug_matrix',
+  relbugScoreByFuzzer: 'relbug_score_by_fuzzer',
+});
+
 export const VALUE_OPTIONS = [['abs', 'Absolute'], ['pct', 'Percent']];
 
 export function pctValue(covered, total) {

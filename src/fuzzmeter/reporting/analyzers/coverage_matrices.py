@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..keys import BRANCH_COVERAGE_METRIC
 from ..metrics import mann_whitney_u_pvalue, safe_int, vargha_delaney_a12
 from ..set_comparison import novelty_scores, pairwise_matrix, relative_containment_matrix, unique_matrix
 
@@ -127,7 +128,7 @@ def compute_branch_stat_matrices(
         {
             'format': 'float',
             'aggregation': 'per-trial final branch coverage',
-            'metric': 'branches',
+            'metric': BRANCH_COVERAGE_METRIC,
             'statistic': 'mann_whitney_u_pvalue',
         }
     )
@@ -135,7 +136,7 @@ def compute_branch_stat_matrices(
         {
             'format': 'float',
             'aggregation': 'per-trial final branch coverage',
-            'metric': 'branches',
+            'metric': BRANCH_COVERAGE_METRIC,
             'statistic': 'vargha_delaney_a12',
         }
     )
@@ -148,7 +149,7 @@ def compute_branch_stat_matrices(
 def attach_exclusive_coverage_stats(
     *,
     target: dict[str, Any],
-    metric: str = 'branches',
+    metric: str = BRANCH_COVERAGE_METRIC,
 ) -> dict[str, Any]:
     '''Attach per-fuzzer exclusive coverage totals to a target.'''
 
@@ -206,7 +207,7 @@ def compute_relcov_matrix(
         )
         for metric in cov_metrics
     }
-    branch_trial_sets = trial_coverage_sets_by_metric.get('branches', {})
+    branch_trial_sets = trial_coverage_sets_by_metric.get(BRANCH_COVERAGE_METRIC, {})
     score_by_fuzzer = _relcov_scores(
         fuzzers=fuzzers,
         trial_coverage_sets=branch_trial_sets,
@@ -274,9 +275,9 @@ def _single_metric_matrix_group(matrix: dict[str, Any]) -> dict[str, Any]:
     '''Wrap a branch matrix in the report metric-group shape.'''
 
     return {
-        'by_metric': {'branches': matrix},
+        'by_metric': {BRANCH_COVERAGE_METRIC: matrix},
         'has_data': bool(matrix.get('has_data')),
-        'available_metrics': ['branches'] if matrix.get('has_data') else [],
+        'available_metrics': [BRANCH_COVERAGE_METRIC] if matrix.get('has_data') else [],
     }
 
 
@@ -295,7 +296,7 @@ def _branch_coverage_distributions(
         fuzzer = str(trial.get('fuzzer') or '')
         if fuzzer not in distributions:
             continue
-        value = safe_int(trial.get('branches_cov'))
+        value = safe_int(trial.get(f'{BRANCH_COVERAGE_METRIC}_cov'))
         if value is None:
             missing_any = True
             continue

@@ -13,6 +13,7 @@ import tempfile
 import unittest
 
 from pathlib import Path
+from typing import get_args
 from unittest.mock import patch
 
 from fuzzmeter.reporting.analyzers.custom_metrics import attach_custom_metric_sections
@@ -21,10 +22,12 @@ from fuzzmeter.reporting.fuzzer_chain import expand_reporting_candidates, load_f
 from fuzzmeter.reporting.plugin_api import (
     ChartSeries,
     ChartSpec,
+    ChartType,
     DataPoint,
     ExtraSection,
     MatrixData,
     ReportingContext,
+    SectionPlacement,
     TableColumn,
 )
 from fuzzmeter.reporting.plugin_sections import (
@@ -37,7 +40,12 @@ from fuzzmeter.reporting.plugins.loader import (
     NullReportingPlugin,
     ReportingPluginLoader,
 )
-from fuzzmeter.reporting.web_payload import serialize_extra_sections, validate_extra_sections
+from fuzzmeter.reporting.web_payload import (
+    ALLOWED_CHART_TYPES,
+    ALLOWED_PLACEMENTS,
+    serialize_extra_sections,
+    validate_extra_sections,
+)
 
 
 class CoverageDataTest(unittest.TestCase):
@@ -136,6 +144,10 @@ class CoverageDataTest(unittest.TestCase):
 
 class WebPayloadTest(unittest.TestCase):
     '''Verify plugin payload validation and serialization.'''
+
+    def test_runtime_constraints_come_from_public_literal_types(self) -> None:
+        self.assertEqual(set(get_args(ChartType)), ALLOWED_CHART_TYPES)
+        self.assertEqual(set(get_args(SectionPlacement)), ALLOWED_PLACEMENTS)
 
     def test_rejects_non_list_plugin_output(self) -> None:
         self.assertEqual(([], ['plugin output is not a list']), validate_extra_sections({'not': 'a list'}))

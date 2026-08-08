@@ -20,7 +20,11 @@ from typing import Any, Iterable
 
 LOG = logging.getLogger(__name__)
 
-COVERAGE_METRICS = ('lines', 'branches', 'functions', 'regions')
+# This module also runs as a flat script inside the coverage container, where
+# the fuzzmeter package is deliberately absent, so it keeps its own copy of the
+# metric names instead of importing reporting.keys. A drift check in
+# tests/test_coverage_worker.py keeps the two in step.
+COVERAGE_METRICS = ('branches', 'lines', 'functions', 'regions')
 COVERAGE_BUILD_METADATA_PATH = Path('/opt/fuzzmeter/meta/coverage-build.json')
 
 

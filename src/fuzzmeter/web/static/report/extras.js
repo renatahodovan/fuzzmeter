@@ -25,8 +25,7 @@ import {
 } from './charts.js';
 import { cloneMatrixForSelected } from './matrix.js';
 
-const LINE_CHART_TYPES = new Set(['line', 'line_shadow', 'lines_with_shadows']);
-const ALLOWED_CHART_TYPES = new Set([
+export const ALLOWED_CHART_TYPES = [
   'bar',
   'distribution',
   'line',
@@ -36,7 +35,15 @@ const ALLOWED_CHART_TYPES = new Set([
   'stacked_area',
   'stacked_bar',
   'table',
-]);
+];
+export const ALLOWED_PLACEMENTS = [
+  'after:coverage',
+  'after:performance',
+  'after:bugs',
+  'after:target',
+];
+
+const LINE_CHART_TYPES = new Set(ALLOWED_CHART_TYPES.filter((chartType) => chartType.startsWith('line')));
 
 function hasTimeXAxis(chart) {
   const axis = String(chart?.x_axis || '').toLowerCase();
@@ -75,7 +82,7 @@ function normalizeStackedGroups(chart) {
 }
 
 function createExtraChartCard(section, chart) {
-  if (!ALLOWED_CHART_TYPES.has(chart.type)) {
+  if (!ALLOWED_CHART_TYPES.includes(chart.type)) {
     return null;
   }
   if (chart.type === 'matrix') {
@@ -136,11 +143,8 @@ function createExtraChartCard(section, chart) {
 }
 
 function placementOrder(placement) {
-  if (placement === 'after:coverage') return 0;
-  if (placement === 'after:performance') return 1;
-  if (placement === 'after:bugs') return 2;
-  if (placement === 'after:target') return 3;
-  return 99;
+  const index = ALLOWED_PLACEMENTS.indexOf(placement);
+  return index < 0 ? ALLOWED_PLACEMENTS.length : index;
 }
 
 export function filterExtraSections(extraSections, selectedSet) {
@@ -157,7 +161,7 @@ export function filterExtraSections(extraSections, selectedSet) {
   return (extraSections || [])
     .map((section) => {
       const charts = (section.charts || [])
-        .filter((chart) => ALLOWED_CHART_TYPES.has(chart.type))
+        .filter((chart) => ALLOWED_CHART_TYPES.includes(chart.type))
         .map((chart) => {
           if (chart.filter_mode === 'static') return chart;
           if (chart.type === 'matrix') {

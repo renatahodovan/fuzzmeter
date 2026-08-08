@@ -165,7 +165,6 @@ class CoverageReportingTest(unittest.TestCase):
                     {'idx': 2, 'ordinal': 2, 'elapsed_s': 20, 'branches_cov': 4, 'execs_done': 90},
                 ]
             },
-            final_output_dist_keys=('branches_cov', 'execs_done'),
         )
 
         self.assertEqual(5, curve[0]['branches_cov_mean'])
@@ -185,7 +184,6 @@ class CoverageReportingTest(unittest.TestCase):
                     {'idx': 29, 'ordinal': 1, 'elapsed_s': 300, 'branches_cov': 30},
                 ],
             },
-            final_output_dist_keys=('branches_cov',),
         )
 
         self.assertEqual(60, curve[0]['elapsed_s'])

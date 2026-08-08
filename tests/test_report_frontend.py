@@ -10,14 +10,58 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import subprocess
+from typing import get_args
 import unittest
+
+from fuzzmeter.reporting.keys import COV_METRICS, MATRIX_PAYLOAD_KEYS
+from fuzzmeter.reporting.plugin_api import ChartType, SectionPlacement
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _javascript_constant_block(
+    source: str,
+    name: str,
+    opener: str = '[',
+    closer: str = '];',
+) -> str:
+    pattern = rf'export const {name} = {re.escape(opener)}(.*?){re.escape(closer)}'
+    match = re.search(pattern, source, re.DOTALL)
+    if match is None:
+        raise AssertionError(f'Missing JavaScript constant: {name}')
+    return match.group(1)
+
+
+def _javascript_string_array(source: str, name: str) -> tuple[str, ...]:
+    return tuple(re.findall(r"'([^']+)'", _javascript_constant_block(source, name)))
+
+
 class ReportFrontendTest(unittest.TestCase):
     """Verify browser-side summary and ranking derivation."""
+
+    def test_javascript_shared_constants_match_python_sources(self) -> None:
+        report_data = (
+            REPO_ROOT / 'src' / 'fuzzmeter' / 'web' / 'static' / 'report' / 'report-data.js'
+        ).read_text(encoding='utf-8')
+        extras = (
+            REPO_ROOT / 'src' / 'fuzzmeter' / 'web' / 'static' / 'report' / 'extras.js'
+        ).read_text(encoding='utf-8')
+        page = (
+            REPO_ROOT / 'src' / 'fuzzmeter' / 'web' / 'static' / 'report' / 'page.js'
+        ).read_text(encoding='utf-8')
+
+        coverage_block = _javascript_constant_block(report_data, 'COVERAGE_METRICS')
+        coverage_metrics = tuple(re.findall(r"\[\s*'([^']+)'\s*,", coverage_block))
+        matrix_block = _javascript_constant_block(report_data, 'MATRIX_PAYLOAD_KEYS', 'Object.freeze({', '});')
+        matrix_keys = tuple(re.findall(r":\s*'([^']+)'", matrix_block))
+
+        self.assertEqual(COV_METRICS, coverage_metrics)
+        self.assertEqual(MATRIX_PAYLOAD_KEYS, matrix_keys)
+        self.assertEqual(get_args(ChartType), _javascript_string_array(extras, 'ALLOWED_CHART_TYPES'))
+        self.assertEqual(get_args(SectionPlacement), _javascript_string_array(extras, 'ALLOWED_PLACEMENTS'))
+        self.assertIn('return COVERAGE_METRICS.find(([metric]) => hasMetricData(metric))', page)
 
     def test_comparison_mode_selects_payload_variants_without_losing_unknowns(self) -> None:
         script = r"""
@@ -64,7 +108,6 @@ class ReportFrontendTest(unittest.TestCase):
             cwd=REPO_ROOT,
             check=True,
         )
-
     def test_matrix_cells_render_bounds_and_unknown_values(self) -> None:
         script = r"""
             import assert from 'node:assert/strict';

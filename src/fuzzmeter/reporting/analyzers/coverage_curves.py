@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+from ..keys import FINAL_DIST_KEYS
 from ..metrics import (
     dt,
     maximum,
@@ -62,7 +63,6 @@ def _add_mean_median(out: dict[str, float | None], key: str, values: list[float]
 
 def _build_final_summary(
     *,
-    cov_metrics: tuple[str, ...],
     finals: dict[str, list[float]],
     trial_rows: list[dict[str, Any]],
     bugs: list[dict[str, Any]],
@@ -70,9 +70,8 @@ def _build_final_summary(
     '''Build final per-trial metric summaries for one fuzzer-target entry.'''
 
     final_summary: dict[str, float | None] = {}
-    for metric in cov_metrics:
-        for suffix in ('cov', 'total', 'pct'):
-            _add_mean_median(final_summary, f'{metric}_{suffix}', finals.get(f'{metric}_{suffix}') or [])
+    for key in FINAL_DIST_KEYS:
+        _add_mean_median(final_summary, key, finals.get(key) or [])
     for key in (
         'regions_pct_auc',
         'regions_pct_auc_norm',
@@ -84,20 +83,7 @@ def _build_final_summary(
     ):
         values = [float(row[key]) for row in trial_rows if isinstance(row.get(key), (int, float))]
         _add_mean_median(final_summary, key, values)
-    for key in (
-        'execs_per_sec',
-        'execs_done',
-        'elapsed_seconds',
-        'corpus_files_total',
-        'unique_bugs_total',
-        'bug_hits_total',
-        'crashes_total',
-        'resource_cpu_percent',
-        'resource_memory_mib',
-        'resource_memory_percent',
-        'resource_corpus_disk_mib',
-    ):
-        _add_mean_median(final_summary, key, finals.get(key) or [])
+    _add_mean_median(final_summary, 'elapsed_seconds', finals.get('elapsed_seconds') or [])
     bug_keys = {str(bug.get('bug_key')) for bug in bugs if bug.get('bug_key')}
     final_summary['accumulated_bug_count'] = float(len(bug_keys))
     return final_summary
@@ -148,11 +134,10 @@ def aggregate_finals(
     points_by_trial: dict[int, list[dict[str, Any]]],
     *,
     cov_metrics: tuple[str, ...],
-    final_output_dist_keys: tuple[str, ...],
 ) -> dict[str, list[float]]:
     '''Collect final metric distributions for a fuzzer entry.'''
 
-    finals: dict[str, list[float]] = {key: [] for key in final_output_dist_keys}
+    finals: dict[str, list[float]] = {key: [] for key in FINAL_DIST_KEYS}
     for trial in reps:
         for metric in cov_metrics:
             cov_value = trial.get(f"{metric}_cov")
@@ -194,8 +179,6 @@ def aggregate_finals(
 def build_curve(
     reps: list[dict[str, Any]],
     points_by_trial: dict[int, list[dict[str, Any]]],
-    *,
-    final_output_dist_keys: tuple[str, ...],
 ) -> list[dict[str, Any]]:
     '''Build an aggregate fuzzer curve across repetitions.'''
 
@@ -225,7 +208,7 @@ def build_curve(
     for idx, elapsed_key in enumerate(sorted(all_elapsed), start=1):
         curve_item: dict[str, Any] = {"idx": idx, "elapsed_s": elapsed_key}
         ts_values: list[float] = []
-        values: dict[str, list[float]] = {key: [] for key in final_output_dist_keys}
+        values: dict[str, list[float]] = {key: [] for key in FINAL_DIST_KEYS}
 
         for trial_id, point_map in trial_series:
             state = last_seen_per_trial.setdefault(trial_id, {})
@@ -234,13 +217,13 @@ def build_curve(
                 ts = safe_int(point.get("ts"))
                 if ts is not None:
                     ts_values.append(float(ts))
-                for key in final_output_dist_keys:
+                for key in FINAL_DIST_KEYS:
                     value = point.get(key)
                     if value is not None:
                         state[key] = value
             if not state:
                 continue
-            for key in final_output_dist_keys:
+            for key in FINAL_DIST_KEYS:
                 if key in state:
                     values[key].append(float(state[key]))
 
@@ -376,7 +359,6 @@ def build_trial_rows(
 def build_fuzzer_entry(
     *,
     cov_metrics: tuple[str, ...],
-    final_output_dist_keys: tuple[str, ...],
     curve_max_points: int,
     fuzzer: str,
     reps: list[dict[str, Any]],
@@ -392,19 +374,13 @@ def build_fuzzer_entry(
         reps,
         points_by_trial,
         cov_metrics=cov_metrics,
-        final_output_dist_keys=final_output_dist_keys,
     )
     curve = downsample_curve(
-        build_curve(
-            reps,
-            points_by_trial,
-            final_output_dist_keys=final_output_dist_keys,
-        ),
+        build_curve(reps, points_by_trial),
         curve_max_points=curve_max_points,
     )
     trial_rows = build_trial_rows(reps=reps, points_by_trial=points_by_trial)
     final_summary = _build_final_summary(
-        cov_metrics=cov_metrics,
         finals=finals,
         trial_rows=trial_rows,
         bugs=bugs,
@@ -432,7 +408,6 @@ def build_fuzzer_entry(
 def collect_target_view(
     *,
     cov_metrics: tuple[str, ...],
-    final_output_dist_keys: tuple[str, ...],
     curve_max_points: int,
     trials: list[dict[str, Any]],
     timeseries: dict[str, Any],
@@ -509,7 +484,6 @@ def collect_target_view(
             target["fuzzers"].append(
                 build_fuzzer_entry(
                     cov_metrics=cov_metrics,
-                    final_output_dist_keys=final_output_dist_keys,
                     curve_max_points=curve_max_points,
                     fuzzer=fuzzer,
                     reps=group["reps"],
