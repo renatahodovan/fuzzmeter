@@ -7,19 +7,18 @@
 
 '''Expose database helpers and submodules used across fuzzmeter.'''
 
+from . import bug, metadata, resource_telemetry, runs, snapshot, trials
 from .base import DB, open_db
 from .schema import ensure_schema
 
-from . import bug, metadata, resource_telemetry, runs, snapshot, trials
-
 __all__ = [
     'DB',
-    'open_db',
-    'ensure_schema',
-    'runs',
-    'trials',
-    'snapshot',
     'bug',
+    'ensure_schema',
     'metadata',
+    'open_db',
     'resource_telemetry',
+    'runs',
+    'snapshot',
+    'trials',
 ]

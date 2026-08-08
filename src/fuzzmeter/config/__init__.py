@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+"""Expose campaign configuration models and loading helpers."""
+
 from .builder import load_campaign_config
 from .models import CampaignCase, CampaignConfig, CampaignSettings, implementation_fuzzer, target_key
 

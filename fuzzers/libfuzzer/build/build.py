@@ -23,6 +23,6 @@ def build():
 
 # #73348: cov: 44138 ft: 40833 corp: 1553 exec/s: 2237 oom/timeout/crash: 0/0/1 time: 52s job: 8 dft_time: 0
 _LIBFUZZER_DONE = re.compile(
-    r"^#(?P<execs_done>\d+):.*?exec/s:\s+(?P<execs_per_sec>[0-9.]+).*?time:\s+(?P<time_s>\d+)s",
+    r'^#(?P<execs_done>\d+):.*?exec/s:\s+(?P<execs_per_sec>[0-9.]+).*?time:\s+(?P<time_s>\d+)s',
     re.IGNORECASE | re.MULTILINE,
 )

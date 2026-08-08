@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -154,12 +155,12 @@ def get_next_tick_idx(db: DB, *, run_id: str) -> int:
 def list_ticks(db: DB, *, run_id: str) -> list[dict[str, Any]]:
     '''Return snapshot ticks for a run ordered by tick index.'''
     return db.q(
-        """
+        '''
         SELECT run_id, idx, ts, status, error
           FROM snapshot_ticks
          WHERE run_id=?
          ORDER BY idx
-        """,
+        ''',
         (str(run_id),),
     )
 
@@ -167,12 +168,12 @@ def list_ticks(db: DB, *, run_id: str) -> list[dict[str, Any]]:
 def list_trial_snapshots(db: DB, *, trial_row_id: int) -> list[dict[str, Any]]:
     '''Return snapshot rows for a trial ordered by tick index.'''
     return db.q(
-        """
+        '''
         SELECT *
           FROM snapshots
          WHERE trial_id=?
          ORDER BY idx
-        """,
+        ''',
         (int(trial_row_id),),
     )
 
@@ -184,10 +185,10 @@ def save_snapshot_data(db: DB, record: SnapshotRecord) -> int:
     if isinstance(record.stats, dict) and record.stats:
         stats_json = json.dumps(record.stats, sort_keys=True, separators=(',', ':'), default=str)
     db.exec(
-        """
+        '''
         INSERT OR IGNORE INTO snapshots(trial_id, idx, ts, corpus_files, execs_done, stats_json, crashes, hangs)
         VALUES(?,?,?,?,?,?,?,?)
-        """,
+        ''',
         (
             int(record.trial_db_id),
             int(record.tick_idx),
@@ -213,13 +214,13 @@ def latest_trial_snapshot(db: DB, *, trial_row_id: int) -> dict[str, Any] | None
     '''Return the newest snapshot row of a trial, if any.'''
 
     rows = db.q(
-        """
+        '''
         SELECT *
           FROM snapshots
          WHERE trial_id=?
          ORDER BY idx DESC
          LIMIT 1
-        """,
+        ''',
         (int(trial_row_id),),
     )
     return rows[0] if rows else None
@@ -229,7 +230,7 @@ def copy_previous_coverage_fields(db: DB, *, trial_row_id: int, snapshot_id: int
     '''Copy the latest known coverage fields into a newer snapshot row.'''
 
     previous = db.q(
-        """
+        '''
         SELECT coverage_html_dir,
                coverage_sets_json_rel,
                cov_lines_covered,
@@ -251,7 +252,7 @@ def copy_previous_coverage_fields(db: DB, *, trial_row_id: int, snapshot_id: int
            )
          ORDER BY idx DESC
          LIMIT 1
-        """,
+        ''',
         (int(trial_row_id), int(snapshot_id)),
     )
     if not previous:
@@ -275,7 +276,7 @@ def copy_seed_baseline_coverage_fields(
 ) -> bool:
     '''Copy recorded seed baseline coverage fields into one trial snapshot row.'''
     baseline = db.q(
-        """
+        '''
         SELECT coverage_html_dir,
                coverage_sets_json_rel,
                cov_lines_covered,
@@ -293,7 +294,7 @@ def copy_seed_baseline_coverage_fields(
            AND fuzz_target=?
            AND idx=?
          LIMIT 1
-        """,
+        ''',
         (str(run_id), str(fuzzer), str(benchmark), str(fuzz_target), SEED_BASELINE_IDX),
     )
     if not baseline:
@@ -389,26 +390,26 @@ def upsert_agg_snapshot(
     '''Insert or update one aggregated snapshot row and return its id.'''
 
     db.exec(
-        """
+        '''
         INSERT OR IGNORE INTO agg_snapshots(run_id, fuzzer, benchmark, fuzz_target, idx, ts)
         VALUES(?,?,?,?,?,?)
-        """,
+        ''',
         (str(run_id), str(fuzzer), str(benchmark), str(fuzz_target), int(idx), int(ts)),
     )
     db.exec(
-        """
+        '''
         UPDATE agg_snapshots
            SET ts=?
          WHERE run_id=? AND fuzzer=? AND benchmark=? AND fuzz_target=? AND idx=?
-        """,
+        ''',
         (int(ts), str(run_id), str(fuzzer), str(benchmark), str(fuzz_target), int(idx)),
     )
     sid = db.scalar(
-        """
+        '''
         SELECT agg_snapshot_id
           FROM agg_snapshots
          WHERE run_id=? AND fuzzer=? AND benchmark=? AND fuzz_target=? AND idx=?
-        """,
+        ''',
         (str(run_id), str(fuzzer), str(benchmark), str(fuzz_target), int(idx)),
     )
     return int(sid or 0)
@@ -424,7 +425,7 @@ def update_agg_snapshot_coverage(
     '''Store aggregated coverage outputs on one aggregated snapshot row.'''
 
     db.exec(
-        """
+        '''
         UPDATE agg_snapshots
            SET coverage_html_dir=?,
                cov_lines_covered=?,
@@ -437,7 +438,7 @@ def update_agg_snapshot_coverage(
                cov_functions_total=?,
                coverage_sets_json_rel=?
          WHERE agg_snapshot_id=?
-        """,
+        ''',
         (
             *coverage.values(),
             coverage_sets_json_rel,

@@ -12,7 +12,6 @@ import logging
 from fuzzers.grammarinator import common as grammarinator
 from fuzzers.libfuzzer.build import build as libfuzzer_build
 
-
 LOG = logging.getLogger(__name__)
 
 

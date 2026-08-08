@@ -101,11 +101,11 @@ def run_afl_fuzz(input_corpus,
         # performs.
         command.append('2147483647')
 
-    print('[run_afl_fuzz] AFL related envs: ', ' '.join(f"{k}={v}" for k, v in os.environ.items() if "AFL" in k))
-    print('[run_afl_fuzz] Running command: ' + ' '.join(command) + " from " + os.getcwd())
-    subprocess.DEVNULL if hide_output else None
+    print('[run_afl_fuzz] AFL related envs: ', ' '.join(f'{k}={v}' for k, v in os.environ.items() if 'AFL' in k))
+    print('[run_afl_fuzz] Running command: ' + ' '.join(command) + ' from ' + os.getcwd())
     cwd = f'/opt/fuzzmeter/fuzzers/{os.environ["FUZZER"]}'
-    subprocess.run(command, cwd=cwd)
+    output = subprocess.DEVNULL if hide_output else None
+    subprocess.run(command, cwd=cwd, stdout=output, stderr=output, check=False)
 
 
 def _has_timeout_flag(flags):

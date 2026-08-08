@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..db import open_db
-from ..db.snapshot import CoverageSummary, SEED_BASELINE_IDX, update_agg_snapshot_coverage, upsert_agg_snapshot
+from ..db.snapshot import SEED_BASELINE_IDX, CoverageSummary, update_agg_snapshot_coverage, upsert_agg_snapshot
 from ..docker import DockerRuntime
 from .coverage_measure import build_coverage_replay_batches, merge_coverage_outputs, replay_coverage_batches
 from .coverage_state import collect_inputs, seed_coverage_root

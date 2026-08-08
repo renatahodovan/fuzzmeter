@@ -9,9 +9,10 @@
 
 from __future__ import annotations
 
-import os
 import hashlib
 import json
+import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -20,10 +21,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-import logging
-
 from fuzzmeter.resources.instrumentation import utils
-
 
 GRAMMARINATOR_DIR = Path('/grammarinator')
 LOG = logging.getLogger(__name__)
@@ -341,7 +339,7 @@ def _seed_cache_extra_paths(cfg: dict[str, Any]) -> list[Path]:
 
 def _paths_digest(paths: list[Path]) -> str:
     digest = hashlib.sha256()
-    for path in sorted(paths, key=lambda item: str(item)):
+    for path in sorted(paths, key=str):
         if not path.is_file():
             continue
         digest.update(str(path).encode('utf-8'))

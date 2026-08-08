@@ -15,7 +15,6 @@ from typing import Any
 
 from ..fuzzers import OutputPaths
 
-
 FUZZ_DIR = Path('work')
 SNAPSHOTS_DIR = Path('snapshots')
 LOGS_DIR = Path('logs')

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+
 from dataclasses import dataclass
 
 from .base import DB
@@ -44,27 +45,27 @@ def get_bug_id(
     '''Return the database id of a known bug, if any.'''
 
     row = db.q1(
-        """
+        '''
         SELECT bug_id
           FROM bugs
          WHERE run_id=? AND fuzzer=? AND benchmark=? AND fuzz_target=? AND bug_key=?
-        """,
+        ''',
         (str(run_id), str(fuzzer), str(benchmark), str(fuzz_target), str(bug_key)),
     )
-    return int(row["bug_id"]) if row else None
+    return int(row['bug_id']) if row else None
 
 
 def ensure_bug(db: DB, record: BugRecord) -> int:
     '''Insert one bug row when missing and return its database id.'''
 
     db.exec(
-        """
+        '''
         INSERT OR IGNORE INTO bugs(
           run_id,fuzzer,benchmark,fuzz_target,bug_key,
           issue_type,top_func,frames_json,output,
           first_seen_ts,first_seen_snapshot_id
         ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
-        """,
+        ''',
         (
             str(record.run_id),
             str(record.fuzzer),

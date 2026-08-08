@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+"""Invoke the configured fuzzer adapter inside its runtime container."""
+
 from __future__ import annotations
 
 import importlib

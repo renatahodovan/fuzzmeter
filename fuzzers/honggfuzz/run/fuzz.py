@@ -61,7 +61,7 @@ def fuzz(input_corpus, output_corpus, target_binary, input_mode: str):
     if dictionary_path:
         command.extend(['--dict', dictionary_path])
     command.extend(['--', target_binary])
-    
+
     if input_mode == 'file':
         command.append('___FILE___')
 
@@ -71,19 +71,19 @@ def fuzz(input_corpus, output_corpus, target_binary, input_mode: str):
 def get_output_paths(live_out: Path) -> Dict[str, Any]:
     p = Path(live_out)
     return {
-        "corpus_root": p / "corpus",
-        "crashes_root": p / "crashes",
+        'corpus_root': p / 'corpus',
+        'crashes_root': p / 'crashes',
     }
 
 def get_stats(trial_root: Path) -> Dict[str, Any]:
-    p = Path(trial_root) / "work" / "stats.txt"
+    p = Path(trial_root) / 'work' / 'stats.txt'
     if not p.exists():
         print(f"[honggfuzz] {p} doesn't exist.")
         return {}
-    
+
     stats: Dict[str, str] = {}
     try:
-        with p.open("r", encoding="utf-8", errors="replace") as f:
+        with p.open('r', encoding='utf-8', errors='replace') as f:
             lines = f.readlines()
             last_line = lines[-1]
             # unix_time, last_cov_update, total_exec, exec_per_sec, crashes, unique_crashes, hangs, edge_cov, block_cov

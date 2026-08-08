@@ -10,9 +10,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import tempfile
 import unittest
+
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from fuzzmeter.db import DB

@@ -12,14 +12,14 @@ from __future__ import annotations
 from .base import DB
 
 _SCHEMA = [
-    """
+    '''
     CREATE TABLE IF NOT EXISTS runs(
       run_id TEXT PRIMARY KEY,
       created_ts INTEGER,
       config_src TEXT
     )
-    """,
-    """
+    ''',
+    '''
     CREATE TABLE IF NOT EXISTS trials(
       trial_id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -42,16 +42,16 @@ _SCHEMA = [
 
       FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
     )
-    """,
-    """
+    ''',
+    '''
     CREATE INDEX IF NOT EXISTS idx_trials_run_target
       ON trials(run_id, benchmark, fuzz_target)
-    """,
-    """
+    ''',
+    '''
     CREATE UNIQUE INDEX IF NOT EXISTS uq_trials_run_f_b_t_rep
       ON trials(run_id, fuzzer, benchmark, fuzz_target, rep)
-    """,
-    """
+    ''',
+    '''
     CREATE TABLE IF NOT EXISTS snapshot_ticks(
       run_id TEXT NOT NULL,
       idx INTEGER NOT NULL,
@@ -60,8 +60,8 @@ _SCHEMA = [
       error TEXT,
       PRIMARY KEY(run_id, idx)
     )
-    """,
-    """
+    ''',
+    '''
     CREATE TABLE IF NOT EXISTS snapshots(
       snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
       trial_id INTEGER NOT NULL,
@@ -89,12 +89,12 @@ _SCHEMA = [
       UNIQUE(trial_id, idx),
       FOREIGN KEY(trial_id) REFERENCES trials(trial_id) ON DELETE CASCADE
     )
-    """,
-    """
+    ''',
+    '''
     CREATE INDEX IF NOT EXISTS idx_snapshots_trial_idx
       ON snapshots(trial_id, idx)
-    """,
-    """
+    ''',
+    '''
     -- No foreign key to trials: seed baseline aggregate rows at idx=0 can be
     -- written before any trial-level snapshots exist.
     CREATE TABLE IF NOT EXISTS agg_snapshots(
@@ -119,12 +119,12 @@ _SCHEMA = [
 
       UNIQUE(run_id, fuzzer, benchmark, fuzz_target, idx)
     )
-    """,
-    """
+    ''',
+    '''
     CREATE INDEX IF NOT EXISTS idx_agg_snapshots_run_fuzzer_target
       ON agg_snapshots(run_id, fuzzer, benchmark, fuzz_target, idx)
-    """,
-    """
+    ''',
+    '''
     CREATE TABLE IF NOT EXISTS bugs(
       bug_id INTEGER PRIMARY KEY AUTOINCREMENT,
       run_id TEXT NOT NULL,
@@ -140,8 +140,8 @@ _SCHEMA = [
       first_seen_snapshot_id INTEGER NOT NULL,
       UNIQUE(run_id, fuzzer, benchmark, fuzz_target, bug_key)
     )
-    """,
-    """
+    ''',
+    '''
     CREATE TABLE IF NOT EXISTS bug_hits(
       bug_id INTEGER NOT NULL,
       snapshot_id INTEGER NOT NULL,
@@ -150,8 +150,8 @@ _SCHEMA = [
       FOREIGN KEY(bug_id) REFERENCES bugs(bug_id) ON DELETE CASCADE,
       FOREIGN KEY(snapshot_id) REFERENCES snapshots(snapshot_id) ON DELETE CASCADE
     )
-    """,
-    """
+    ''',
+    '''
     CREATE TABLE IF NOT EXISTS resource_telemetry(
       trial_id INTEGER NOT NULL,
       idx INTEGER NOT NULL,
@@ -165,12 +165,12 @@ _SCHEMA = [
       PRIMARY KEY(trial_id, idx),
       FOREIGN KEY(trial_id) REFERENCES trials(trial_id) ON DELETE CASCADE
     )
-    """,
-    """
+    ''',
+    '''
     CREATE INDEX IF NOT EXISTS idx_resource_telemetry_trial_idx
       ON resource_telemetry(trial_id, idx)
-    """,
-    """
+    ''',
+    '''
     CREATE TABLE IF NOT EXISTS metadata(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       run_id TEXT NOT NULL,
@@ -188,11 +188,11 @@ _SCHEMA = [
       UNIQUE(run_id, fuzzer, benchmark, fuzz_target),
       FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
     )
-    """,
-    """
+    ''',
+    '''
     CREATE INDEX IF NOT EXISTS idx_metadata_target
       ON metadata(benchmark, fuzz_target, fuzzer)
-    """,
+    ''',
 ]
 
 

@@ -251,7 +251,7 @@ def _run_replay_experiment(
 
     if not prepared_trials:
         raise RuntimeError('Could not find any replayable artifacts.')
-    
+
     for trial in prepared_trials:
         if trial.end_ts - trial.start_ts <= 0:
             raise ValueError('The length of the replayable data in %s is 0 or shorter.' % trial.layout.fuzz_dir)

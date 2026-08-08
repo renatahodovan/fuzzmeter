@@ -11,7 +11,6 @@ from typing import Any, Dict
 
 from fuzzmeter.resources.instrumentation import utils
 
-
 LOG = logging.getLogger(__name__)
 
 
@@ -60,7 +59,7 @@ def run_fuzzer(input_corpus, output_corpus, target_binary, extra_flags=None):
     if dictionary_path:
         flags.append('-dict=' + dictionary_path)
 
-    command = [target_binary] + flags + [output_corpus, input_corpus] + extra_flags
+    command = [target_binary, *flags, output_corpus, input_corpus, *extra_flags]
     print('Running libFuzzer command:', ' '.join(command))
     subprocess.check_output(command)
 
@@ -75,14 +74,14 @@ def get_output_paths(live_out: Path) -> Dict[str, Any]:
     return {
         # The runner hands us the parent output directory. LibFuzzer stores
         # the live corpus in the dedicated corpus/ subdirectory.
-        "corpus_root": p / "corpus",
-        "crashes_root": p / "crashes",
-        "hangs_root": p / "hangs",
+        'corpus_root': p / 'corpus',
+        'crashes_root': p / 'crashes',
+        'hangs_root': p / 'hangs',
     }
 
 # #73348: cov: 44138 ft: 40833 corp: 1553 exec/s: 2237 oom/timeout/crash: 0/0/1 time: 52s job: 8 dft_time: 0
 _LIBFUZZER_DONE = re.compile(
-    r"^#(?P<execs_done>\d+):.*?exec/s:\s+(?P<execs_per_sec>[0-9.]+).*?time:\s+(?P<time_s>\d+)s",
+    r'^#(?P<execs_done>\d+):.*?exec/s:\s+(?P<execs_per_sec>[0-9.]+).*?time:\s+(?P<time_s>\d+)s',
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -93,23 +92,23 @@ def get_stats(trial_root: Path) -> Dict[str, Any]:
 
 def get_stats_until(trial_root: Path, *, cutoff_elapsed_s: int | None = None) -> Dict[str, Any]:
     """Best-effort stats extraction up to a logical trial elapsed time."""
-    stats_path = Path(trial_root) / "logs" / "fuzzer.log"
+    stats_path = Path(trial_root) / 'logs' / 'fuzzer.log'
     if not stats_path.exists():
         return {}
     try:
-        text = stats_path.read_text(encoding="utf-8", errors="ignore")
+        text = stats_path.read_text(encoding='utf-8', errors='ignore')
         latest = None
         for match in _LIBFUZZER_DONE.finditer(text):
-            elapsed_s = int(match.group("time_s"))
+            elapsed_s = int(match.group('time_s'))
             if cutoff_elapsed_s is not None and elapsed_s > int(cutoff_elapsed_s):
                 continue
             latest = match
         if latest is None:
             return {}
         return {
-            "execs_per_sec": float(latest.group("execs_per_sec")),
-            "execs_done": float(latest.group("execs_done")),
+            'execs_per_sec': float(latest.group('execs_per_sec')),
+            'execs_done': float(latest.group('execs_done')),
         }
     except Exception as e:
-        LOG.warning("Failed to extract libFuzzer stats: %s", e)
+        LOG.warning('Failed to extract libFuzzer stats: %s', e)
         return {}

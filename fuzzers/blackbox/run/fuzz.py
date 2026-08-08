@@ -23,9 +23,9 @@ from typing import Any
 from fuzzmeter.resources.instrumentation import utils
 
 level = getattr(logging, os.environ.get('FM_LOG_LEVEL', 'DEBUG'))
-logging.basicConfig(level=level, 
+logging.basicConfig(level=level,
                     format='%(asctime)s - %(levelname)-7s - %(name)s - %(message)s',
-                    datefmt="%Y-%m-%d %H:%M:%S")
+                    datefmt='%Y-%m-%d %H:%M:%S')
 LOG = logging.getLogger(__name__)
 
 
@@ -135,6 +135,7 @@ class BlackBoxFuzzer:
                 command,
                 input=_stdin_data(input_path, self.input_mode),
                 timeout=self.target_timeout_s,
+                check=False,
             )
         except subprocess.TimeoutExpired:
             self.hangs += 1

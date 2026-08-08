@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+"""Define normalized campaign configuration models."""
+
 from __future__ import annotations
 
 import os

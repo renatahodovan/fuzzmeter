@@ -15,29 +15,28 @@ from pathlib import Path
 
 from fuzzmeter.reporting.plugin_api import ChartSeries, ChartSpec, DataPoint, ExtraSection, ReportingContext
 
-
-MUTATOR_MANIFEST = ".fuzzmeter_mutators.json"
+MUTATOR_MANIFEST = '.fuzzmeter_mutators.json'
 MUTATOR_COLORS = [
-    "#1F77B4",
-    "#D62728",
-    "#2CA02C",
-    "#FF7F0E",
-    "#9467BD",
-    "#8C564B",
-    "#E377C2",
-    "#7F7F7F",
-    "#BCBD22",
-    "#17BECF",
-    "#393B79",
-    "#637939",
-    "#8C6D31",
-    "#843C39",
-    "#7B4173",
+    '#1F77B4',
+    '#D62728',
+    '#2CA02C',
+    '#FF7F0E',
+    '#9467BD',
+    '#8C564B',
+    '#E377C2',
+    '#7F7F7F',
+    '#BCBD22',
+    '#17BECF',
+    '#393B79',
+    '#637939',
+    '#8C6D31',
+    '#843C39',
+    '#7B4173',
 ]
 
 
 def _snapshot_idx(snapshot_dir: Path) -> int | None:
-    match = re.match(r"snap_(\d+)$", snapshot_dir.name)
+    match = re.match(r'snap_(\d+)$', snapshot_dir.name)
     if not match:
         return None
     try:
@@ -47,20 +46,20 @@ def _snapshot_idx(snapshot_dir: Path) -> int | None:
 
 
 def _point_by_idx(timeseries_entry: dict) -> dict[int, dict]:
-    points = timeseries_entry.get("points") or []
+    points = timeseries_entry.get('points') or []
     return {
-        int(point.get("idx")): point
+        int(point.get('idx')): point
         for point in points
-        if point.get("idx") is not None
+        if point.get('idx') is not None
     }
 
 
 def _elapsed_seconds_for_point(trial: dict, point: dict) -> int | None:
-    started_ts = trial.get("started_ts")
-    point_ts = point.get("ts")
+    started_ts = trial.get('started_ts')
+    point_ts = point.get('ts')
     try:
         if started_ts is None or point_ts is None:
-            elapsed_s = point.get("elapsed_s")
+            elapsed_s = point.get('elapsed_s')
             if elapsed_s is None:
                 return None
             elapsed = int(float(elapsed_s))
@@ -76,10 +75,10 @@ def _manifest_counts(snapshot_dir: Path) -> dict[str, int]:
     if not manifest.is_file():
         return {}
     try:
-        payload = json.loads(manifest.read_text(encoding="utf-8"))
+        payload = json.loads(manifest.read_text(encoding='utf-8'))
     except Exception:
         return {}
-    counts = payload.get("mutator_counts")
+    counts = payload.get('mutator_counts')
     if not isinstance(counts, dict):
         return {}
     out: dict[str, int] = {}
@@ -127,9 +126,9 @@ def _bucket_boundaries(max_elapsed_seconds: int, step: int) -> list[int]:
 def _normalize_mutator_name(name: str) -> str:
     text = str(name).strip()
     if not text:
-        return ""
-    if text.startswith("orig:"):
-        return ""
+        return ''
+    if text.startswith('orig:'):
+        return ''
     return text
 
 
@@ -183,8 +182,8 @@ def _build_payload(ctx: ReportingContext) -> tuple[list[ChartSeries], dict[str, 
     snapshot_point_count = 0
 
     for trial in ctx.trials:
-        trial_id = int(trial.get("trial_id") or 0)
-        timeseries_entry = ctx.timeseries_by_trial.get(trial_id) or {"points": []}
+        trial_id = int(trial.get('trial_id') or 0)
+        timeseries_entry = ctx.timeseries_by_trial.get(trial_id) or {'points': []}
         points_by_idx = _point_by_idx(timeseries_entry)
         trial_history: list[tuple[int, dict[str, int]]] = []
 
@@ -224,15 +223,15 @@ def _build_payload(ctx: ReportingContext) -> tuple[list[ChartSeries], dict[str, 
 
     if not trial_histories:
         return [], {
-            "data_source": "manifest_or_snapshot_names",
-            "manifest_snapshot_count": manifest_snapshot_count,
-            "scanned_snapshot_count": scanned_snapshot_count,
-            "matched_file_count": matched_file_count,
-            "snapshot_points": 0,
-            "time_points": 0,
-            "mutator_count": 0,
-            "series_count": 0,
-            "reason": "no_mutator_matches",
+            'data_source': 'manifest_or_snapshot_names',
+            'manifest_snapshot_count': manifest_snapshot_count,
+            'scanned_snapshot_count': scanned_snapshot_count,
+            'matched_file_count': matched_file_count,
+            'snapshot_points': 0,
+            'time_points': 0,
+            'mutator_count': 0,
+            'series_count': 0,
+            'reason': 'no_mutator_matches',
         }
 
     max_elapsed_seconds = max(
@@ -265,7 +264,7 @@ def _build_payload(ctx: ReportingContext) -> tuple[list[ChartSeries], dict[str, 
                 DataPoint(
                     x=elapsed_seconds,
                     y=percent,
-                    meta={"elapsed_seconds": elapsed_seconds, "mutator": mutator},
+                    meta={'elapsed_seconds': elapsed_seconds, 'mutator': mutator},
                 )
             )
         if points:
@@ -279,19 +278,19 @@ def _build_payload(ctx: ReportingContext) -> tuple[list[ChartSeries], dict[str, 
             )
 
     return series, {
-        "data_source": "manifest_or_snapshot_names",
-        "manifest_snapshot_count": manifest_snapshot_count,
-        "scanned_snapshot_count": scanned_snapshot_count,
-        "matched_file_count": matched_file_count,
-        "snapshot_points": snapshot_point_count,
-        "time_points": len(sorted_times),
-        "bucket_size_seconds": bucket_size,
-        "mutator_count": len(mutators),
-        "series_count": len(series),
-        "top_mutators": mutators[:10],
-        "trial_histories": len(trial_histories),
-        "raw_trial_histories": raw_trial_histories,
-        "aggregation": "cumulative_positive_deltas",
+        'data_source': 'manifest_or_snapshot_names',
+        'manifest_snapshot_count': manifest_snapshot_count,
+        'scanned_snapshot_count': scanned_snapshot_count,
+        'matched_file_count': matched_file_count,
+        'snapshot_points': snapshot_point_count,
+        'time_points': len(sorted_times),
+        'bucket_size_seconds': bucket_size,
+        'mutator_count': len(mutators),
+        'series_count': len(series),
+        'top_mutators': mutators[:10],
+        'trial_histories': len(trial_histories),
+        'raw_trial_histories': raw_trial_histories,
+        'aggregation': 'cumulative_positive_deltas',
     }
 
 
@@ -303,7 +302,7 @@ class AFLReportingPlugin:
 
     @staticmethod
     def _cache_key(ctx: ReportingContext) -> tuple[str, str, str, tuple[int, ...]]:
-        trial_ids = tuple(sorted(int(trial.get("trial_id") or 0) for trial in ctx.trials))
+        trial_ids = tuple(sorted(int(trial.get('trial_id') or 0) for trial in ctx.trials))
         return (ctx.run_id, ctx.benchmark, ctx.fuzz_target, trial_ids)
 
     def _resolve(self, ctx: ReportingContext) -> tuple[list[ChartSeries], dict[str, object]]:
@@ -320,21 +319,21 @@ class AFLReportingPlugin:
             return []
 
         chart = ChartSpec(
-            id="mutator-usefulness-ratio",
-            type="stacked_area",
-            title="Mutator usefulness ratio",
-            subtitle="Percentage distribution of AFL custom mutators across snapshot corpora.",
-            x_axis="elapsed seconds",
-            y_axis="percent",
-            filter_mode="static",
+            id='mutator-usefulness-ratio',
+            type='stacked_area',
+            title='Mutator usefulness ratio',
+            subtitle='Percentage distribution of AFL custom mutators across snapshot corpora.',
+            x_axis='elapsed seconds',
+            y_axis='percent',
+            filter_mode='static',
             series=series,
         )
         return [
             ExtraSection(
-                id="afl-mutators",
-                title="AFL mutators",
-                scope="fuzzer",
-                placement="after:target",
+                id='afl-mutators',
+                title='AFL mutators',
+                scope='fuzzer',
+                placement='after:target',
                 charts=[chart],
             )
         ]

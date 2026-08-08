@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 # Copyright 2020 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +12,9 @@ from __future__ import annotations
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Integration code for AFLplusplus fuzzer."""
+'''Integration code for AFLplusplus fuzzer.'''
+
+from __future__ import annotations
 
 import os
 import shutil
@@ -32,7 +32,7 @@ def get_uninstrumented_build_directory(target_directory):
 
 def build(*args):  # pylint: disable=too-many-branches,too-many-statements
     """Build benchmark."""
-    print("AFLPLUPLUS BUILD")
+    print('AFLPLUPLUS BUILD')
     build_modes = list(args)
     if 'BUILD_MODES' in os.environ:
         build_modes = os.environ['BUILD_MODES'].split(',')

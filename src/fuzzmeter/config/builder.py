@@ -165,8 +165,8 @@ def _build_fuzzer_config(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[
         raise ValueError('allowed_benchmarks must be defined as a list.')
 
     replay_trials = []
-    for path in fuzzer_data.get('replay_trials') or []:
-        path = Path(path).expanduser().resolve()
+    for replay_path in fuzzer_data.get('replay_trials') or []:
+        path = Path(replay_path).expanduser().resolve()
         if not path.is_dir():
             raise NotADirectoryError(f'Replay trial directory is not a directory: {path}')
         replay_trials.append(path)

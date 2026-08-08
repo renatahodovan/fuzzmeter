@@ -4,7 +4,7 @@ build-backend = 'setuptools.build_meta'
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py310"
 extend-exclude = [
 ".antlr",
 ".git",
@@ -20,42 +20,163 @@ docstring-code-format = true
 
 [tool.ruff.lint]
 select = [
-"E",      # pycodestyle errors
-"F",      # pyflakes
-"W",      # pycodestyle warnings
-"I",      # isort/import ordering
-"UP",     # pyupgrade
-"B",      # flake8-bugbear
-"C4",     # flake8-comprehensions
-"SIM",    # flake8-simplify
-"RET",    # flake8-return
-"ARG",    # unused function arguments
-"PTH",    # pathlib suggestions
-"PL",     # pylint-derived rules
-"RUF",    # Ruff-specific rules
-"T20",    # print statements
-"D",      # pydocstyle/docstrings
+"E",       # pycodestyle errors
+"F",       # pyflakes correctness checks
+"W",       # pycodestyle warnings
+"I",       # Grammarinator-style import ordering
+"B",       # likely bugs from flake8-bugbear
+"C4",      # unnecessary or error-prone comprehensions
+"ARG001",  # unused arguments of free functions
+"PL",      # pylint-derived correctness and maintainability checks
+"RUF",     # Ruff-specific correctness checks
+"Q000",    # single quotes for inline strings
+"Q001",    # single quotes for multiline strings
+"D100",    # AGENTS.md: every module needs a file docstring
+"D104",    # AGENTS.md: package modules need a file docstring
 ]
 ignore = [
-"D203",   # one-blank-line-before-class; conflicts with D211
-"D213",   # multi-line-summary-second-line; conflicts with D212
-"PLR0913", # too many arguments; often acceptable in CLI/config boundaries
-"PLR2004", # magic value; too noisy during cleanup
+"E501",     # Grammarinator's pycodestyle and pylint both ignore line length
+"PLR0911",  # Grammarinator allows complex control-flow boundaries
+"PLR0912",
+"PLR0913",
+"PLR0914",
+"PLR0915",
+"PLR0916",
+"PLR1702",
+"PLR2004", # literal values are common in configuration and measurements
 ]
 
-[tool.ruff.lint.pydocstyle]
-convention = "pep257"
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"
+multiline-quotes = "single"
+docstring-quotes = "double"
 
 [tool.ruff.lint.isort]
-force-sort-within-sections = true
+force-sort-within-sections = false
+lines-between-types = 1
 known-first-party = ["fuzzmeter"]
 
 [tool.ruff.lint.per-file-ignores]
+"fuzzers/**" = [
+"ARG001",  # adapter interfaces have fixed callback signatures
+"D100",    # external fuzzer integrations may omit module docstrings
+"D104",    # empty fuzzer package markers do not need docstrings
+]
 "tests/**" = [
-"D",        # tests do not need full public docstrings
-"PLR2004",  # literal expected values are normal in tests
-"ARG",      # fixtures may look unused
+"ARG001",  # callbacks and test doubles may intentionally ignore arguments
 ]
-"**init**.py" = [
-"F401",     # allow intentional re-exports
+"**/__init__.py" = [
+"F401",    # allow intentional re-exports
 ]
+# Intentional lazy or platform-specific imports; keep these exact exceptions
+# visible and remove them if the import constraints disappear.
+"src/fuzzmeter/cli.py" = ["PLC0415"]
+"src/fuzzmeter/repro/ingest.py" = ["PLC0415"]
+"tests/test_host_cli.py" = ["PLC0415"]
+
+[tool.mypy]
+python_version = "3.10"
+sqlite_cache = true
+warn_unused_configs = true
+
+# Temporary pre-CI type baseline. Overrides preserve checking for every other
+# error code and module; each exception is tracked in the baseline report.
+# Temporary baseline: 3 pre-CI errors in src/fuzzmeter/cli.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.cli"
+disable_error_code = ["arg-type", "union-attr"]
+
+# Temporary baseline: 3 pre-CI errors in src/fuzzmeter/composite/models.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.composite.models"
+disable_error_code = ["union-attr"]
+
+# Temporary baseline: 2 pre-CI errors in src/fuzzmeter/config/builder.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.config.builder"
+disable_error_code = ["assignment", "import-untyped"]
+
+# Temporary baseline: 1 pre-CI error in src/fuzzmeter/docker/bake.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.docker.bake"
+disable_error_code = ["import-untyped"]
+
+# Temporary baseline: 3 pre-CI errors in src/fuzzmeter/paths.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.paths"
+disable_error_code = ["call-arg"]
+
+# Temporary baseline: 5 pre-CI errors in src/fuzzmeter/reporting/analyzers/bug_analysis.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.reporting.analyzers.bug_analysis"
+disable_error_code = ["arg-type"]
+
+# Temporary baseline: 6 pre-CI errors in src/fuzzmeter/reporting/analyzers/coverage_curves.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.reporting.analyzers.coverage_curves"
+disable_error_code = ["arg-type", "assignment", "attr-defined", "index", "operator"]
+
+# Temporary baseline: 1 pre-CI error in src/fuzzmeter/reporting/analyzers/coverage_matrices.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.reporting.analyzers.coverage_matrices"
+disable_error_code = ["var-annotated"]
+
+# Temporary baseline: 1 pre-CI error in src/fuzzmeter/reporting/composite.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.reporting.composite"
+disable_error_code = ["var-annotated"]
+
+# Temporary baseline: 1 pre-CI error in src/fuzzmeter/reporting/data/coverage_data.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.reporting.data.coverage_data"
+disable_error_code = ["var-annotated"]
+
+# Temporary baseline: 4 pre-CI errors in src/fuzzmeter/reporting/payload.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.reporting.payload"
+disable_error_code = ["dict-item", "union-attr"]
+
+# Temporary baseline: 5 pre-CI errors in src/fuzzmeter/resources/entrypoints/campaign_build.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.resources.entrypoints.campaign_build"
+disable_error_code = ["assignment", "index", "union-attr"]
+
+# Temporary baseline: 3 pre-CI errors in src/fuzzmeter/resources/entrypoints/coverage_sets.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.resources.entrypoints.coverage_sets"
+disable_error_code = ["arg-type", "import-not-found", "no-redef"]
+
+# Temporary baseline: 1 pre-CI error in src/fuzzmeter/resources/entrypoints/coverage_worker.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.resources.entrypoints.coverage_worker"
+disable_error_code = ["import-not-found"]
+
+# Temporary baseline: 13 pre-CI errors in src/fuzzmeter/resources/instrumentation/utils.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.resources.instrumentation.utils"
+disable_error_code = ["assignment", "import-untyped", "index", "union-attr"]
+
+# Temporary baseline: 1 pre-CI error in src/fuzzmeter/run/shutdown.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.run.shutdown"
+disable_error_code = ["arg-type"]
+
+# Temporary baseline: 1 pre-CI error in src/fuzzmeter/snapshot/parallel.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.snapshot.parallel"
+disable_error_code = ["import-untyped"]
+
+# Temporary baseline: 1 pre-CI error in src/fuzzmeter/snapshot/progress.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.snapshot.progress"
+disable_error_code = ["import-untyped"]
+
+# Temporary baseline: 1 pre-CI error in src/fuzzmeter/web/services/composite_service.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.web.services.composite_service"
+disable_error_code = ["arg-type"]
+
+# Temporary baseline: 1 pre-CI error in src/fuzzmeter/web/services/runs_service.py; remove codes as fixed.
+[[tool.mypy.overrides]]
+module = "fuzzmeter.web.services.runs_service"
+disable_error_code = ["import-untyped"]

@@ -59,7 +59,7 @@ def run_one_trial(
                 start_ts=start_ts,
             ),
         )
-    
+
     container_name = f'fm_{run_id}_{trial_db_id}_{config.trial_key}'
     trial_container = TrialContainer(
         docker_runtime=docker_runtime,

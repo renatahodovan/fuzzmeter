@@ -9,8 +9,8 @@
 
 from __future__ import annotations
 
-from .export import write_report
 from .composite import build_composite_payload
+from .export import write_report
 from .payload import build_payload
 
 __all__ = ['build_composite_payload', 'build_payload', 'write_report']

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+
 from pathlib import Path
 from types import ModuleType
 from typing import Callable, Sequence

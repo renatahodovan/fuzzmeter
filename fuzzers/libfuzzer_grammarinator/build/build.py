@@ -7,16 +7,17 @@
 
 import os
 
-from fuzzmeter.resources.instrumentation import utils
 from fuzzers.grammarinator import common as grammarinator
+from fuzzmeter.resources.instrumentation import utils
+
 
 def build(*args: str) -> None:
     grlf_lib, _, _ = grammarinator.create_grammarinator_artifacts(
-        mode="grlf",
-        seed_prefix="libfuzzer_grammarinator_seed_",
+        mode='grlf',
+        seed_prefix='libfuzzer_grammarinator_seed_',
     )
     if not grlf_lib.is_file():
-        raise RuntimeError(f"Missing Grammarinator mutator library: {grlf_lib}")
+        raise RuntimeError(f'Missing Grammarinator mutator library: {grlf_lib}')
 
     cflags = ['-fsanitize=fuzzer-no-link']
     lf_flags = [
@@ -26,7 +27,7 @@ def build(*args: str) -> None:
     ]
     utils.append_flags('CFLAGS', cflags)
     utils.append_flags('CXXFLAGS', cflags)
-    utils.append_flags("LIBFUZZER_FLAGS", lf_flags)
+    utils.append_flags('LIBFUZZER_FLAGS', lf_flags)
 
     os.environ['CC'] = '/usr/bin/clang-18'
     os.environ['CXX'] = '/usr/bin/clang++-18'

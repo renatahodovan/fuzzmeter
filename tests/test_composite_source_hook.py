@@ -9,11 +9,12 @@
 
 from __future__ import annotations
 
+import tempfile
+import unittest
+
 from dataclasses import dataclass, field
 from pathlib import Path
-import tempfile
 from typing import Any
-import unittest
 
 from fuzzmeter.composite.source_hook import redact_source_info, run_source_hook, source_hook_context
 

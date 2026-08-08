@@ -211,17 +211,18 @@ class SnapshotScheduler:
     def _due_periodic_snapshots(self, *, now_ts: int) -> tuple[list[tuple[int, tuple[TrialInstance, ...]]], int | None]:
         due_by_ts: dict[int, list[TrialInstance]] = {}
         with self._lock:
-            for trial_key, due_ts in list(self._next_periodic_ts.items()):
+            for trial_key, scheduled_ts in list(self._next_periodic_ts.items()):
                 trial = self._active.get(trial_key)
                 if trial is None:
                     self._next_periodic_ts.pop(trial_key, None)
                     continue
                 campaign_end_ts = trial.start_ts + self.campaign_seconds
-                while due_ts <= now_ts and due_ts < campaign_end_ts:
-                    due_by_ts.setdefault(due_ts, []).append(trial)
-                    due_ts += self.every_seconds
-                if due_ts < campaign_end_ts:
-                    self._next_periodic_ts[trial_key] = due_ts
+                next_scheduled_ts = scheduled_ts
+                while next_scheduled_ts <= now_ts and next_scheduled_ts < campaign_end_ts:
+                    due_by_ts.setdefault(next_scheduled_ts, []).append(trial)
+                    next_scheduled_ts += self.every_seconds
+                if next_scheduled_ts < campaign_end_ts:
+                    self._next_periodic_ts[trial_key] = next_scheduled_ts
                 else:
                     self._next_periodic_ts.pop(trial_key, None)
             next_due_ts = min(self._next_periodic_ts.values()) if self._next_periodic_ts else None
@@ -443,8 +444,7 @@ class ReplaySnapshotScheduler(SnapshotScheduler):
         for trial in active_trials:
             start_ts = trial.start_ts
             end_ts = trial.end_ts
-            if end_ts < start_ts:
-                end_ts = start_ts
+            end_ts = max(end_ts, start_ts)
 
             next_ts = start_ts + self.every_seconds
             if self.every_seconds > 0:

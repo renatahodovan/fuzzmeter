@@ -17,9 +17,8 @@ import unittest
 from pathlib import Path
 
 from fuzzmeter.db import DB, ensure_schema
-from fuzzmeter.db.snapshot import CoverageSummary, upsert_agg_snapshot, update_agg_snapshot_coverage
+from fuzzmeter.db.snapshot import CoverageSummary, update_agg_snapshot_coverage, upsert_agg_snapshot
 from fuzzmeter.reporting.analyzers import coverage_curves, coverage_matrices
-from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.metrics import (
     clean_floats,
     dt,
@@ -33,6 +32,7 @@ from fuzzmeter.reporting.metrics import (
     trapezoid_auc,
     vargha_delaney_a12,
 )
+from fuzzmeter.reporting.payload import _PayloadBuilder
 
 
 def _coverage_export(branch_line: int) -> dict:

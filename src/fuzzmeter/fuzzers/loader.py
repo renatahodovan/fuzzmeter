@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+"""Load and normalize external fuzzer adapter modules."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -15,7 +17,7 @@ import threading
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, ClassVar
 
 from .models import OutputPaths
 
@@ -27,13 +29,13 @@ class FuzzerModule:
         self._module = module
 
     def output_paths(self, live_out: Path) -> OutputPaths:
-        getter = getattr(self._module, "get_output_paths", None)
+        getter = getattr(self._module, 'get_output_paths', None)
         if not callable(getter):
             return self._default_output_paths(live_out)
         return self._normalize_output_paths(live_out, getter(live_out))
 
     def output_paths_relative(self) -> OutputPaths:
-        live_out = Path("/__fuzzmeter_live_out__")
+        live_out = Path('/__fuzzmeter_live_out__')
         resolved = self.output_paths(live_out)
         return OutputPaths(
             corpus_root=self._to_relative_under_root(live_out, resolved.corpus_root),
@@ -46,13 +48,13 @@ class FuzzerModule:
         )
 
     def stats(self, trial_root: Path, *, cutoff_elapsed_s: int | None = None) -> dict[str, Any]:
-        getter_until = getattr(self._module, "get_stats_until", None)
+        getter_until = getattr(self._module, 'get_stats_until', None)
         if callable(getter_until) and cutoff_elapsed_s is not None:
             with io.StringIO() as captured_stdout, redirect_stdout(captured_stdout):
                 out = getter_until(trial_root, cutoff_elapsed_s=cutoff_elapsed_s)
             return out if isinstance(out, dict) else {}
 
-        getter = getattr(self._module, "get_stats", None)
+        getter = getattr(self._module, 'get_stats', None)
         if not callable(getter):
             return {}
         with io.StringIO() as captured_stdout, redirect_stdout(captured_stdout):
@@ -86,18 +88,17 @@ class FuzzerModule:
             configured = getter()
             if configured is None:
                 return None
-            configured_path = Path(configured)
-            return configured_path if configured_path.is_absolute() else configured_path
+            return Path(configured)
 
-        script = self.fuzzers_root / self.fuzzer_name / "run" / "snapshot_preprocess.py"
+        script = self.fuzzers_root / self.fuzzer_name / 'run' / 'snapshot_preprocess.py'
         return script if script.is_file() else None
 
     @staticmethod
     def _default_output_paths(live_out: Path) -> OutputPaths:
         return OutputPaths(
-            corpus_root=live_out / "corpus",
-            crashes_root=live_out / "crashes",
-            hangs_root=live_out / "hangs",
+            corpus_root=live_out / 'corpus',
+            crashes_root=live_out / 'crashes',
+            hangs_root=live_out / 'hangs',
         )
 
     @classmethod
@@ -113,15 +114,15 @@ class FuzzerModule:
 
         if isinstance(out, dict):
             return OutputPaths(
-                corpus_root=resolve(out.get("corpus_root")) or (live_out / "corpus"),
-                crashes_root=resolve(out.get("crashes_root")) or (live_out / "crashes"),
-                hangs_root=resolve(out.get("hangs_root")),
+                corpus_root=resolve(out.get('corpus_root')) or (live_out / 'corpus'),
+                crashes_root=resolve(out.get('crashes_root')) or (live_out / 'crashes'),
+                hangs_root=resolve(out.get('hangs_root')),
             )
 
         if isinstance(out, (tuple, list)) and len(out) in (2, 3):
             return OutputPaths(
-                corpus_root=resolve(out[0]) or (live_out / "corpus"),
-                crashes_root=resolve(out[1]) or (live_out / "crashes"),
+                corpus_root=resolve(out[0]) or (live_out / 'corpus'),
+                crashes_root=resolve(out[1]) or (live_out / 'crashes'),
                 hangs_root=resolve(out[2]) if len(out) == 3 else None,
             )
 
@@ -132,21 +133,21 @@ class FuzzerModule:
         try:
             return path.relative_to(root)
         except ValueError as exc:
-            raise RuntimeError(f"Fuzzer output path must stay under {root}: {path}") from exc
+            raise RuntimeError(f'Fuzzer output path must stay under {root}: {path}') from exc
 
 
 class FuzzerLoader:
-    _module_cache: dict[str, ModuleType] = {}
-    _module_lock = threading.RLock()
+    _module_cache: ClassVar[dict[str, ModuleType]] = {}
+    _module_lock: ClassVar[threading.RLock] = threading.RLock()
 
     def __init__(self, fuzzers_root: Path) -> None:
         self.fuzzers_root = Path(fuzzers_root)
 
     def load(self, fuzzer_name: str) -> FuzzerModule:
-        path = self.fuzzers_root / fuzzer_name / "run" / "fuzz.py"
+        path = self.fuzzers_root / fuzzer_name / 'run' / 'fuzz.py'
         if not path.exists():
-            raise RuntimeError(f"fuzzer run entrypoint not found: {path}")
-        module = self._load_module(path=path, module_name=f"fuzzmeter_user_fuzzers.{fuzzer_name}.run.fuzz")
+            raise RuntimeError(f'fuzzer run entrypoint not found: {path}')
+        module = self._load_module(path=path, module_name=f'fuzzmeter_user_fuzzers.{fuzzer_name}.run.fuzz')
         return FuzzerModule(fuzzers_root=self.fuzzers_root, fuzzer_name=fuzzer_name, module=module)
 
     def _load_module(self, *, path: Path, module_name: str) -> ModuleType:
@@ -158,14 +159,14 @@ class FuzzerLoader:
 
             spec = importlib.util.spec_from_file_location(module_name, path)
             if spec is None or spec.loader is None:
-                raise RuntimeError(f"Cannot load module: {path}")
+                raise RuntimeError(f'Cannot load module: {path}')
 
             try:
                 self._install_fuzzer_namespace()
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
             except Exception as exc:
-                raise RuntimeError(f"Cannot load module: {path}") from exc
+                raise RuntimeError(f'Cannot load module: {path}') from exc
 
             self._module_cache[cache_key] = module
             return module

@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-from dataclasses import fields
 
+from dataclasses import fields
 from pathlib import Path
 
 from fuzzmeter.config import CampaignCase, load_campaign_config
@@ -35,14 +35,14 @@ class ConfigBuilderTest(unittest.TestCase):
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 run:
   source_info: true
 fuzzers:
   - libfuzzer
 targets:
   - zlib:zlib_uncompress_fuzzer
-""",
+''',
         )
 
         self.assertTrue(config.settings.source_info)
@@ -53,14 +53,14 @@ targets:
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 run:
   identity: true
 fuzzers:
   - libfuzzer
 targets:
   - zlib:zlib_uncompress_fuzzer
-""",
+''',
         )
 
         self.assertTrue(config.settings.source_info)
@@ -71,16 +71,16 @@ targets:
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 fuzzers:
   - libfuzzer
 targets:
   - curl:curl_fuzzer
-""",
+''',
         )
 
         self.assertEqual(
-            [("curl", "curl_fuzzer", "in_process")],
+            [('curl', 'curl_fuzzer', 'in_process')],
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
@@ -90,16 +90,16 @@ targets:
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 fuzzers:
   - libfuzzer
 targets:
   - openssl:x509
-""",
+''',
         )
 
         self.assertEqual(
-            [("openssl", "x509", "in_process")],
+            [('openssl', 'x509', 'in_process')],
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
@@ -109,16 +109,16 @@ targets:
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 fuzzers:
   - libfuzzer
 targets:
   - libxml2:reader
-""",
+''',
         )
 
         self.assertEqual(
-            [("libxml2", "reader", "in_process")],
+            [('libxml2', 'reader', 'in_process')],
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
@@ -128,16 +128,16 @@ targets:
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 fuzzers:
   - libfuzzer
 targets:
   - re2:re2_fuzzer
-""",
+''',
         )
 
         self.assertEqual(
-            [("re2", "re2_fuzzer", "in_process")],
+            [('re2', 're2_fuzzer', 'in_process')],
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
@@ -147,16 +147,16 @@ targets:
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 fuzzers:
   - libfuzzer
 targets:
   - zlib:zlib_uncompress_fuzzer
-""",
+''',
         )
 
         self.assertEqual(
-            [("zlib", "zlib_uncompress_fuzzer", "in_process")],
+            [('zlib', 'zlib_uncompress_fuzzer', 'in_process')],
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
@@ -166,16 +166,16 @@ targets:
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 fuzzers:
   - libfuzzer
 targets:
   - harfbuzz:hb-shape-fuzzer
-""",
+''',
         )
 
         self.assertEqual(
-            [("harfbuzz", "hb-shape-fuzzer", "in_process")],
+            [('harfbuzz', 'hb-shape-fuzzer', 'in_process')],
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
@@ -185,16 +185,16 @@ targets:
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 fuzzers:
   - libfuzzer
 targets:
   - freetype2:ftfuzzer
-""",
+''',
         )
 
         self.assertEqual(
-            [("freetype2", "ftfuzzer", "in_process")],
+            [('freetype2', 'ftfuzzer', 'in_process')],
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
@@ -204,12 +204,12 @@ targets:
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 fuzzers:
   - libfuzzer
 targets:
   - quickjs:fuzz_eval
-""",
+''',
         )
 
         self.assertEqual(
@@ -223,12 +223,12 @@ targets:
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 fuzzers:
   - blackbox
 targets:
   - jsc:jsc
-""",
+''',
         )
 
         self.assertEqual(
@@ -241,12 +241,12 @@ targets:
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 fuzzers:
   - blackbox
 targets:
   - v8:d8
-""",
+''',
         )
 
         self.assertEqual(
@@ -259,12 +259,12 @@ targets:
 
         config = _load_campaign_config(
             repo_root,
-            """
+            '''
 fuzzers:
   - blackbox
 targets:
   - spidermonkey:js
-""",
+''',
         )
 
         self.assertEqual(
@@ -283,14 +283,14 @@ targets:
 
             config = _load_campaign_config(
                 root,
-                """
+                '''
 fuzzers:
   - limited
   - plain
 targets:
   - jerryscript:jerry
   - sqlite3:ossfuzz
-""",
+''',
             )
 
         self.assertEqual(
@@ -312,14 +312,14 @@ targets:
 
             config = _load_campaign_config(
                 root,
-                """
+                '''
 fuzzers:
   - fuzzer: limited_child
     parent: limited_base
 targets:
   - jerryscript:jerry
   - sqlite3:ossfuzz
-""",
+''',
             )
 
         self.assertEqual(
@@ -336,12 +336,12 @@ targets:
 
             config = _load_campaign_config(
                 root,
-                """
+                '''
 fuzzers:
   - plain
 targets:
   - jerryscript:jerry
-""",
+''',
             )
 
         self.assertEqual(10.0, config.cases[0].target_timeout_s)
@@ -356,12 +356,12 @@ targets:
 
             config = _load_campaign_config(
                 root,
-                """
+                '''
 fuzzers:
   - plain
 targets:
   - jerryscript:jerry
-""",
+''',
             )
 
         self.assertEqual(1.0, config.cases[0].target_timeout_s)
@@ -376,7 +376,7 @@ targets:
 
             config = _load_campaign_config(
                 root,
-                """
+                '''
 fuzzers:
   - fuzzer: plain
     runtime:
@@ -384,7 +384,7 @@ fuzzers:
         timeout_s: 3
 targets:
   - jerryscript:jerry
-""",
+''',
             )
 
         self.assertEqual(10.0, config.cases[0].target_timeout_s)
@@ -399,7 +399,7 @@ targets:
 
             config = _load_campaign_config(
                 root,
-                """
+                '''
 run:
   time_seconds: 14400
   snapshot:
@@ -408,7 +408,7 @@ fuzzers:
   - plain
 targets:
   - jerryscript:jerry
-""",
+''',
             )
 
         self.assertEqual(1, config.settings.snapshot_export_every_ticks)
@@ -422,7 +422,7 @@ targets:
 
             config = _load_campaign_config(
                 root,
-                """
+                '''
 run:
   time_seconds: 14400
   snapshot:
@@ -432,7 +432,7 @@ fuzzers:
   - plain
 targets:
   - jerryscript:jerry
-""",
+''',
             )
 
         self.assertEqual(7, config.settings.snapshot_export_every_ticks)
@@ -459,12 +459,12 @@ targets:
 
             config = _load_campaign_config(
                 root,
-                """
+                '''
 fuzzers:
   - plain
 targets:
   - jerryscript:jerry_file
-""",
+''',
             )
 
         self.assertEqual(
@@ -494,12 +494,12 @@ targets:
 
             config = _load_campaign_config(
                 root,
-                """
+                '''
 fuzzers:
   - plain
 targets:
   - jerryscript:jerry_file
-""",
+''',
             )
 
         self.assertEqual({'env': {'MODE': 'file'}}, config.cases[0].build_config)
@@ -512,7 +512,7 @@ targets:
             target_dir = root / 'targets' / 'jerryscript'
             target_dir.mkdir(parents=True)
             target_dir.joinpath('benchmark.yaml').write_text(
-                """
+                '''
 project: jerryscript
 fuzzers:
   plain:
@@ -522,19 +522,19 @@ fuzzers:
 fuzz_targets:
   jerry:
     input_mode: in_process
-""".lstrip(),
+'''.lstrip(),
                 encoding='utf-8',
             )
 
             with self.assertRaisesRegex(ValueError, 'root-level fuzzers'):
                 _load_campaign_config(
                     root,
-                    """
+                    '''
 fuzzers:
   - plain
 targets:
   - jerryscript:jerry
-""",
+''',
                 )
 
     def test_multi_target_benchmark_rejects_missing_requested_target(self) -> None:
@@ -547,12 +547,12 @@ targets:
             with self.assertRaisesRegex(ValueError, "requested fuzz target 'missing'"):
                 _load_campaign_config(
                     root,
-                    """
+                    '''
 fuzzers:
   - plain
 targets:
   - jerryscript:missing
-""",
+''',
                 )
 
     def test_benchmark_config_rejects_mixed_legacy_and_multi_target_forms(self) -> None:
@@ -563,25 +563,25 @@ targets:
             target_dir = root / 'targets' / 'jerryscript'
             target_dir.mkdir(parents=True)
             target_dir.joinpath('benchmark.yaml').write_text(
-                """
+                '''
 project: jerryscript
 fuzz_target: legacy
 fuzz_targets:
   jerry:
     input_mode: in_process
-""".lstrip(),
+'''.lstrip(),
                 encoding='utf-8',
             )
 
             with self.assertRaisesRegex(ValueError, 'exactly one of fuzz_target or fuzz_targets'):
                 _load_campaign_config(
                     root,
-                    """
+                    '''
 fuzzers:
   - plain
 targets:
   - jerryscript:jerry
-""",
+''',
                 )
 
     def test_benchmark_config_rejects_empty_multi_target_mapping(self) -> None:
@@ -599,12 +599,12 @@ targets:
             with self.assertRaisesRegex(ValueError, 'non-empty mapping'):
                 _load_campaign_config(
                     root,
-                    """
+                    '''
 fuzzers:
   - plain
 targets:
   - jerryscript:jerry
-""",
+''',
                 )
 
 

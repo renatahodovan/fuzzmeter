@@ -18,14 +18,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fuzzers.aflplusplus.run import fuzz as aflplusplus_fuzzer
+from fuzzers.libfuzzer.run import fuzz as libfuzzer_fuzzer
 from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.repro.ingest import DetectedFile, detect_new_files, prepare_snapshot_inputs
 from fuzzmeter.snapshot.collector import _collect_trial_snapshot, _detect_replay_files
 from fuzzmeter.snapshot.scheduler import SnapshotScheduler
 from fuzzmeter.trial.models import ReplayTrialInstance, TrialImages, TrialInstance, TrialLayout
-from fuzzers.aflplusplus.run import fuzz as aflplusplus_fuzzer
-from fuzzers.libfuzzer.run import fuzz as libfuzzer_fuzzer
 from tests.support.trials import make_trial_config
 
 

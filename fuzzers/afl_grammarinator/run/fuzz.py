@@ -14,8 +14,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict
 
-from fuzzmeter.resources.instrumentation import utils
 from fuzzers.aflplusplus.run import fuzz as aflplusplus_fuzzer
+from fuzzmeter.resources.instrumentation import utils
 
 LOG = logging.getLogger(__name__)
 

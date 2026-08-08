@@ -16,9 +16,10 @@ import threading
 import time
 
 from pathlib import Path
+from typing import ClassVar
 
 from ..docker import ContainerSpec, DockerClient, DockerRuntime
-from .models import FUZZER_LOG, FUZZ_DIR, TrialConfig
+from .models import FUZZ_DIR, FUZZER_LOG, TrialConfig
 
 LOG = logging.getLogger(__name__)
 
@@ -26,8 +27,8 @@ LOG = logging.getLogger(__name__)
 class TrialContainer:
     '''Run and stop fuzzer trial containers.'''
 
-    _active_container_names: set[str] = set()
-    _active_lock = threading.RLock()
+    _active_container_names: ClassVar[set[str]] = set()
+    _active_lock: ClassVar[threading.RLock] = threading.RLock()
 
     def __init__(
         self,

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import unittest
 
@@ -112,6 +113,21 @@ class FuzzerTargetTimeoutTest(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertEqual(1, command.count('-t'))
         self.assertEqual('777', command[command.index('-t') + 1])
+
+    def test_afl_hides_both_output_streams_when_requested(self) -> None:
+        with patch.dict(
+            'os.environ',
+            {
+                'FUZZER': 'afl',
+                'FM_FUZZER_RUNTIME_CONFIG_JSON': json.dumps({}),
+            },
+            clear=True,
+        ), patch('fuzzers.afl.run.fuzz.subprocess.run') as run:
+            afl_fuzzer.run_afl_fuzz('in', 'out', 'target', hide_output=True)
+
+        self.assertEqual(subprocess.DEVNULL, run.call_args.kwargs['stdout'])
+        self.assertEqual(subprocess.DEVNULL, run.call_args.kwargs['stderr'])
+        self.assertFalse(run.call_args.kwargs['check'])
 
 
 if __name__ == '__main__':

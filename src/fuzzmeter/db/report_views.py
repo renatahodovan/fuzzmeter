@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import sqlite3
+
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -115,13 +116,13 @@ class ReportingDB:
 
         metadata_select = ', '.join(TRIAL_METADATA_FIELDS)
         return self.rows(
-            f"""
+            f'''
             SELECT trial_id, fuzzer, benchmark, fuzz_target, rep,
                    time_seconds, jobs, status, started_ts, ended_ts, {metadata_select}
             FROM trials
             WHERE run_id=?
             ORDER BY benchmark, fuzz_target, fuzzer, rep
-            """,
+            ''',
             (run_id,),
         )
 
@@ -132,7 +133,7 @@ class ReportingDB:
             return {}
         placeholders = ','.join('?' for _ in trial_ids)
         rows = self.rows(
-            f"""
+            f'''
             SELECT s.*
             FROM snapshots AS s
             JOIN (
@@ -142,7 +143,7 @@ class ReportingDB:
                 GROUP BY trial_id
             ) AS m
               ON m.trial_id = s.trial_id AND m.max_idx = s.idx
-            """,
+            ''',
             tuple(int(tid) for tid in trial_ids),
         )
         return {int(row['trial_id']): row for row in rows}
@@ -154,7 +155,7 @@ class ReportingDB:
             return []
         placeholders = ','.join('?' for _ in trial_ids)
         return self.rows(
-            f"""
+            f'''
             SELECT snapshot_id, trial_id, idx, ts, corpus_files, execs_done, stats_json,
                    crashes, hangs,
                    cov_lines_covered, cov_lines_total,
@@ -165,7 +166,7 @@ class ReportingDB:
             FROM snapshots
             WHERE trial_id IN ({placeholders})
             ORDER BY trial_id, idx
-            """,
+            ''',
             tuple(int(tid) for tid in trial_ids),
         )
 

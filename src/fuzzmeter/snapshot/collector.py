@@ -80,7 +80,7 @@ def collect_snapshots(
             ]
             collected = [future.result() for future in futures]
 
-    coverage_results, crash_results = zip(*collected)
+    coverage_results, crash_results = zip(*collected, strict=True)
     coverage_snapshots = [snapshot for snapshot in coverage_results if snapshot is not None]
     crash_snapshots = [snapshot for snapshot in crash_results if snapshot is not None]
 

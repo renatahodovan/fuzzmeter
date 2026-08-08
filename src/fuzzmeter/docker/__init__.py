@@ -17,11 +17,11 @@ from .client import ContainerSpec, DockerClient, DockerTimeoutError
 from .runtime import DockerRuntime
 
 __all__ = [
+    'INSTRUMENTATION_PROFILES',
     'ContainerSpec',
     'DockerClient',
-    'DockerTimeoutError',
     'DockerRuntime',
-    'INSTRUMENTATION_PROFILES',
+    'DockerTimeoutError',
     'fuzzer_local_repo_paths',
     'fuzzer_source_dirs',
     'generate_run_bake_hcl',

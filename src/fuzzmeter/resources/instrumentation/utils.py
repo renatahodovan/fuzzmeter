@@ -22,7 +22,6 @@ from typing import Any, Iterator
 
 import yaml
 
-
 LOG = logging.getLogger(__name__)
 
 DEFAULT_OPTIMIZATION_LEVEL = '-O3'

@@ -10,9 +10,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import re
 import shutil
+
+from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader

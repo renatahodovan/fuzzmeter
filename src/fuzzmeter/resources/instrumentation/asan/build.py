@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+"""Build benchmark targets with AddressSanitizer instrumentation."""
+
 from __future__ import annotations
 
 import os
@@ -23,7 +25,7 @@ def build():
         'returns-nonnull-attribute,shift,signed-integer-overflow,unreachable,'
         'vla-bound,vptr',
     ]
-    cflags = ['-O1', '-g', '-fno-omit-frame-pointer', '-fno-optimize-sibling-calls'] + SANITIZER_FLAGS
+    cflags = ['-O1', '-g', '-fno-omit-frame-pointer', '-fno-optimize-sibling-calls', *SANITIZER_FLAGS]
 
     utils.append_flags('CFLAGS', cflags)
     utils.append_flags('CXXFLAGS', cflags)

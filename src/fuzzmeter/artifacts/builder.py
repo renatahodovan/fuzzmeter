@@ -9,15 +9,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from importlib import resources
 import logging
-from pathlib import Path
 import shutil
 import subprocess
 
-from ..config import CampaignConfig, implementation_fuzzer
+from dataclasses import dataclass
+from importlib import resources
+from pathlib import Path
+
 from ..composite.collect import collect_records, save_records
+from ..config import CampaignConfig, implementation_fuzzer
 from ..docker import DockerRuntime, fuzzer_source_dirs, generate_run_bake_hcl
 from ..docker.bake import INSTRUMENTATION_PROFILES, fuzzer_local_repo_paths
 from ..paths import ExternalRoots, docker_resources, entrypoint_resources, instrumentation_resources

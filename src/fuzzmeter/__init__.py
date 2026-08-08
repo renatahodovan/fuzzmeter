@@ -5,5 +5,7 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-__all__ = ["__version__"]
-__version__ = "0.3.0"
+"""Expose FuzzMeter package version metadata."""
+
+__all__ = ['__version__']
+__version__ = '0.3.0'

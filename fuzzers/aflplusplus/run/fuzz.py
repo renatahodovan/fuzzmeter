@@ -24,7 +24,7 @@ from fuzzmeter.resources.instrumentation import utils
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Integration code for AFLplusplus fuzzer."""
+'''Integration code for AFLplusplus fuzzer.'''
 
 # Optional benchmark metadata is exposed to fuzzer builds via FM_BENCHMARK_YAML.
 
@@ -34,7 +34,7 @@ def fuzz(input_corpus,
          output_corpus,
          target_binary,
          input_mode: str,
-         flags=tuple(),
+         flags=(),
          skip=False,
          no_cmplog=False):  # pylint: disable=too-many-arguments
     """Run fuzzer."""
@@ -82,9 +82,9 @@ def get_output_paths(live_out: Path) -> Dict[str, Any]:
     p = Path(live_out)
     # AFL++ writes into out_dir/default/{queue,crashes,hangs}
     return {
-        "corpus_root": p / "default" / "queue",
-        "crashes_root": p / "default" / "crashes",
-        "hangs_root": p / "default" / "hangs",
+        'corpus_root': p / 'default' / 'queue',
+        'crashes_root': p / 'default' / 'crashes',
+        'hangs_root': p / 'default' / 'hangs',
     }
 
 
@@ -95,12 +95,12 @@ def get_stats(trial_root: Path) -> Dict[str, Any]:
         return {}
     stats: Dict[str, str] = {}
     try:
-        with p.open("r", encoding="utf-8", errors="replace") as f:
+        with p.open('r', encoding='utf-8', errors='replace') as f:
             for line in f:
-                if ":" in line:
-                    k, v = line.split(":", 1)
+                if ':' in line:
+                    k, v = line.split(':', 1)
                     k, v = k.strip(), v.strip()
-                    if k in ["execs_done", "execs_per_sec"]:
+                    if k in ['execs_done', 'execs_per_sec']:
                         stats[k] = float(v)
         return stats
     except Exception:
@@ -119,18 +119,18 @@ def get_stats_until(trial_root: Path, *, cutoff_elapsed_s: int | None = None) ->
     latest: dict[str, float] | None = None
     first_after: dict[str, float] | None = None
     try:
-        with p.open("r", encoding="utf-8", errors="replace") as f:
+        with p.open('r', encoding='utf-8', errors='replace') as f:
             for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
+                stripped_line = line.strip()
+                if not stripped_line or stripped_line.startswith('#'):
                     continue
-                parts = [part.strip() for part in line.split(",")]
+                parts = [part.strip() for part in stripped_line.split(',')]
                 if len(parts) < 12:
                     continue
                 relative_time = int(float(parts[0]))
                 parsed = {
-                    "execs_per_sec": float(parts[10]),
-                    "execs_done": float(parts[11]),
+                    'execs_per_sec': float(parts[10]),
+                    'execs_done': float(parts[11]),
                 }
                 if relative_time > int(cutoff_elapsed_s):
                     if first_after is None:
@@ -159,8 +159,8 @@ def get_custom_metrics(
 
 
 def _stats_file(trial_root: Path) -> Path:
-    return Path(trial_root) / "work" / "default" / "fuzzer_stats"
+    return Path(trial_root) / 'work' / 'default' / 'fuzzer_stats'
 
 
 def _plot_data_file(trial_root: Path) -> Path:
-    return Path(trial_root) / "work" / "default" / "plot_data"
+    return Path(trial_root) / 'work' / 'default' / 'plot_data'

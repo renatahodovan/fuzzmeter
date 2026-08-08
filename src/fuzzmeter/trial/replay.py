@@ -65,7 +65,7 @@ def prepare_replay_trial(
             {
                 'start_ts': start_ts,
                 'end_ts': end_ts,
-                'file_times_ns': {path: ts for path, ts in sorted(file_times_ns.items())},
+                'file_times_ns': dict(sorted(file_times_ns.items())),
             },
             indent=2,
             sort_keys=True,

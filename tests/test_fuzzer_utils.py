@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import tempfile
 import unittest
+
+from pathlib import Path
 from unittest.mock import patch
 
 from fuzzers import utils
@@ -44,7 +45,7 @@ class FuzzerUtilsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             benchmark_path = Path(tmp_dir) / 'benchmark.yaml'
             benchmark_path.write_text(
-                """
+                '''
 project: demo
 fuzz_targets:
   one:
@@ -61,7 +62,7 @@ fuzz_targets:
         build:
           env:
             MODE: two
-""".lstrip(),
+'''.lstrip(),
                 encoding='utf-8',
             )
 
@@ -77,7 +78,7 @@ fuzz_targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             benchmark_path = Path(tmp_dir) / 'benchmark.yaml'
             benchmark_path.write_text(
-                """
+                '''
 project: demo
 fuzz_targets:
   first:
@@ -94,7 +95,7 @@ fuzz_targets:
         build:
           env:
             MODE: second
-""".lstrip(),
+'''.lstrip(),
                 encoding='utf-8',
             )
 
@@ -159,7 +160,7 @@ fuzz_targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             benchmark_path = Path(tmp_dir) / 'benchmark.yaml'
             benchmark_path.write_text(
-                """
+                '''
 project: demo
 fuzzers:
   afl:
@@ -169,7 +170,7 @@ fuzzers:
 fuzz_targets:
   one:
     input_mode: file
-""".lstrip(),
+'''.lstrip(),
                 encoding='utf-8',
             )
 

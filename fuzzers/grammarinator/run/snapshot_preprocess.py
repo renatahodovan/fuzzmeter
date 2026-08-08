@@ -22,7 +22,6 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-
 LOG = logging.getLogger(__name__)
 RUNNER_OUT_ROOT = Path('/tmp/fuzzmeter/out')
 MUTATOR_RE = re.compile(r'(?:^|,)execs:\d+,(?:op:)?([^,]+)')

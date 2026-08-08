@@ -13,8 +13,8 @@ import unittest
 
 from unittest.mock import patch
 
-from fuzzmeter.composite.collect import collect_config, collect_environment, metadata_for_case
 from fuzzmeter.composite import canonical_digest
+from fuzzmeter.composite.collect import collect_config, collect_environment, metadata_for_case
 from fuzzmeter.config import CampaignCase
 
 

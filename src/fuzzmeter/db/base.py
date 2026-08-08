@@ -9,9 +9,10 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 import sqlite3
 import time
+
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, Sequence
@@ -25,7 +26,7 @@ def _row_factory(cur: sqlite3.Cursor, row: tuple) -> dict:
 def _is_locked_error(e: Exception) -> bool:
     # sqlite3.OperationalError: database is locked
     msg = str(e).lower()
-    return "database is locked" in msg or "database table is locked" in msg
+    return 'database is locked' in msg or 'database table is locked' in msg
 
 
 def open_readonly_connection(path: Path) -> sqlite3.Connection:
@@ -64,14 +65,14 @@ class DB:
         con = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         con.row_factory = _row_factory
 
-        con.execute("PRAGMA journal_mode=WAL")
-        con.execute("PRAGMA foreign_keys=ON")
-        con.execute("PRAGMA synchronous=NORMAL")
+        con.execute('PRAGMA journal_mode=WAL')
+        con.execute('PRAGMA foreign_keys=ON')
+        con.execute('PRAGMA synchronous=NORMAL')
 
         # IMPORTANT: allow waiting on locks instead of failing immediately
         if busy_timeout_ms is None:
             busy_timeout_ms = DB.DEFAULT_BUSY_TIMEOUT_MS
-        con.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
+        con.execute(f'PRAGMA busy_timeout={int(busy_timeout_ms)}')
 
         return DB(con=con)
 

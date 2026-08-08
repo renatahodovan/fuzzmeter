@@ -9,11 +9,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import re
 import subprocess
-from typing import get_args
 import unittest
+
+from pathlib import Path
+from typing import get_args
 
 from fuzzmeter.reporting.keys import COV_METRICS, MATRIX_PAYLOAD_KEYS
 from fuzzmeter.reporting.plugin_api import ChartType, SectionPlacement
@@ -64,7 +65,7 @@ class ReportFrontendTest(unittest.TestCase):
         self.assertIn('return COVERAGE_METRICS.find(([metric]) => hasMetricData(metric))', page)
 
     def test_comparison_mode_selects_payload_variants_without_losing_unknowns(self) -> None:
-        script = r"""
+        script = r'''
             import assert from 'node:assert/strict';
             import { cloneMatrixForSelected } from './src/fuzzmeter/web/static/report/matrix.js';
             import { comparisonMatrix, comparisonMetric } from './src/fuzzmeter/web/static/report/report-data.js';
@@ -102,14 +103,14 @@ class ReportFrontendTest(unittest.TestCase):
               { value: 2, bound: 'lower' },
             );
             assert.deepEqual(comparisonMetric({ exclusive_all: null }, 'all'), { value: null, bound: 'unknown' });
-        """
+        '''
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],
             cwd=REPO_ROOT,
             check=True,
         )
     def test_matrix_cells_render_bounds_and_unknown_values(self) -> None:
-        script = r"""
+        script = r'''
             import assert from 'node:assert/strict';
             import { renderMatrixTable } from './src/fuzzmeter/web/static/report/charts.js';
 
@@ -146,7 +147,7 @@ class ReportFrontendTest(unittest.TestCase):
             // uniform repetition count is not repeated once per fuzzer pair.
             assert.equal(unknownCell.children.length, 1);
             assert.equal(boundedCell.children.length, 1);
-        """
+        '''
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],
             cwd=REPO_ROOT,
@@ -154,7 +155,7 @@ class ReportFrontendTest(unittest.TestCase):
         )
 
     def test_failed_tick_notice_marks_coverage_holes(self) -> None:
-        script = r"""
+        script = r'''
             import assert from 'node:assert/strict';
             import { tickFailureNotice } from './src/fuzzmeter/web/static/report/report-data.js';
 
@@ -163,7 +164,7 @@ class ReportFrontendTest(unittest.TestCase):
               tickFailureNotice({ failed_snapshot_ticks: 2 }),
               'Warning: 2 snapshot ticks failed. Coverage and crash curves may contain unmeasured gaps.',
             );
-        """
+        '''
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],
             cwd=REPO_ROOT,
@@ -171,7 +172,7 @@ class ReportFrontendTest(unittest.TestCase):
         )
 
     def test_frontend_derives_summary_scores_and_metric_ranks(self) -> None:
-        script = r"""
+        script = r'''
             import assert from 'node:assert/strict';
             import { computeSummary, enrichTargetForSelection } from './src/fuzzmeter/web/static/report/filters.js';
 
@@ -245,7 +246,7 @@ class ReportFrontendTest(unittest.TestCase):
             assert.equal(strictSummary.rankings[0].exclusive_coverage_count, null);
             assert.equal(strictSummary.rankings[0].exclusive_coverage_count_bound, 'unknown');
             assert.equal(strictSummary.rankings[0].exclusive_bug_count, 0);
-        """
+        '''
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],
             cwd=REPO_ROOT,
@@ -253,7 +254,7 @@ class ReportFrontendTest(unittest.TestCase):
         )
 
     def test_runs_page_helpers_preserve_status_filter_and_selection_behavior(self) -> None:
-        script = r"""
+        script = r'''
             import assert from 'node:assert/strict';
             import {
               matchesFilter,
@@ -363,7 +364,7 @@ class ReportFrontendTest(unittest.TestCase):
               ['/api/runs', 'GET'],
               ['/api/composite/sources/refresh', 'POST'],
             ]);
-        """
+        '''
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],
             cwd=REPO_ROOT,
@@ -371,7 +372,7 @@ class ReportFrontendTest(unittest.TestCase):
         )
 
     def test_report_statistical_and_domain_helpers_are_dom_independent(self) -> None:
-        script = r"""
+        script = r'''
             import assert from 'node:assert/strict';
             import { compareNumericRows } from './src/fuzzmeter/web/static/report/sort.js';
             import { cleanFloats, median, quantile } from './src/fuzzmeter/web/static/report/stats.js';
@@ -425,7 +426,7 @@ class ReportFrontendTest(unittest.TestCase):
             assert.equal(shouldDrawDistributionViolin([1, 2, 3, 4]), false);
             assert.equal(shouldDrawDistributionViolin([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), false);
             assert.equal(shouldDrawDistributionViolin(Array.from({ length: 20 }, (_, index) => index)), true);
-        """
+        '''
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],
             cwd=REPO_ROOT,
@@ -442,7 +443,7 @@ class ReportFrontendTest(unittest.TestCase):
         self.assertIn('aggregate coverage fallback is shown', text)
 
     def test_report_source_compatibility_helpers_render_modal_details(self) -> None:
-        script = r"""
+        script = r'''
             import assert from 'node:assert/strict';
 
             class Node {
@@ -560,7 +561,7 @@ class ReportFrontendTest(unittest.TestCase):
             assert.match(bodyText, /host\.kernel/);
             assert.match(bodyText, /6\.8/);
             assert.match(bodyText, /6\.9/);
-        """
+        '''
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],
             cwd=REPO_ROOT,
@@ -568,7 +569,7 @@ class ReportFrontendTest(unittest.TestCase):
         )
 
     def test_fuzzer_detail_modal_renders_metadata_tab(self) -> None:
-        script = r"""
+        script = r'''
             import assert from 'node:assert/strict';
 
             class Node {
@@ -655,7 +656,7 @@ class ReportFrontendTest(unittest.TestCase):
             assert.match(elements.get('configModalBody').textContent, /bench/);
             assert.match(elements.get('configModalBody').textContent, /fuzzer-abc/);
             assert.match(elements.get('configModalBody').textContent, /arm64/);
-        """
+        '''
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],
             cwd=REPO_ROOT,
@@ -663,7 +664,7 @@ class ReportFrontendTest(unittest.TestCase):
         )
 
     def test_composite_reload_selects_new_filter_entries(self) -> None:
-        script = r"""
+        script = r'''
             import assert from 'node:assert/strict';
             import { FM_APP } from './src/fuzzmeter/web/static/report/state.js';
             import { selectNewFilterEntries } from './src/fuzzmeter/web/static/report/filters.js';
@@ -694,7 +695,7 @@ class ReportFrontendTest(unittest.TestCase):
               'bench',
               'other-bench',
             ]);
-        """
+        '''
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],
             cwd=REPO_ROOT,

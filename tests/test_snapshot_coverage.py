@@ -9,9 +9,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import unittest
+
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from fuzzmeter.db import DB, ensure_schema

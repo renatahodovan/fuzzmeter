@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import shlex
 import shutil
@@ -17,11 +18,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-import logging
-
-from fuzzmeter.resources.instrumentation import utils
 from fuzzers.blackbox.run import fuzz as blackbox_fuzzer
-
+from fuzzmeter.resources.instrumentation import utils
 
 LOG = logging.getLogger(__name__)
 

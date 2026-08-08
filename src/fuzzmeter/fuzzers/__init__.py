@@ -5,14 +5,16 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+"""Expose fuzzer adapter loading and hook interfaces."""
+
 from .hooks import HookRunner, HookSpec
 from .loader import FuzzerLoader, FuzzerModule
 from .models import OutputPaths
 
 __all__ = [
-    "FuzzerLoader",
-    "FuzzerModule",
-    "HookRunner",
-    "HookSpec",
-    "OutputPaths",
+    'FuzzerLoader',
+    'FuzzerModule',
+    'HookRunner',
+    'HookSpec',
+    'OutputPaths',
 ]

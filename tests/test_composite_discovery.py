@@ -9,10 +9,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+
+from pathlib import Path
 
 from fuzzmeter.composite.discovery import discover_measurements
 from tests.support.dbs import measurement_run_db

@@ -5,6 +5,8 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
+"""Initialize on-disk run workspaces and metadata."""
+
 from __future__ import annotations
 
 import json
@@ -12,11 +14,10 @@ import time
 
 from pathlib import Path
 
-from ..config import CampaignConfig
 from ..composite.collect import collect_records, save_records
+from ..config import CampaignConfig
 from ..db import ensure_schema, open_db
 from ..db import runs as db_runs
-
 
 
 def initialize_run_dir(*, run_dir: Path, run_id: str, config_src: str, campaign_config: CampaignConfig) -> None:

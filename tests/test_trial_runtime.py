@@ -9,8 +9,8 @@
 
 from __future__ import annotations
 
-import tempfile
 import subprocess
+import tempfile
 import time
 import unittest
 
@@ -19,6 +19,7 @@ from pathlib import Path
 
 from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.trial.models import TrialConfig, TrialImages
+from fuzzmeter.trial.runtime import TrialContainer
 from tests.support.trials import make_trial_config
 
 
@@ -104,8 +105,6 @@ class TrialRuntimeTest(unittest.TestCase):
     '''Verify trial container monitoring behavior.'''
 
     def test_trial_container_uses_run_scoped_paths(self) -> None:
-        from fuzzmeter.trial.runtime import TrialContainer
-
         with tempfile.TemporaryDirectory() as tmp_dir:
             run_dir = Path(tmp_dir) / 'run'
             input_seed_root = run_dir / 'seed_corpora' / '_empty' / 'aflplusplus__sqlite3-sqlite__rep0' / 'corpus'
@@ -135,8 +134,6 @@ class TrialRuntimeTest(unittest.TestCase):
             )
 
     def test_monitor_until_deadline_fails_when_container_exits_early(self) -> None:
-        from fuzzmeter.trial.runtime import TrialContainer
-
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             log_path = root / 'fuzzer.log'
@@ -162,8 +159,6 @@ class TrialRuntimeTest(unittest.TestCase):
             self.assertIn('log tail', log_path.read_text(encoding='utf-8'))
 
     def test_start_passes_target_timeout_to_fuzzer_environment(self) -> None:
-        from fuzzmeter.trial.runtime import TrialContainer
-
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             log_path = root / 'fuzzer.log'
@@ -190,8 +185,6 @@ class TrialRuntimeTest(unittest.TestCase):
         self.assertEqual('1.0', docker.spec.env['FM_FUZZ_TARGET_TIMEOUT'])
 
     def test_start_registers_container_before_docker_start(self) -> None:
-        from fuzzmeter.trial.runtime import TrialContainer
-
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             target_bin = root / 'target'
@@ -218,8 +211,6 @@ class TrialRuntimeTest(unittest.TestCase):
             TrialContainer._unregister_active_container('ordered-container')
 
     def test_stop_log_stream_escalates_to_kill_and_reaps(self) -> None:
-        from fuzzmeter.trial.runtime import TrialContainer
-
         log_proc = _StubbornLogProcess()
         TrialContainer._stop_log_stream(log_proc, 'container')
 

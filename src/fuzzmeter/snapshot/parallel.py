@@ -47,13 +47,14 @@ def run_parallel_jobs(
         else nullcontext()
     )
     with progress_context as progress:
+        progress_bar = progress
         with cf.ThreadPoolExecutor(max_workers=jobs) as executor:
             for future in cf.as_completed(submit_jobs(executor)):
                 future.result()
                 if progress_step is not None:
                     progress_step()
-                elif progress is not None:
+                elif progress_bar is not None:
                     try:
-                        progress.update(1)
+                        progress_bar.update(1)
                     except (OSError, ValueError):
-                        progress = None
+                        progress_bar = None

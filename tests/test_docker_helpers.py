@@ -10,17 +10,18 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import subprocess
 import sys
-from tempfile import TemporaryDirectory
 import unittest
+
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import call, patch
 
 from fuzzmeter.config import CampaignCase
 from fuzzmeter.docker import DockerClient, DockerTimeoutError
-from fuzzmeter.docker.client import DEFAULT_DOCKER_TIMEOUT_S
 from fuzzmeter.docker.bake import _entry_args, fuzzer_source_dirs, generate_run_bake_hcl
+from fuzzmeter.docker.client import DEFAULT_DOCKER_TIMEOUT_S
 from fuzzmeter.docker.runtime import DockerRuntime
 from tests.support.bake import target_block
 
