@@ -47,8 +47,8 @@ export function sanitizeId(value) {
   return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
-export async function fetchJSON(url) {
-  const response = await fetch(url, { cache: 'no-store' });
+export async function fetchJSON(url, options = {}) {
+  const response = await fetch(url, { cache: 'no-store', ...options });
   if (!response.ok) throw new Error(`${url}: ${response.status}`);
   return response.json();
 }

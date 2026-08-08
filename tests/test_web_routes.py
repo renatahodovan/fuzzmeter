@@ -12,6 +12,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 try:
     from flask import Flask
@@ -100,6 +101,19 @@ class WebRoutesTest(unittest.TestCase):
             response = _app(Path(tmp_dir)).test_client().get('/api/run/missing/data')
 
         self.assertEqual(404, response.status_code)
+
+    def test_report_data_failure_hides_exception_details(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            secret_path = str(Path(tmp_dir) / 'secret.db')
+            with patch(
+                'fuzzmeter.web.routes.reports.load_report_payload',
+                side_effect=RuntimeError(secret_path),
+            ):
+                response = _app(Path(tmp_dir)).test_client().get('/api/run/run/data')
+
+        self.assertEqual(500, response.status_code)
+        self.assertIn(b'Failed to load report data.', response.data)
+        self.assertNotIn(secret_path.encode(), response.data)
 
     def test_composite_view_create_and_get(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -19,6 +19,8 @@ import {
   measurementSelection,
   measurementTitle,
 } from './report/composite-shared.js';
+import { el, fetchJSON } from './report/dom.js';
+import { fmtInt, formatDuration } from './report/format.js';
 
 export const RUNS_STATE = {
   runs: [],
@@ -30,40 +32,9 @@ export const RUNS_STATE = {
   selectedMeasurements: new Set(),
 };
 
-export async function fetchJSON(url, opts = {}) {
-  const res = await fetch(url, { cache: 'no-store', ...opts });
-  if (!res.ok) throw new Error(`${url}: ${res.status}`);
-  return await res.json();
-}
-
-export function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
-export function fmtInt(value) {
-  return value == null || Number.isNaN(Number(value)) ? '—' : String(Math.round(Number(value)));
-}
-
 export function formatTs(ts) {
   if (!ts || !Number.isFinite(Number(ts))) return '—';
   return new Date(Number(ts) * 1000).toLocaleString();
-}
-
-export function formatDuration(seconds) {
-  const value = Number(seconds);
-  if (!Number.isFinite(value) || value <= 0) return '—';
-  if (value < 3600) return `${Math.round(value / 60)}m`;
-  if (value < 86400) {
-    const hours = Math.floor(value / 3600);
-    const minutes = Math.round((value % 3600) / 60);
-    return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
-  }
-  const days = Math.floor(value / 86400);
-  const hours = Math.round((value % 86400) / 3600);
-  return hours ? `${days}d ${hours}h` : `${days}d`;
 }
 
 export function selectedRunIds(state = RUNS_STATE) {
@@ -174,10 +145,10 @@ function configSection(title, builder) {
 function appendPolicy(host, policy) {
   const dl = el('dl', 'config-kv');
   const rows = [
-    ['Run time', formatDuration(policy.time_seconds)],
+    ['Run time', formatDuration(policy.time_seconds, { coarse: true })],
     ['Repetitions', fmtInt(policy.repetitions)],
     ['Parallel jobs', fmtInt(policy.parallel_jobs)],
-    ['Snapshot every', formatDuration(policy.snapshot_every_seconds)],
+    ['Snapshot every', formatDuration(policy.snapshot_every_seconds, { coarse: true })],
   ];
   rows.forEach(([name, value]) => {
     dl.appendChild(el('dt', null, name));
@@ -347,7 +318,10 @@ function renderCompositeMeasurements(state = RUNS_STATE) {
     main.appendChild(el('div', 'measurement-subtitle', `Run ${key.run_id || '—'} · Source ${key.source_id || '—'}`));
     row.appendChild(main);
     const meta = el('div', 'measurement-meta');
-    meta.appendChild(makeBadge('static', formatSourceFacts(measurement, formatDuration, fmtInt)));
+    meta.appendChild(makeBadge(
+      'static',
+      formatSourceFacts(measurement, (seconds) => formatDuration(seconds, { coarse: true }), fmtInt),
+    ));
     row.appendChild(meta);
     list.appendChild(row);
   });

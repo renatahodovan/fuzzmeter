@@ -22,7 +22,7 @@ class ReportFrontendTest(unittest.TestCase):
     def test_comparison_mode_selects_payload_variants_without_losing_unknowns(self) -> None:
         script = r"""
             import assert from 'node:assert/strict';
-            import { cloneMatrixForSelected } from './src/fuzzmeter/web/static/report/filters.js';
+            import { cloneMatrixForSelected } from './src/fuzzmeter/web/static/report/matrix.js';
             import { comparisonMatrix, comparisonMetric } from './src/fuzzmeter/web/static/report/report-data.js';
 
             const payload = {
@@ -32,14 +32,18 @@ class ReportFrontendTest(unittest.TestCase):
               pairwise_unique_all_bounds: [['exact', 'unknown'], ['upper', 'exact']],
               sample_sizes: [2, 2],
               usable_sample_sizes: [1, 2],
+              unique_counts: [4, 3],
               exclusive: {
                 exclusive_any: [2, 1],
                 exclusive_all: [null, 1],
               },
             };
             const cloned = cloneMatrixForSelected(payload, new Set(['alpha', 'beta']));
+            const betaOnly = cloneMatrixForSelected(payload, new Set(['beta']));
             assert.equal(cloned.pairwise_unique_all[0][1], null);
             assert.equal(cloned.exclusive.exclusive_all[0], null);
+            assert.deepEqual(betaOnly.sample_sizes, [2]);
+            assert.deepEqual(betaOnly.unique_counts, [3]);
             assert.deepEqual(comparisonMatrix(cloned, 'all').matrix, [[0, null], [1, 0]]);
             assert.deepEqual(
               comparisonMetric(
@@ -209,7 +213,6 @@ class ReportFrontendTest(unittest.TestCase):
         script = r"""
             import assert from 'node:assert/strict';
             import {
-              formatDuration,
               matchesFilter,
               normalizedStatusCounts,
               refresh,
@@ -218,6 +221,7 @@ class ReportFrontendTest(unittest.TestCase):
               toggleVisibleSelection,
               visibleRunIds,
             } from './src/fuzzmeter/web/static/runs.js';
+            import { formatDuration } from './src/fuzzmeter/web/static/report/format.js';
 
             const alpha = {
               run_id: 'alpha-run',
@@ -255,10 +259,11 @@ class ReportFrontendTest(unittest.TestCase):
             assert.deepEqual(statusBadge(beta), ['done', 'Done']);
             assert.equal(matchesFilter(alpha, 'sqlite'), true);
             assert.equal(matchesFilter(alpha, 'missing'), false);
-            assert.equal(formatDuration(0), '—');
-            assert.equal(formatDuration(300), '5m');
-            assert.equal(formatDuration(3900), '1h 5m');
-            assert.equal(formatDuration(90000), '1d 1h');
+            assert.equal(formatDuration(0), '0s');
+            assert.equal(formatDuration(0, { coarse: true }), '—');
+            assert.equal(formatDuration(300, { coarse: true }), '5m');
+            assert.equal(formatDuration(3900, { coarse: true }), '1h 5m');
+            assert.equal(formatDuration(90000, { coarse: true }), '1d 1h');
             assert.deepEqual(visibleRunIds([alpha, beta], 'HONG'), ['beta-run']);
 
             const state = { selectedRuns: new Set() };
@@ -325,6 +330,7 @@ class ReportFrontendTest(unittest.TestCase):
     def test_report_statistical_and_domain_helpers_are_dom_independent(self) -> None:
         script = r"""
             import assert from 'node:assert/strict';
+            import { compareNumericRows } from './src/fuzzmeter/web/static/report/sort.js';
             import { cleanFloats, median, quantile } from './src/fuzzmeter/web/static/report/stats.js';
             import {
               distributionDensitySegments,
@@ -341,6 +347,17 @@ class ReportFrontendTest(unittest.TestCase):
             assert.equal(quantile([1, 3, 5], 0.5), 3);
             assert.equal(median([5, 1, 3]), 3);
             assert.equal(pctValue(3, 4), 75);
+            const sortable = [
+              { fuzzer: 'missing', value: null },
+              { fuzzer: 'beta', value: 2 },
+              { fuzzer: 'alpha', value: 2 },
+              { fuzzer: 'low', value: 1 },
+            ];
+            assert.deepEqual(
+              sortable.sort((left, right) => compareNumericRows(left, right, 'value', 'desc'))
+                .map((row) => row.fuzzer),
+              ['alpha', 'beta', 'low', 'missing'],
+            );
 
             const fuzzer = {
               fuzzer: 'alpha',

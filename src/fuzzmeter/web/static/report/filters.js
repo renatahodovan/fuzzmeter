@@ -21,6 +21,7 @@ import {
   rankdataDesc,
 } from './report-utils.js';
 import { filterExtraSections } from './extras.js';
+import { cloneMatrixForSelected } from './matrix.js';
 
 function medianOfValues(values) {
   const sorted = cleanFloats(values).sort((left, right) => left - right);
@@ -61,80 +62,6 @@ export function allBenchmarkNames(data) {
     return data.filters.benchmarks.map((name) => String(name)).filter(Boolean);
   }
   return Array.from(new Set((data?.targets || []).map((target) => String(target?.benchmark || '')).filter(Boolean))).sort();
-}
-
-export function cloneMatrixForSelected(matrixData, selectedSet) {
-  if (!matrixData || !Array.isArray(matrixData.fuzzers)) return null;
-  const indices = matrixData.fuzzers
-    .map((fuzzer, index) => [String(fuzzer), index])
-    .filter(([fuzzer]) => selectedSet.has(fuzzer));
-  if (!indices.length) return null;
-  const filteredFuzzers = indices.map(([fuzzer]) => fuzzer);
-  const filterNumericMatrix = (matrix) => (
-    Array.isArray(matrix)
-      ? indices.map(([, rowIndex]) => indices.map(([, colIndex]) => {
-        const value = (matrix[rowIndex] || [])[colIndex];
-        return value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value);
-      }))
-      : undefined
-  );
-  const filterTextMatrix = (matrix) => (
-    Array.isArray(matrix)
-      ? indices.map(([, rowIndex]) => indices.map(([, colIndex]) => (
-        (matrix[rowIndex] || [])[colIndex]
-      )))
-      : undefined
-  );
-  const filteredMatrix = filterNumericMatrix(matrixData.matrix);
-  const filteredCoveredCounts = Array.isArray(matrixData.covered_counts)
-    ? indices.map(([, index]) => {
-      const value = matrixData.covered_counts[index];
-      return value === null || value === undefined ? null : Number(value);
-    })
-    : undefined;
-  const filteredSampleSizes = Array.isArray(matrixData.sample_sizes)
-    ? indices.map(([, index]) => Number(matrixData.sample_sizes[index] || 0))
-    : undefined;
-  const filteredUsableSampleSizes = Array.isArray(matrixData.usable_sample_sizes)
-    ? indices.map(([, index]) => Number(matrixData.usable_sample_sizes[index] || 0))
-    : undefined;
-  const pairwiseAny = filterNumericMatrix(matrixData.pairwise_unique_any);
-  const pairwiseAll = filterNumericMatrix(matrixData.pairwise_unique_all);
-  const numericValues = [filteredMatrix, pairwiseAny, pairwiseAll]
-    .filter(Array.isArray)
-    .flat(2)
-    .filter((value) => value !== null && Number.isFinite(Number(value)))
-    .map(Number);
-  const exclusive = matrixData.exclusive ? {
-    ...matrixData.exclusive,
-    exclusive_any: Array.isArray(matrixData.exclusive.exclusive_any)
-      ? indices.map(([, index]) => matrixData.exclusive.exclusive_any[index] ?? null)
-      : undefined,
-    exclusive_all: Array.isArray(matrixData.exclusive.exclusive_all)
-      ? indices.map(([, index]) => matrixData.exclusive.exclusive_all[index] ?? null)
-      : undefined,
-    exclusive_any_bounds: Array.isArray(matrixData.exclusive.exclusive_any_bounds)
-      ? indices.map(([, index]) => matrixData.exclusive.exclusive_any_bounds[index])
-      : undefined,
-    exclusive_all_bounds: Array.isArray(matrixData.exclusive.exclusive_all_bounds)
-      ? indices.map(([, index]) => matrixData.exclusive.exclusive_all_bounds[index])
-      : undefined,
-  } : undefined;
-  return {
-    ...matrixData,
-    fuzzers: filteredFuzzers,
-    matrix: filteredMatrix,
-    pairwise_unique_any: pairwiseAny,
-    pairwise_unique_all: pairwiseAll,
-    pairwise_unique_any_bounds: filterTextMatrix(matrixData.pairwise_unique_any_bounds),
-    pairwise_unique_all_bounds: filterTextMatrix(matrixData.pairwise_unique_all_bounds),
-    exclusive,
-    covered_counts: filteredCoveredCounts,
-    sample_sizes: filteredSampleSizes,
-    usable_sample_sizes: filteredUsableSampleSizes,
-    max_value: Math.max(0, ...numericValues),
-    has_data: numericValues.some((value) => value > 0) || filteredFuzzers.length > 0,
-  };
 }
 
 export function cloneUniqueBugTableForSelected(tableData, selectedSet) {

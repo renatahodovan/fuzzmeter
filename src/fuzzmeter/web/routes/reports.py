@@ -12,19 +12,13 @@ from __future__ import annotations
 import logging
 import time
 
-from pathlib import Path
-
-from flask import Blueprint, abort, current_app, jsonify, render_template, request
+from flask import Blueprint, abort, jsonify, render_template, request
 
 from ..services.report_service import export_static_report, load_report_payload
+from ._common import runs_root
 
 LOG = logging.getLogger(__name__)
 bp = Blueprint('reports', __name__)
-
-
-def _runs_root() -> Path:
-    provider = current_app.config['RUNS_ROOT_PROVIDER']
-    return Path(provider()).resolve()
 
 
 @bp.get('/run/<run_id>')
@@ -47,15 +41,15 @@ def api_run_data(run_id: str):
 
     try:
         ts = time.time()
-        payload = load_report_payload(_runs_root(), run_id)
+        payload = load_report_payload(runs_root(), run_id)
         LOG.info('Report payload for %s ready in %.2f seconds', run_id, time.time() - ts)
         return jsonify(payload)
     except FileNotFoundError as exc:
         LOG.exception('Report payload not found for %s', run_id)
         abort(404, description=str(exc))
-    except Exception as exc:
+    except Exception:
         LOG.exception('Failed to load report payload for %s', run_id)
-        abort(500, description=str(exc))
+        abort(500, description='Failed to load report data.')
 
 
 @bp.post('/api/run/<run_id>/generate')
@@ -63,7 +57,7 @@ def api_generate_run(run_id: str):
     '''Generate a static report for an existing run.'''
 
     try:
-        out = export_static_report(_runs_root(), run_id)
+        out = export_static_report(runs_root(), run_id)
     except FileNotFoundError:
         abort(404)
     except ValueError as exc:

@@ -9,28 +9,22 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any
 
-from flask import Blueprint, abort, current_app, jsonify, request
+from flask import Blueprint, abort, current_app, jsonify
 
 from ...composite import CompositeRegistry, CompositeViewExpired
 from ..services import composite_service
+from ._common import json_object_payload, runs_root
 
 bp = Blueprint('composite', __name__)
 
 
-def _runs_root() -> Path:
-    provider = current_app.config['RUNS_ROOT_PROVIDER']
-    return Path(provider()).resolve()
-
-
 def _registry():
-    runs_root = _runs_root()
+    current_runs_root = runs_root()
     registry = current_app.config['COMPOSITE_REGISTRY']
-    if Path(registry.runs_root).resolve() != runs_root:
-        registry = CompositeRegistry(runs_root)
+    if Path(registry.runs_root).resolve() != current_runs_root:
+        registry = CompositeRegistry(current_runs_root)
         current_app.config['COMPOSITE_REGISTRY'] = registry
     return registry
 
@@ -61,7 +55,7 @@ def api_composite_refresh_sources():
 def api_composite_create_view():
     '''Create a temporary composite view.'''
     try:
-        return jsonify(composite_service.create_view(_store(), _json_object_payload()))
+        return jsonify(composite_service.create_view(_store(), json_object_payload()))
     except ValueError as exc:
         abort(400, description=str(exc))
 
@@ -70,7 +64,7 @@ def api_composite_create_view():
 def api_composite_create_view_from_run(run_id: str):
     '''Create a temporary composite view from an active run.'''
     try:
-        return jsonify(composite_service.create_view_from_run(_runs_root(), _store(), run_id))
+        return jsonify(composite_service.create_view_from_run(runs_root(), _store(), run_id))
     except FileNotFoundError:
         abort(404)
     except ValueError as exc:
@@ -81,7 +75,7 @@ def api_composite_create_view_from_run(run_id: str):
 def api_composite_add_measurements(view_id: str):
     '''Add selected measurements to a temporary composite view.'''
     try:
-        return jsonify(composite_service.add_measurements(_store(), view_id, _json_object_payload()))
+        return jsonify(composite_service.add_measurements(_store(), view_id, json_object_payload()))
     except ValueError as exc:
         abort(400, description=str(exc))
 
@@ -99,7 +93,7 @@ def api_composite_remove_measurement(view_id: str, selection_id: str):
 def api_composite_view(view_id: str):
     '''Return one temporary composite view summary.'''
     try:
-        return jsonify(composite_service.view_summary(_runs_root(), _registry(), _store(), view_id))
+        return jsonify(composite_service.view_summary(runs_root(), _registry(), _store(), view_id))
     except FileNotFoundError as exc:
         abort(404, description=str(exc))
     except ValueError as exc:
@@ -110,22 +104,8 @@ def api_composite_view(view_id: str):
 def api_composite_view_data(view_id: str):
     '''Return report payload data for one temporary composite view.'''
     try:
-        return jsonify(composite_service.view_report_data(_runs_root(), _registry(), _store(), view_id))
+        return jsonify(composite_service.view_report_data(runs_root(), _registry(), _store(), view_id))
     except FileNotFoundError as exc:
         abort(404, description=str(exc))
     except ValueError as exc:
         abort(400, description=str(exc))
-
-
-def _json_object_payload() -> dict[str, Any]:
-    if not request.data:
-        return {}
-    try:
-        payload = json.loads(request.get_data(as_text=True))
-    except json.JSONDecodeError as exc:
-        abort(400, description=str(exc))
-    if payload is None:
-        return {}
-    if not isinstance(payload, dict):
-        abort(400, description='JSON body must be an object')
-    return payload

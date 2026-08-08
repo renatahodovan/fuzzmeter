@@ -62,7 +62,20 @@ export function formatExecCount(value) {
   return `${(n / 1e9).toFixed(abs >= 1e11 ? 0 : 1)}B`;
 }
 
-export function formatDuration(seconds) {
+export function formatDuration(seconds, { coarse = false } = {}) {
+  if (coarse) {
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value <= 0) return '—';
+    if (value < 3600) return `${Math.round(value / 60)}m`;
+    if (value < 86400) {
+      const hours = Math.floor(value / 3600);
+      const minutes = Math.round((value % 3600) / 60);
+      return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+    }
+    const days = Math.floor(value / 86400);
+    const hours = Math.round((value % 86400) / 3600);
+    return hours ? `${days}d ${hours}h` : `${days}d`;
+  }
   if (seconds == null || !Number.isFinite(Number(seconds))) return '—';
   const value = Math.max(0, Math.round(Number(seconds)));
   const days = Math.floor(value / 86400);

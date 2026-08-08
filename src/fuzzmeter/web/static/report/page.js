@@ -55,6 +55,7 @@ import {
   renderMatrixTable,
 } from './charts.js';
 import { renderExtraSections } from './extras.js';
+import { compareNumericRows } from './sort.js';
 
 function createReportBlock({ title, subtitle = '', bodyClass = '' }) {
   const block = fromTemplate('tplReportBlock');
@@ -184,24 +185,6 @@ function hasResourceTelemetry(target) {
     || Number.isFinite(Number(point.resource_memory_percent))
     || Number.isFinite(Number(point.resource_corpus_disk_mib))
   )));
-}
-
-function compareTargetRows(left, right, key) {
-  const leftValue = left?.[key];
-  const rightValue = right?.[key];
-  const leftMissing = leftValue === null || leftValue === undefined || Number.isNaN(Number(leftValue));
-  const rightMissing = rightValue === null || rightValue === undefined || Number.isNaN(Number(rightValue));
-  if (leftMissing && rightMissing) return String(left?.fuzzer || '').localeCompare(String(right?.fuzzer || ''));
-  if (leftMissing) return 1;
-  if (rightMissing) return -1;
-  const delta = Number(leftValue) - Number(rightValue);
-  if (delta === 0) return String(left?.fuzzer || '').localeCompare(String(right?.fuzzer || ''));
-  return sectionSortDirectionMultiplier(left._section, key) * delta;
-}
-
-function sectionSortDirectionMultiplier(section, key) {
-  const direction = section.tableSort?.key === key ? section.tableSort.direction : 'desc';
-  return direction === 'asc' ? 1 : -1;
 }
 
 function updateTargetSortIndicators(section) {
@@ -406,7 +389,8 @@ function renderFuzzerTable(section) {
   });
 
   const sortKey = section.tableSort?.key || 'branches_union';
-  rows.sort((left, right) => compareTargetRows(left, right, sortKey));
+  const sortDirection = section.tableSort?.key === sortKey ? section.tableSort.direction : 'desc';
+  rows.sort((left, right) => compareNumericRows(left, right, sortKey, sortDirection));
   rows.forEach((fuzzer) => {
     const tr = el('tr');
     const nameCell = el('td');

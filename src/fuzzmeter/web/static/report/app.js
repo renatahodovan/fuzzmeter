@@ -46,19 +46,7 @@ import {
 } from './composite.js';
 import { createTargetSection } from './page.js';
 import { tickFailureNotice } from './report-data.js';
-
-function compareSummaryRows(left, right, key, direction) {
-  const leftValue = left?.[key];
-  const rightValue = right?.[key];
-  const leftMissing = leftValue === null || leftValue === undefined || Number.isNaN(Number(leftValue));
-  const rightMissing = rightValue === null || rightValue === undefined || Number.isNaN(Number(rightValue));
-  if (leftMissing && rightMissing) return String(left?.fuzzer || '').localeCompare(String(right?.fuzzer || ''));
-  if (leftMissing) return 1;
-  if (rightMissing) return -1;
-  const delta = Number(leftValue) - Number(rightValue);
-  if (delta === 0) return String(left?.fuzzer || '').localeCompare(String(right?.fuzzer || ''));
-  return direction === 'asc' ? delta : -delta;
-}
+import { compareNumericRows } from './sort.js';
 
 function updateSummarySortIndicators() {
   document.querySelectorAll('[data-sort-arrow]').forEach((node) => {
@@ -122,7 +110,7 @@ function buildSummaryRows(data) {
   const showPairwiseColumns = syncPairwiseRankingColumns(data);
 
   const rows = [...(data.summary?.rankings || [])].sort((left, right) => (
-    compareSummaryRows(left, right, FM_APP.state.summarySort.key, FM_APP.state.summarySort.direction)
+    compareNumericRows(left, right, FM_APP.state.summarySort.key, FM_APP.state.summarySort.direction)
   ));
 
   rows.forEach((row) => {
@@ -173,7 +161,7 @@ function formatComparisonCount(value, bound) {
 function bestRowByKey(rows, key) {
   return [...rows]
     .filter((row) => Number.isFinite(Number(row?.[key])))
-    .sort((left, right) => compareSummaryRows(left, right, key, 'desc'))[0] || null;
+    .sort((left, right) => compareNumericRows(left, right, key, 'desc'))[0] || null;
 }
 
 function summarizeTargetMetric(targets, extractor) {

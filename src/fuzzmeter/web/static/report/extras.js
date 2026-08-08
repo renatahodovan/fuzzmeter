@@ -23,6 +23,7 @@ import {
   renderDataTable,
   renderMatrixTable,
 } from './charts.js';
+import { cloneMatrixForSelected } from './matrix.js';
 
 const LINE_CHART_TYPES = new Set(['line', 'line_shadow', 'lines_with_shadows']);
 const ALLOWED_CHART_TYPES = new Set([
@@ -36,34 +37,6 @@ const ALLOWED_CHART_TYPES = new Set([
   'stacked_bar',
   'table',
 ]);
-
-function cloneMatrixForSelected(matrixData, selectedSet) {
-  if (!matrixData || !Array.isArray(matrixData.fuzzers) || !Array.isArray(matrixData.matrix)) return null;
-  const indices = matrixData.fuzzers
-    .map((fuzzer, index) => [String(fuzzer), index])
-    .filter(([fuzzer]) => selectedSet.has(fuzzer));
-  if (!indices.length) return null;
-  const filteredFuzzers = indices.map(([fuzzer]) => fuzzer);
-  const filteredMatrix = indices.map(([, rowIndex]) => (
-    indices.map(([, colIndex]) => Number((matrixData.matrix[rowIndex] || [])[colIndex] || 0))
-  ));
-  const filteredCoveredCounts = Array.isArray(matrixData.covered_counts)
-    ? indices.map(([, index]) => Number(matrixData.covered_counts[index] || 0))
-    : undefined;
-  const filteredUniqueCounts = Array.isArray(matrixData.unique_counts)
-    ? indices.map(([, index]) => Number(matrixData.unique_counts[index] || 0))
-    : undefined;
-  const maxValue = Math.max(0, ...filteredMatrix.flat().map((value) => Number(value) || 0));
-  return {
-    ...matrixData,
-    fuzzers: filteredFuzzers,
-    matrix: filteredMatrix,
-    covered_counts: filteredCoveredCounts,
-    unique_counts: filteredUniqueCounts,
-    max_value: maxValue,
-    has_data: filteredMatrix.some((row) => row.some((value) => value > 0)) || filteredFuzzers.length > 0,
-  };
-}
 
 function hasTimeXAxis(chart) {
   const axis = String(chart?.x_axis || '').toLowerCase();

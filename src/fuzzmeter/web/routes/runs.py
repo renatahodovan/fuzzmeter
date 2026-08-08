@@ -9,21 +9,15 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict
-from pathlib import Path
 from typing import Any
 
-from flask import Blueprint, abort, current_app, jsonify, render_template, request
+from flask import Blueprint, abort, jsonify, render_template
 
 from ..services.runs_service import RunEntry, delete_run, delete_runs, list_runs
+from ._common import json_object_payload, runs_root
 
 bp = Blueprint('runs', __name__)
-
-
-def _runs_root() -> Path:
-    provider = current_app.config['RUNS_ROOT_PROVIDER']
-    return Path(provider()).resolve()
 
 
 @bp.get('/')
@@ -37,7 +31,7 @@ def index():
 def api_runs():
     '''Return discovered runs for the run list page.'''
 
-    return jsonify({'runs': [_serialize_run_entry(run) for run in list_runs(_runs_root())]})
+    return jsonify({'runs': [_serialize_run_entry(run) for run in list_runs(runs_root())]})
 
 
 @bp.delete('/api/run/<run_id>')
@@ -45,7 +39,7 @@ def api_delete_run(run_id: str):
     '''Delete one run directory.'''
 
     try:
-        delete_run(_runs_root(), run_id)
+        delete_run(runs_root(), run_id)
     except FileNotFoundError:
         abort(404)
     except ValueError as exc:
@@ -57,25 +51,11 @@ def api_delete_run(run_id: str):
 def api_delete_runs():
     '''Delete multiple run directories.'''
 
-    payload = _json_object_payload()
+    payload = json_object_payload()
     run_ids = payload.get('run_ids') or []
     if not isinstance(run_ids, list):
         abort(400, description='run_ids must be a list')
-    return jsonify(delete_runs(_runs_root(), run_ids))
-
-
-def _json_object_payload() -> dict[str, Any]:
-    if not request.data:
-        return {}
-    try:
-        payload = json.loads(request.get_data(as_text=True))
-    except json.JSONDecodeError as exc:
-        abort(400, description=str(exc))
-    if payload is None:
-        return {}
-    if not isinstance(payload, dict):
-        abort(400, description='JSON body must be an object')
-    return payload
+    return jsonify(delete_runs(runs_root(), run_ids))
 
 
 def _serialize_run_entry(run: RunEntry) -> dict[str, Any]:
