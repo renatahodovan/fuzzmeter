@@ -26,8 +26,9 @@ LOG = logging.getLogger(__name__)
 # tests/test_coverage_worker.py keeps the two in step.
 COVERAGE_METRICS = ('branches', 'lines', 'functions', 'regions')
 COVERAGE_BUILD_METADATA_PATH = Path('/opt/fuzzmeter/meta/coverage-build.json')
-COVERAGE_SETS_VERSION = 3
+COVERAGE_SETS_VERSION = 4
 REPORT_SCALAR_DEFINITION = 'llvm-cov-report-total'
+BRANCH_SCALAR_DEFINITION = 'llvm-cov-export-per-instantiation-branches'
 EXPORT_SUMMARY_DEFINITION = 'llvm-cov-export-totals'
 SET_DEFINITIONS = {
     'branches': 'hashed-covered-branch-directions-by-mangled-function',
@@ -70,6 +71,28 @@ def coverage_summary_from_export(
     }
 
 
+def branch_summary_from_export(export_obj: dict[str, Any]) -> dict[str, int]:
+    '''Count branch directions independently in every exported function record.'''
+
+    covered = 0
+    total = 0
+    for data_item in export_obj.get('data') or []:
+        if not isinstance(data_item, dict):
+            raise ValueError('llvm-cov data record must be a mapping')
+        for function in data_item.get('functions') or []:
+            if not isinstance(function, dict):
+                raise ValueError('llvm-cov function record must be a mapping')
+            for branch in function.get('branches') or []:
+                if not isinstance(branch, (list, tuple)) or len(branch) < 6:
+                    raise ValueError('llvm-cov branch record is malformed')
+                total += 2
+                covered += int(_positive(branch[4])) + int(_positive(branch[5]))
+    return {
+        'cov_branches_covered': covered,
+        'cov_branches_total': total,
+    }
+
+
 def read_covered_keys(path: Path, metric: str) -> set[str] | None:
     '''Read covered element hash keys for one metric from a coverage set artifact.'''
 
@@ -96,7 +119,9 @@ def write_coverage_sets(
     export_summary: dict[str, Any],
     metrics: dict[str, list[int]],
     *,
+    branch_summary: dict[str, Any] | None = None,
     report_flags: list[str] | None = None,
+    branch_export_flags: list[str] | None = None,
     export_flags: list[str] | None = None,
 ) -> None:
     '''Write a compact coverage set artifact.'''
@@ -147,7 +172,13 @@ def write_coverage_sets(
 
     measurement_provenance['llvm_cov'] = {
         'report_flags': list(report_flags) if report_flags is not None else None,
+        'branch_export_flags': list(branch_export_flags) if branch_export_flags is not None else None,
         'export_flags': list(export_flags) if export_flags is not None else None,
+        'branch_population_aligned': (
+            report_flags is not None
+            and branch_export_flags is not None
+            and report_flags == branch_export_flags
+        ),
         'populations_aligned': (
             report_flags is not None
             and export_flags is not None
@@ -166,6 +197,23 @@ def write_coverage_sets(
         'measurement_provenance': measurement_provenance,
         'metrics': {
             metric: {
+                'authoritative_scalar': {
+                    'definition': (
+                        BRANCH_SCALAR_DEFINITION
+                        if metric == 'branches'
+                        else REPORT_SCALAR_DEFINITION
+                    ),
+                    'covered_count': (
+                        branch_summary or {}
+                        if metric == 'branches'
+                        else report_summary
+                    ).get(f'cov_{metric}_covered'),
+                    'total_count': (
+                        branch_summary or {}
+                        if metric == 'branches'
+                        else report_summary
+                    ).get(f'cov_{metric}_total'),
+                },
                 'report_scalar': {
                     'definition': REPORT_SCALAR_DEFINITION,
                     'covered_count': report_summary.get(f'cov_{metric}_covered'),

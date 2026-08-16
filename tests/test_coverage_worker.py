@@ -240,6 +240,31 @@ class CoverageWorkerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'count is not numeric'):
             coverage_sets.coverage_metrics_from_export(_function_export(true_count='broken'))
 
+    def test_per_instantiation_branch_summary_counts_every_function(self) -> None:
+        '''Template instantiations contribute their own two branch directions.'''
+        export_obj = _function_export()
+        export_obj['data'][0]['functions'].extend(
+            [
+                _function_export(
+                    name='_Z6chooseIdEvT_',
+                    true_count=1,
+                    false_count=1,
+                )['data'][0]['functions'][0],
+                _function_export(
+                    name='_Z6chooseIcEvT_',
+                    true_count=0,
+                    false_count=1,
+                )['data'][0]['functions'][0],
+            ]
+        )
+
+        summary = coverage_sets.branch_summary_from_export(export_obj)
+
+        self.assertEqual(
+            {'cov_branches_covered': 4, 'cov_branches_total': 6},
+            summary,
+        )
+
     def test_coverage_set_identifies_clang_default_counter_mode(self) -> None:
         '''Verify absent profile update flags are recorded as Clang's single default.'''
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -326,6 +351,12 @@ TOTAL       2          1                 50.00%   1            0                
                              stdout=json.dumps(export_obj),
                              stderr='',
                          ),
+                         subprocess.CompletedProcess(
+                             args=['llvm-cov', 'export'],
+                             returncode=0,
+                             stdout=json.dumps(export_obj),
+                             stderr='',
+                         ),
                      ],
                  ) as run:
                 coverage_worker._write_coverage_outputs(cfg)
@@ -335,7 +366,15 @@ TOTAL       2          1                 50.00%   1            0                
             covered_lines = coverage_sets.read_covered_keys(artifact_path, 'lines')
             commands = [call.args[0] for call in run.call_args_list]
 
-        self.assertEqual(3, artifact['version'])
+        self.assertEqual(4, artifact['version'])
+        self.assertEqual(
+            {
+                'definition': 'llvm-cov-report-total',
+                'covered_count': 11,
+                'total_count': 11,
+            },
+            line_metric['authoritative_scalar'],
+        )
         self.assertEqual(
             {
                 'definition': 'llvm-cov-report-total',
@@ -358,6 +397,8 @@ TOTAL       2          1                 50.00%   1            0                
         self.assertEqual(1, len(covered_lines))
         provenance = artifact['measurement_provenance']['llvm_cov']
         self.assertEqual([f'-instr-profile={cfg.profdata}'], provenance['report_flags'])
+        self.assertEqual([f'-instr-profile={cfg.profdata}'], provenance['branch_export_flags'])
+        self.assertTrue(provenance['branch_population_aligned'])
         self.assertEqual(
             [f'-instr-profile={cfg.profdata}', '-region-coverage-gt=0', '-skip-expansions'],
             provenance['export_flags'],
@@ -365,6 +406,75 @@ TOTAL       2          1                 50.00%   1            0                
         self.assertFalse(provenance['populations_aligned'])
         self.assertEqual(['llvm-cov', 'report'], commands[0][:2])
         self.assertEqual(['llvm-cov', 'export'], commands[1][:2])
+        self.assertEqual(['llvm-cov', 'export'], commands[2][:2])
+
+    def test_worker_uses_per_instantiation_branches_and_retains_report_total(self) -> None:
+        report = '''
+Filename    Regions    Missed Regions    Cover    Functions    Missed Functions    Executed    Lines    Missed Lines    Cover    Branches    Missed Branches    Cover
+TOTAL       1          0                 100.00%  3            0                   100.00%      3        0               100.00%  2           1                  50.00%
+'''
+        export_obj = _function_export()
+        export_obj['data'][0]['functions'].extend(
+            [
+                _function_export(name='_Z6chooseIdEvT_', true_count=1, false_count=1)['data'][0]['functions'][0],
+                _function_export(name='_Z6chooseIcEvT_', true_count=0, false_count=1)['data'][0]['functions'][0],
+            ]
+        )
+        export_obj['data'][0]['totals'] = {
+            metric: {'count': 0, 'covered': 0}
+            for metric in coverage_sets.COVERAGE_METRICS
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_path = root / 'coverage-sets.json'
+            cfg = coverage_worker.WorkerConfig(
+                cov_bin=root / 'target',
+                out_dir=root,
+                work_dir=root / 'work',
+                input_list=Path(),
+                profdata=root / 'merged.profdata',
+                coverage_sets=artifact_path,
+                skip_html=True,
+            )
+            def completed(stdout):
+                return subprocess.CompletedProcess(
+                    args=['llvm-cov'], returncode=0, stdout=stdout, stderr=''
+                )
+            with patch.object(coverage_sets, 'COVERAGE_BUILD_METADATA_PATH', root / 'missing.json'), \
+                 patch.object(
+                     coverage_worker,
+                     '_run',
+                     side_effect=[
+                         completed(report),
+                         completed(json.dumps(export_obj)),
+                         completed(json.dumps(export_obj)),
+                     ],
+                 ):
+                coverage_worker._write_coverage_outputs(cfg)
+
+            artifact = json.loads(artifact_path.read_text(encoding='utf-8'))
+            summary = json.loads((root / 'summary.json').read_text(encoding='utf-8'))
+
+        branches = artifact['metrics']['branches']
+        self.assertEqual(4, summary['cov_branches_covered'])
+        self.assertEqual(6, summary['cov_branches_total'])
+        self.assertEqual(
+            {
+                'definition': 'llvm-cov-export-per-instantiation-branches',
+                'covered_count': 4,
+                'total_count': 6,
+            },
+            branches['authoritative_scalar'],
+        )
+        self.assertEqual(
+            {
+                'definition': 'llvm-cov-report-total',
+                'covered_count': 1,
+                'total_count': 2,
+            },
+            branches['report_scalar'],
+        )
 
     def test_coverage_summary_uses_real_total_after_total_prefixed_file(self) -> None:
         report = '''
@@ -549,26 +659,35 @@ TOTAL                                        31                 5    83.87%     
                  patch.object(
                      coverage_worker,
                      '_run',
-                     return_value=subprocess.CompletedProcess(
-                         args=['llvm-cov'],
-                         returncode=0,
-                         stdout=(
+                     side_effect=[
+                         subprocess.CompletedProcess(
+                             args=['llvm-cov'],
+                             returncode=0,
+                             stdout=(
                              'Filename    Regions    Missed Regions    Cover    Functions    '
                              'Missed Functions    Executed    Lines    Missed Lines    Cover    '
                              'Branches    Missed Branches    Cover\n'
                              'TOTAL       1          0                 100.00%   1            '
                              '0                   100.00%      1        0               100.00%   '
                              '0           0                  -\n'
+                             ),
+                             stderr='',
                          ),
-                         stderr='',
-                     ),
+                         subprocess.CompletedProcess(
+                             args=['llvm-cov'],
+                             returncode=0,
+                             stdout=json.dumps({'data': [{'functions': []}]}),
+                             stderr='',
+                         ),
+                     ],
                  ) as run:
                 coverage_worker._write_coverage_outputs(cfg)
 
             commands = [call.args[0] for call in run.call_args_list]
 
-        self.assertEqual(1, len(commands))
+        self.assertEqual(2, len(commands))
         self.assertEqual(['llvm-cov', 'report'], commands[0][:2])
+        self.assertEqual(['llvm-cov', 'export'], commands[1][:2])
 
     def test_run_raises_runtime_error_and_writes_command_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

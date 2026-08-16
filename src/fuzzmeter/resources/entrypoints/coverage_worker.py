@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from coverage_sets import (
+    branch_summary_from_export,
     coverage_metrics_from_export,
     coverage_summary_from_export,
     write_coverage_sets,
@@ -299,7 +300,15 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
         out_dir=cfg.out_dir,
         label='llvm_cov_report',
     )
-    summary = _coverage_summary_from_report(report.stdout or '')
+    report_summary = _coverage_summary_from_report(report.stdout or '')
+    branch_export_flags = [f'-instr-profile={cfg.profdata}', *pe_args]
+    branch_export = _run(
+        ['llvm-cov', 'export', *branch_export_flags, str(cfg.cov_bin)],
+        out_dir=cfg.out_dir,
+        label='llvm_cov_branch_export',
+    )
+    branch_summary = branch_summary_from_export(json.loads(branch_export.stdout or '{}'))
+    summary = {**report_summary, **branch_summary}
 
     if cfg.coverage_sets is not None:
         export_obj: dict[str, Any] = {}
@@ -330,10 +339,12 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
         try:
             write_coverage_sets(
                 cfg.coverage_sets,
-                summary,
+                report_summary,
                 export_summary,
                 metrics,
+                branch_summary=branch_summary,
                 report_flags=report_flags,
+                branch_export_flags=branch_export_flags,
                 export_flags=export_flags,
             )
         except Exception as exc:
