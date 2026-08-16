@@ -26,11 +26,11 @@ LOG = logging.getLogger(__name__)
 # tests/test_coverage_worker.py keeps the two in step.
 COVERAGE_METRICS = ('branches', 'lines', 'functions', 'regions')
 COVERAGE_BUILD_METADATA_PATH = Path('/opt/fuzzmeter/meta/coverage-build.json')
-COVERAGE_SETS_VERSION = 2
+COVERAGE_SETS_VERSION = 3
 REPORT_SCALAR_DEFINITION = 'llvm-cov-report-total'
 EXPORT_SUMMARY_DEFINITION = 'llvm-cov-export-totals'
 SET_DEFINITIONS = {
-    'branches': 'hashed-covered-branch-regions',
+    'branches': 'hashed-covered-branch-directions-by-mangled-function',
     'lines': 'hashed-covered-segment-start-lines',
     'functions': 'hashed-covered-functions',
     'regions': 'hashed-covered-segment-start-regions',
@@ -223,10 +223,13 @@ def _covered_hashes(export_obj: dict[str, Any], metric: str) -> list[int]:
             continue
         for file_item in data_item.get('files') or []:
             _collect_file_hashes(hashes, file_item, metric)
-        if metric == 'functions':
-            for ordinal, function in enumerate(data_item.get('functions') or []):
+        if metric in {'branches', 'functions'}:
+            for function in data_item.get('functions') or []:
                 if _function_covered(function):
-                    hashes.add(_stable_hash(_function_key('', function, ordinal)))
+                    if metric == 'functions':
+                        hashes.add(_stable_hash(_function_key(function)))
+                    else:
+                        _collect_function_branch_hashes(hashes, function)
     return sorted(hashes)
 
 
@@ -247,38 +250,51 @@ def _collect_file_hashes(hashes: set[int], file_item: Any, metric: str) -> None:
                     )
                 )
         return
-    entries = {'branches': file_item.get('branches'), 'functions': file_item.get('functions')}.get(metric, [])
-    for ordinal, entry in enumerate(entries or []):
-        if metric == 'branches' and _covered_tuple(entry, 4, 6):
-            hashes.add(_stable_hash(_safe_text(filename, *list(entry)[:4], ordinal)))
-        elif metric == 'functions' and _function_covered(entry):
-            hashes.add(_stable_hash(_function_key(filename, entry, ordinal)))
+
+
+def _collect_function_branch_hashes(hashes: set[int], function: Any) -> None:
+    if not isinstance(function, dict):
+        raise ValueError('llvm-cov function record must be a mapping')
+
+    function_key = _function_key(function)
+    filenames = function.get('filenames')
+    if not isinstance(filenames, list) or not filenames:
+        raise ValueError('llvm-cov function record must define non-empty filenames')
+    for branch in function.get('branches') or []:
+        if not isinstance(branch, (list, tuple)) or len(branch) < 7:
+            raise ValueError('llvm-cov branch record is malformed')
+        try:
+            filename = str(filenames[int(branch[6])])
+        except (IndexError, TypeError, ValueError):
+            filename = str(filenames[0])
+        branch_key = _safe_text(function_key, filename, *branch[:4])
+        if _positive(branch[4]):
+            hashes.add(_stable_hash(f'{branch_key}:true'))
+        if _positive(branch[5]):
+            hashes.add(_stable_hash(f'{branch_key}:false'))
 
 
 def _function_covered(function: Any) -> bool:
     if not isinstance(function, dict):
-        return False
+        raise ValueError('llvm-cov function record must be a mapping')
     return _positive(function.get('count')) or any(
         _covered_tuple(region, 4)
         for region in function.get('regions') or []
     )
 
 
-def _function_key(default_filename: str, function: Any, ordinal: int) -> str:
-    regions = function.get('regions') if isinstance(function, dict) else None
+def _function_key(function: dict[str, Any]) -> str:
+    regions = function.get('regions')
     region_parts = (
         list(regions[0][:4])
         if isinstance(regions, list) and regions and isinstance(regions[0], (list, tuple))
         else []
     )
-    name = function.get('name') or function.get('demangled') or ordinal
+    name = function.get('name') or function.get('demangled')
     filenames = function.get('filenames')
-    filename = (
-        str(filenames[0])
-        if isinstance(filenames, list) and filenames
-        else str(function.get('filename') or default_filename)
-    )
-    return _safe_text(filename, name, *region_parts)
+    if not name or not isinstance(filenames, list) or not filenames:
+        raise ValueError('llvm-cov function identity is missing its name or filename')
+    return _safe_text(filenames[0], name, *region_parts)
 
 
 def _safe_text(*parts: Any) -> str:
@@ -294,15 +310,15 @@ def _safe_text(*parts: Any) -> str:
 
 def _covered_tuple(values: Any, start: int, end: int | None = None) -> bool:
     if not isinstance(values, (list, tuple)) or len(values) <= start:
-        return False
+        raise ValueError('llvm-cov coverage tuple is malformed')
     return any(_positive(value) for value in values[start:end])
 
 
 def _positive(value: Any) -> bool:
     try:
         return float(value) > 0
-    except Exception:
-        return False
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f'llvm-cov count is not numeric: {value!r}') from exc
 
 
 def _stable_hash(value: str) -> int:

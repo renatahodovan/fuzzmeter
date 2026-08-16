@@ -28,6 +28,32 @@ coverage_sets = load_entrypoint('coverage_sets')
 coverage_worker = load_entrypoint('coverage_worker')
 
 
+def _function_export(
+    *,
+    name: str = '_Z6chooseIiEvT_',
+    true_count: object = 1,
+    false_count: object = 0,
+) -> dict:
+    '''Build a minimal Clang 18 per-function coverage export.'''
+
+    return {
+        'data': [
+            {
+                'files': [],
+                'functions': [
+                    {
+                        'name': name,
+                        'filenames': ['/src/template.cc'],
+                        'count': 1,
+                        'regions': [[10, 1, 12, 2, 1, 0, 0, 0]],
+                        'branches': [[11, 3, 11, 12, true_count, false_count, 0, 0, 0]],
+                    }
+                ],
+            }
+        ]
+    }
+
+
 class CoverageWorkerTest(unittest.TestCase):
     '''Verify coverage worker batch execution behavior.'''
 
@@ -129,6 +155,91 @@ class CoverageWorkerTest(unittest.TestCase):
 
         self.assertIsNone(covered)
 
+    def test_version_two_coverage_set_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            artifact_path = Path(tmp_dir) / 'coverage-sets.json'
+            artifact_path.write_text(
+                json.dumps(
+                    {
+                        'version': 2,
+                        'type': 'fuzzmeter.coverage.sets',
+                        'metrics': {'branches': {'element_set': {}}},
+                    }
+                ),
+                encoding='utf-8',
+            )
+
+            with self.assertLogs(coverage_sets.LOG, level='WARNING'):
+                covered = coverage_sets.read_covered_keys(artifact_path, 'branches')
+
+        self.assertIsNone(covered)
+
+    def test_branch_directions_round_trip_as_distinct_elements(self) -> None:
+        '''True-only and false-only executions remain distinct after artifact I/O.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            true_path = root / 'true.json'
+            false_path = root / 'false.json'
+            with patch.object(coverage_sets, 'COVERAGE_BUILD_METADATA_PATH', root / 'missing.json'):
+                coverage_sets.write_coverage_sets(
+                    true_path,
+                    {},
+                    {},
+                    coverage_sets.coverage_metrics_from_export(_function_export()),
+                )
+                coverage_sets.write_coverage_sets(
+                    false_path,
+                    {},
+                    {},
+                    coverage_sets.coverage_metrics_from_export(
+                        _function_export(true_count=0, false_count=1),
+                    ),
+                )
+            true_keys = coverage_sets.read_covered_keys(true_path, 'branches')
+            false_keys = coverage_sets.read_covered_keys(false_path, 'branches')
+
+        self.assertEqual(1, len(true_keys))
+        self.assertEqual(1, len(false_keys))
+        self.assertNotEqual(true_keys, false_keys)
+        self.assertEqual(1, len(true_keys - false_keys))
+        self.assertEqual(1, len(false_keys - true_keys))
+
+    def test_branch_identity_survives_function_reordering_and_filtering(self) -> None:
+        '''Function-array positions never participate in branch identities.'''
+        covered = _function_export()['data'][0]['functions'][0]
+        uncovered = {
+            'name': '_Z5noisev',
+            'filenames': ['/src/noise.cc'],
+            'count': 0,
+            'regions': [[2, 1, 3, 2, 0, 0, 0, 0]],
+            'branches': [[2, 3, 2, 9, 0, 0, 0, 0, 0]],
+        }
+        reordered = {'data': [{'files': [], 'functions': [uncovered, covered]}]}
+        filtered = {'data': [{'files': [], 'functions': [covered]}]}
+
+        reordered_keys = coverage_sets.coverage_metrics_from_export(reordered)['branches']
+        filtered_keys = coverage_sets.coverage_metrics_from_export(filtered)['branches']
+
+        self.assertEqual(filtered_keys, reordered_keys)
+
+    def test_template_instantiations_have_distinct_branch_identities(self) -> None:
+        '''Clang linkage names discriminate template instantiations at one source line.'''
+        export_obj = _function_export()
+        export_obj['data'][0]['functions'].append(
+            _function_export(name='_Z6chooseIdEvT_')['data'][0]['functions'][0]
+        )
+
+        branch_keys = coverage_sets.coverage_metrics_from_export(export_obj)['branches']
+        function_keys = coverage_sets.coverage_metrics_from_export(export_obj)['functions']
+
+        self.assertEqual(2, len(branch_keys))
+        self.assertEqual(2, len(function_keys))
+
+    def test_malformed_branch_count_is_rejected(self) -> None:
+        '''Invalid export counts cannot silently turn into uncovered branches.'''
+        with self.assertRaisesRegex(ValueError, 'count is not numeric'):
+            coverage_sets.coverage_metrics_from_export(_function_export(true_count='broken'))
+
     def test_coverage_set_identifies_clang_default_counter_mode(self) -> None:
         '''Verify absent profile update flags are recorded as Clang's single default.'''
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -224,7 +335,7 @@ TOTAL       2          1                 50.00%   1            0                
             covered_lines = coverage_sets.read_covered_keys(artifact_path, 'lines')
             commands = [call.args[0] for call in run.call_args_list]
 
-        self.assertEqual(2, artifact['version'])
+        self.assertEqual(3, artifact['version'])
         self.assertEqual(
             {
                 'definition': 'llvm-cov-report-total',
