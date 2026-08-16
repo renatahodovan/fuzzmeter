@@ -100,6 +100,16 @@ class CoverageWorkerTest(unittest.TestCase):
         self.assertEqual('unknown', provenance['coverage_build']['status'])
         self.assertIn('Coverage build provenance is unavailable', logs.output[0])
 
+    def test_corrupt_coverage_set_is_unknown_instead_of_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            artifact_path = Path(tmp_dir) / 'coverage-sets.json'
+            artifact_path.write_text('{broken', encoding='utf-8')
+
+            with self.assertLogs(coverage_sets.LOG, level='WARNING'):
+                covered = coverage_sets.read_covered_keys(artifact_path, 'branches')
+
+        self.assertIsNone(covered)
+
     def test_coverage_set_identifies_clang_default_counter_mode(self) -> None:
         '''Verify absent profile update flags are recorded as Clang's single default.'''
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -39,7 +39,7 @@ from .keys import (
 )
 from .metrics import dt, safe_int
 from .plugin_sections import attach_extra_sections
-from .set_comparison import empty_trial_set_comparison
+from .set_comparison import TrialSetIndex, empty_trial_set_comparison, trial_set_index
 
 LOG = logging.getLogger(__name__)
 CURVE_MAX_POINTS = 240
@@ -265,7 +265,7 @@ class _PayloadBuilder:
         fuzzers: list[str],
         benchmark: str,
         fuzz_target: str,
-    ) -> dict[str, dict[str, list[set[str]]]]:
+    ) -> dict[str, dict[str, list[set[str] | None]]]:
         return {
             metric: self._coverage_data.trial_coverage_sets_by_fuzzer(
                 trials=trials,
@@ -404,22 +404,36 @@ class _PayloadBuilder:
                         fuzzers,
                     )
                 )
+                trial_set_indexes_by_metric = {
+                    metric: trial_set_index(fuzzers, trial_coverage_sets_by_metric.get(metric, {}))
+                    for metric in COV_METRICS
+                }
                 target[UNIQUE_MATRIX_KEY] = self.compute_unique_matrix(
-                    trials, benchmark, fuzz_target, coverage_sets_by_metric
+                    trials=trials,
+                    benchmark=benchmark,
+                    fuzz_target=fuzz_target,
+                    trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
+                    aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
+                    trial_set_indexes_by_metric=trial_set_indexes_by_metric,
                 )
                 target[RELCOV_MATRIX_KEY], target[RELCOV_SCORE_BY_FUZZER_KEY] = self.compute_relcov_matrix(
-                    trials,
-                    benchmark,
-                    fuzz_target,
-                    trial_coverage_sets_by_metric,
-                    aggregate_fallback_fuzzers_by_metric,
+                    trials=trials,
+                    benchmark=benchmark,
+                    fuzz_target=fuzz_target,
+                    trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
+                    aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
+                    trial_set_indexes_by_metric=trial_set_indexes_by_metric,
                 )
                 target[BRANCH_MWU_MATRIX_KEY], target[BRANCH_A12_MATRIX_KEY] = self.compute_branch_stat_matrices(
                     trials,
                     benchmark,
                     fuzz_target,
                 )
-                coverage_matrices.attach_exclusive_coverage_stats(target=target)
+                coverage_matrices.attach_exclusive_coverage_stats(
+                    target=target,
+                    trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
+                    aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
+                )
                 target[UNIQUE_BUG_TABLE_KEY] = self._bug_analysis.compute_unique_bug_table(target)
                 target[UNIQUE_BUG_MATRIX_KEY] = self._bug_analysis.compute_unique_bug_matrix(target)
                 target[RELBUG_MATRIX_KEY], target[RELBUG_SCORE_BY_FUZZER_KEY] = (
@@ -440,26 +454,26 @@ class _PayloadBuilder:
 
     @staticmethod
     def _with_aggregate_trial_fallback(
-        trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str]]]],
+        trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str] | None]]],
         coverage_sets_by_metric: dict[str, dict[str, set[str]]],
         fuzzers: list[str],
-    ) -> tuple[dict[str, dict[str, list[set[str]]]], dict[str, set[str]]]:
+    ) -> tuple[dict[str, dict[str, list[set[str] | None]]], dict[str, set[str]]]:
         '''Use final aggregate coverage sets when trial compact sets are unavailable.'''
 
-        out: dict[str, dict[str, list[set[str]]]] = {}
+        out: dict[str, dict[str, list[set[str] | None]]] = {}
         fallback_fuzzers_by_metric: dict[str, set[str]] = {}
         for metric in COV_METRICS:
             trial_sets = trial_coverage_sets_by_metric.get(metric, {})
             aggregate_sets = coverage_sets_by_metric.get(metric, {})
             merged = {
-                fuzzer: [set(value) for value in values]
+                fuzzer: [set(value) if value is not None else None for value in values]
                 for fuzzer, values in trial_sets.items()
             }
             for fuzzer in fuzzers:
-                if merged.get(fuzzer):
+                if any(value is not None for value in merged.get(fuzzer, [])):
                     continue
                 aggregate_set = aggregate_sets.get(fuzzer)
-                if aggregate_set:
+                if aggregate_set is not None:
                     merged[fuzzer] = [set(aggregate_set)]
                     fallback_fuzzers_by_metric.setdefault(metric, set()).add(fuzzer)
             out[metric] = merged
@@ -467,10 +481,13 @@ class _PayloadBuilder:
 
     def compute_unique_matrix(
         self,
+        *,
         trials: list[dict[str, Any]],
         benchmark: str,
         fuzz_target: str,
-        coverage_sets_by_metric: dict[str, dict[str, set[str]]],
+        trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str] | None]]],
+        aggregate_fallback_fuzzers_by_metric: dict[str, set[str]] | None = None,
+        trial_set_indexes_by_metric: dict[str, TrialSetIndex] | None = None,
     ) -> dict[str, Any]:
         '''Compute per-fuzzer unique coverage matrices for a target.'''
 
@@ -479,16 +496,20 @@ class _PayloadBuilder:
             trials=trials,
             benchmark=benchmark,
             fuzz_target=fuzz_target,
-            coverage_sets_by_metric=coverage_sets_by_metric,
+            trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
+            aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
+            trial_set_indexes_by_metric=trial_set_indexes_by_metric,
         )
 
     def compute_relcov_matrix(
         self,
+        *,
         trials: list[dict[str, Any]],
         benchmark: str,
         fuzz_target: str,
-        trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str]]]],
+        trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str] | None]]],
         aggregate_fallback_fuzzers_by_metric: dict[str, set[str]] | None = None,
+        trial_set_indexes_by_metric: dict[str, TrialSetIndex] | None = None,
     ) -> tuple[dict[str, Any], dict[str, float]]:
         '''Compute per-fuzzer relative coverage containment matrix and scores.'''
 
@@ -499,6 +520,7 @@ class _PayloadBuilder:
             fuzz_target=fuzz_target,
             trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
             aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
+            trial_set_indexes_by_metric=trial_set_indexes_by_metric,
         )
 
     def compute_branch_stat_matrices(

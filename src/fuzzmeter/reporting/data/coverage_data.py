@@ -20,7 +20,7 @@ class CoverageData:
 
     def __init__(self, run_dir: Path):
         self.run_dir = Path(run_dir).resolve()
-        self._coverage_set_cache: dict[tuple[str, str], set[str]] = {}
+        self._coverage_set_cache: dict[tuple[str, str], set[str] | None] = {}
 
     def coverage_sets_from_coverage_html_rel(self, coverage_html_rel: str | None) -> Path | None:
         '''Return the compact coverage set artifact next to a recorded coverage HTML path.'''
@@ -49,7 +49,7 @@ class CoverageData:
             snapshot.get('coverage_html_dir') or snapshot.get('coverage_html_rel')
         )
 
-    def covered_elements(self, coverage_path: Path, metric: str) -> set[str]:
+    def covered_elements(self, coverage_path: Path, metric: str) -> set[str] | None:
         '''Return cached covered element keys for one compact coverage set metric.'''
 
         key = (str(coverage_path), metric)
@@ -62,10 +62,11 @@ class CoverageData:
 
         if coverage_path is None or not coverage_path.exists():
             return {f'{metric}_covered': None for metric in metrics}
-        return {
-            f'{metric}_covered': len(self.covered_elements(coverage_path, metric))
-            for metric in metrics
-        }
+        counts: dict[str, int | None] = {}
+        for metric in metrics:
+            values = self.covered_elements(coverage_path, metric)
+            counts[f'{metric}_covered'] = len(values) if values is not None else None
+        return counts
 
     def coverage_sets_by_fuzzer(
         self,
@@ -83,7 +84,9 @@ class CoverageData:
             snapshot = agg_snapshots.get((str(fuzzer), str(benchmark), str(fuzz_target)), {})
             coverage_path = self.coverage_sets_for_snapshot(snapshot)
             if coverage_path is not None:
-                out[fuzzer] = self.covered_elements(coverage_path, metric)
+                values = self.covered_elements(coverage_path, metric)
+                if values is not None:
+                    out[fuzzer] = values
         return out
 
     def trial_coverage_sets_by_fuzzer(
@@ -94,7 +97,7 @@ class CoverageData:
         benchmark: str,
         fuzz_target: str,
         metric: str,
-    ) -> dict[str, list[set[str]]]:
+    ) -> dict[str, list[set[str] | None]]:
         '''Return per-trial covered element sets for one target and metric.'''
 
         out = {str(fuzzer): [] for fuzzer in fuzzers}
@@ -107,6 +110,9 @@ class CoverageData:
             ):
                 continue
             coverage_path = self.coverage_sets_for_snapshot(trial)
-            if coverage_path is not None:
-                out[fuzzer].append(self.covered_elements(coverage_path, metric))
+            out[fuzzer].append(
+                self.covered_elements(coverage_path, metric)
+                if coverage_path is not None
+                else None
+            )
         return {fuzzer: sets for fuzzer, sets in out.items() if sets}

@@ -137,24 +137,86 @@ class CoverageReportingTest(unittest.TestCase):
                 'by_metric': {
                     'branches': {
                         'fuzzers': ['left', 'right'],
-                        'matrix': [[0, 2], [1, 0]],
-                        'unique_counts': [2, 1],
+                        'exclusive': {
+                            'exclusive_any': [1, 1],
+                            'exclusive_all': [0, 1],
+                            'exclusive_any_bounds': ['exact', 'exact'],
+                            'exclusive_all_bounds': ['exact', 'exact'],
+                        },
                         'note': None,
                     }
                 }
             },
         }
 
-        coverage_matrices.attach_exclusive_coverage_stats(target=target)
+        coverage_matrices.attach_exclusive_coverage_stats(
+            target=target,
+            trial_coverage_sets_by_metric={
+                'branches': {
+                    'left': [{'left-only', 'shared'}, {'shared'}],
+                    'right': [{'right-only', 'shared'}],
+                }
+            },
+        )
 
         self.assertEqual(
-            {'metric': 'branches', 'total': 2, 'min': None, 'max': None, 'median': None, 'note': None},
+            {
+                'metric': 'branches',
+                'exclusive_any': 1,
+                'exclusive_all': 0,
+                'exclusive_any_bound': 'exact',
+                'exclusive_all_bound': 'exact',
+                'min': 0,
+                'max': 1,
+                'median': 0.5,
+                'sample_size': 2,
+                'usable_sample_size': 2,
+                'note': None,
+            },
             target['fuzzers'][0]['exclusive_coverage'],
         )
         self.assertEqual(
-            {'metric': 'branches', 'total': 1, 'min': None, 'max': None, 'median': None, 'note': None},
+            {
+                'metric': 'branches',
+                'exclusive_any': 1,
+                'exclusive_all': 1,
+                'exclusive_any_bound': 'exact',
+                'exclusive_all_bound': 'exact',
+                'min': 1,
+                'max': 1,
+                'median': 1.0,
+                'sample_size': 1,
+                'usable_sample_size': 1,
+                'note': None,
+            },
             target['fuzzers'][1]['exclusive_coverage'],
         )
+
+    def test_unique_coverage_uses_trial_variants_and_missing_bounds(self) -> None:
+        group = coverage_matrices.compute_unique_matrix(
+            cov_metrics=('branches',),
+            trials=[
+                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha'},
+                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha'},
+                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta'},
+                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta'},
+            ],
+            benchmark='bench',
+            fuzz_target='target',
+            trial_coverage_sets_by_metric={
+                'branches': {
+                    'alpha': [{'alpha-only'}, None],
+                    'beta': [{'beta-only'}, {'beta-only'}],
+                }
+            },
+        )
+
+        matrix = group['by_metric']['branches']
+        self.assertEqual([[0, 1], [1, 0]], matrix['pairwise_unique_any'])
+        self.assertEqual([[None, None], [1, 0]], matrix['pairwise_unique_all'])
+        self.assertEqual(['lower', 'upper'], matrix['exclusive']['exclusive_any_bounds'])
+        self.assertEqual([None, 1], matrix['exclusive']['exclusive_all'])
+        self.assertNotIn(0, matrix['pairwise_unique_all'][0])
 
     def test_report_curve_preserves_cumulative_metric_decreases(self) -> None:
         curve = coverage_curves.build_curve(

@@ -18,7 +18,7 @@ from fuzzmeter.reporting.analyzers.trial_analysis import TrialAnalysis
 from fuzzmeter.reporting.keys import SNAPSHOT_COVERAGE_FIELDS
 from fuzzmeter.reporting.metrics import median
 from fuzzmeter.reporting.payload import _PayloadBuilder
-from fuzzmeter.reporting.set_comparison import trial_set_comparison
+from fuzzmeter.reporting.set_comparison import relative_containment_matrix, trial_set_comparison
 
 COV_METRICS = ('branches',)
 CURVE_MAX_POINTS = 100
@@ -350,6 +350,32 @@ class TrialSetComparisonTest(unittest.TestCase):
         self.assertEqual(0, result['exclusive']['exclusive_any'][0])
         self.assertEqual(0, result['exclusive']['exclusive_all'][0])
 
+    def test_relative_containment_preserves_measured_zero(self) -> None:
+        result = relative_containment_matrix(
+            ['alpha', 'beta'],
+            {'alpha': [set()], 'beta': [{'beta-only'}]},
+        )
+
+        self.assertEqual(0.0, result['matrix'][0][1])
+        self.assertIsNotNone(result['matrix'][0][1])
+
+    def test_relative_containment_is_unknown_for_empty_column_union(self) -> None:
+        result = relative_containment_matrix(
+            ['alpha', 'beta'],
+            {'alpha': [{'alpha-only'}], 'beta': [set()]},
+        )
+
+        self.assertIsNone(result['matrix'][0][1])
+        self.assertEqual(100.0, result['max_value'])
+
+    def test_relative_containment_is_unknown_without_usable_row_trials(self) -> None:
+        result = relative_containment_matrix(
+            ['alpha', 'beta'],
+            {'alpha': [None], 'beta': [{'beta-only'}]},
+        )
+
+        self.assertIsNone(result['matrix'][0][1])
+
 
 class CoverageAnalysisBehaviorTest(unittest.TestCase):
     '''Verify coverage analyzer aggregation and target view behavior.'''
@@ -566,6 +592,12 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         self.assertTrue(relcov['uses_aggregate_fallback'])
         self.assertEqual(['alpha', 'beta'], relcov['aggregate_fallback_fuzzers'])
         self.assertEqual({'alpha': 1.0, 'beta': 1.0}, target['relcov_score_by_fuzzer'])
+        unique = target['unique_matrix']['by_metric']['branches']
+        self.assertEqual([[0, 1], [1, 0]], unique['pairwise_unique_any'])
+        self.assertEqual([[None, None], [None, None]], unique['pairwise_unique_all'])
+        self.assertEqual([None, None], unique['exclusive']['exclusive_all'])
+        self.assertEqual('unknown', target['fuzzers'][0]['exclusive_coverage']['exclusive_all_bound'])
+        self.assertEqual(0, target['fuzzers'][0]['exclusive_coverage']['sample_size'])
 
 
 def _trial_analysis() -> TrialAnalysis:

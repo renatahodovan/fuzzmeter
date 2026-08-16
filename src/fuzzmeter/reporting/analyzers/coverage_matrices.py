@@ -12,8 +12,14 @@ from __future__ import annotations
 from typing import Any
 
 from ..keys import BRANCH_COVERAGE_METRIC
-from ..metrics import mann_whitney_u_pvalue, safe_int, vargha_delaney_a12
-from ..set_comparison import novelty_scores, pairwise_matrix, relative_containment_matrix, unique_matrix
+from ..metrics import mann_whitney_u_pvalue, median, safe_int, vargha_delaney_a12
+from ..set_comparison import (
+    TrialSetIndex,
+    novelty_scores,
+    pairwise_matrix,
+    relative_containment_matrix,
+    trial_set_comparison,
+)
 
 
 def compute_unique_matrix(
@@ -22,7 +28,9 @@ def compute_unique_matrix(
     trials: list[dict[str, Any]],
     benchmark: str,
     fuzz_target: str,
-    coverage_sets_by_metric: dict[str, dict[str, set[str]]],
+    trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str] | None]]],
+    aggregate_fallback_fuzzers_by_metric: dict[str, set[str]] | None = None,
+    trial_set_indexes_by_metric: dict[str, TrialSetIndex] | None = None,
 ) -> dict[str, Any]:
     '''Compute all unique coverage matrices for one target.'''
 
@@ -32,7 +40,9 @@ def compute_unique_matrix(
             benchmark=benchmark,
             fuzz_target=fuzz_target,
             metric=metric,
-            coverage_sets=coverage_sets_by_metric.get(metric, {}),
+            trial_coverage_sets=trial_coverage_sets_by_metric.get(metric, {}),
+            aggregate_fallback_fuzzers=(aggregate_fallback_fuzzers_by_metric or {}).get(metric, set()),
+            trial_set_index=(trial_set_indexes_by_metric or {}).get(metric),
         )
         for metric in cov_metrics
     }
@@ -49,9 +59,11 @@ def _compute_unique_matrix_for_metric(
     benchmark: str,
     fuzz_target: str,
     metric: str,
-    coverage_sets: dict[str, set[str]],
+    trial_coverage_sets: dict[str, list[set[str] | None]],
+    aggregate_fallback_fuzzers: set[str],
+    trial_set_index: TrialSetIndex | None,
 ) -> dict[str, Any]:
-    '''Compute pairwise unique union coverage matrix for one coverage metric.'''
+    '''Compute pairwise strict and non-strict coverage counts for one metric.'''
 
     fuzzers = sorted(
         {
@@ -64,18 +76,25 @@ def _compute_unique_matrix_for_metric(
             )
         }
     )
-    result = unique_matrix(
+    fallback_fuzzers = sorted(aggregate_fallback_fuzzers)
+    result = trial_set_comparison(
         fuzzers,
-        coverage_sets,
+        trial_coverage_sets,
         note=(
-            'Compact coverage sets missing for one or more fuzzers; '
-            'the matrix may be partial.'
-        ) if len(coverage_sets) != len(fuzzers) else None,
+            'Per-trial compact coverage sets are unavailable for '
+            f'{", ".join(fallback_fuzzers)}; aggregate coverage sets are used for '
+            'non-strict values, while strict subject-side values are unknown.'
+        ) if fallback_fuzzers else None,
+        strict_unknown_labels=aggregate_fallback_fuzzers,
+        index=trial_set_index,
     )
     return {
         **result,
         'metric': metric,
-        'aggregation': 'per-fuzzer aggregate compact coverage sets',
+        'format': 'int',
+        'aggregation': 'per-fuzzer trial compact coverage sets',
+        'uses_aggregate_fallback': bool(fallback_fuzzers),
+        'aggregate_fallback_fuzzers': fallback_fuzzers,
     }
 
 
@@ -149,27 +168,49 @@ def compute_branch_stat_matrices(
 def attach_exclusive_coverage_stats(
     *,
     target: dict[str, Any],
+    trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str] | None]]] | None = None,
+    aggregate_fallback_fuzzers_by_metric: dict[str, set[str]] | None = None,
     metric: str = BRANCH_COVERAGE_METRIC,
 ) -> dict[str, Any]:
-    '''Attach per-fuzzer exclusive coverage totals to a target.'''
+    '''Attach aggregate exclusive coverage and per-trial distributions.'''
 
     entries = target.get('fuzzers') or []
-    unique_matrix = ((target.get('unique_matrix') or {}).get('by_metric') or {}).get(metric) or {}
-    fuzzers = [str(fuzzer) for fuzzer in unique_matrix.get('fuzzers') or []]
-    unique_counts = unique_matrix.get('unique_counts') or []
-    note = unique_matrix.get('note')
+    matrix = ((target.get('unique_matrix') or {}).get('by_metric') or {}).get(metric) or {}
+    fuzzers = [str(fuzzer) for fuzzer in matrix.get('fuzzers') or []]
+    exclusive = matrix.get('exclusive') or {}
+    any_values = exclusive.get('exclusive_any') or []
+    all_values = exclusive.get('exclusive_all') or []
+    any_bounds = exclusive.get('exclusive_any_bounds') or []
+    all_bounds = exclusive.get('exclusive_all_bounds') or []
+    sets_by_fuzzer = (trial_coverage_sets_by_metric or {}).get(metric, {})
+    fallback_fuzzers = (aggregate_fallback_fuzzers_by_metric or {}).get(metric, set())
+    unions = {
+        fuzzer: set().union(*(values for values in sets_by_fuzzer.get(fuzzer, []) if values is not None))
+        for fuzzer in fuzzers
+    }
 
     for entry in entries:
         fuzzer = str(entry.get('fuzzer') or '')
         idx = fuzzers.index(fuzzer) if fuzzer in fuzzers else -1
-        total = unique_counts[idx] if idx >= 0 and idx < len(unique_counts) else None
+        other_union = set().union(*(values for other, values in unions.items() if other != fuzzer))
+        trial_sets = sets_by_fuzzer.get(fuzzer, [])
+        trial_counts = (
+            []
+            if fuzzer in fallback_fuzzers
+            else [len(values - other_union) for values in trial_sets if values is not None]
+        )
         entry['exclusive_coverage'] = {
             'metric': metric,
-            'total': int(total) if isinstance(total, (int, float)) else None,
-            'min': None,
-            'max': None,
-            'median': None,
-            'note': note,
+            'exclusive_any': any_values[idx] if 0 <= idx < len(any_values) else None,
+            'exclusive_all': all_values[idx] if 0 <= idx < len(all_values) else None,
+            'exclusive_any_bound': any_bounds[idx] if 0 <= idx < len(any_bounds) else 'unknown',
+            'exclusive_all_bound': all_bounds[idx] if 0 <= idx < len(all_bounds) else 'unknown',
+            'min': min(trial_counts) if trial_counts else None,
+            'max': max(trial_counts) if trial_counts else None,
+            'median': median(trial_counts),
+            'sample_size': 0 if fuzzer in fallback_fuzzers else len(trial_sets),
+            'usable_sample_size': len(trial_counts),
+            'note': matrix.get('note'),
         }
     return target
 
@@ -180,8 +221,9 @@ def compute_relcov_matrix(
     trials: list[dict[str, Any]],
     benchmark: str,
     fuzz_target: str,
-    trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str]]]],
+    trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str] | None]]],
     aggregate_fallback_fuzzers_by_metric: dict[str, set[str]] | None = None,
+    trial_set_indexes_by_metric: dict[str, TrialSetIndex] | None = None,
 ) -> tuple[dict[str, Any], dict[str, float]]:
     '''Compute pairwise relative coverage and novelty-weighted branch scores.'''
 
@@ -204,6 +246,7 @@ def compute_relcov_matrix(
             aggregate_fallback_fuzzers=(
                 aggregate_fallback_fuzzers_by_metric or {}
             ).get(metric, set()),
+            trial_set_index=(trial_set_indexes_by_metric or {}).get(metric),
         )
         for metric in cov_metrics
     }
@@ -211,6 +254,7 @@ def compute_relcov_matrix(
     score_by_fuzzer = _relcov_scores(
         fuzzers=fuzzers,
         trial_coverage_sets=branch_trial_sets,
+        trial_set_index=(trial_set_indexes_by_metric or {}).get(BRANCH_COVERAGE_METRIC),
     )
     return (
         {
@@ -226,11 +270,13 @@ def _compute_relcov_matrix_for_metric(
     *,
     fuzzers: list[str],
     metric: str,
-    trial_coverage_sets: dict[str, list[set[str]]],
+    trial_coverage_sets: dict[str, list[set[str] | None]],
     aggregate_fallback_fuzzers: set[str],
+    trial_set_index: TrialSetIndex | None,
 ) -> dict[str, Any]:
     missing_any = len(trial_coverage_sets) != len(fuzzers) or any(
         not trial_coverage_sets.get(fuzzer)
+        or any(values is None for values in trial_coverage_sets.get(fuzzer, []))
         for fuzzer in fuzzers
     )
     fallback_fuzzers = sorted(aggregate_fallback_fuzzers)
@@ -249,6 +295,7 @@ def _compute_relcov_matrix_for_metric(
         fuzzers,
         trial_coverage_sets,
         note=' '.join(note_parts) or None,
+        index=trial_set_index,
     )
     if not fallback_fuzzers:
         aggregation = f'per-trial median compact {metric} coverage sets'
@@ -307,7 +354,8 @@ def _branch_coverage_distributions(
 def _relcov_scores(
     *,
     fuzzers: list[str],
-    trial_coverage_sets: dict[str, list[set[str]]],
+    trial_coverage_sets: dict[str, list[set[str] | None]],
+    trial_set_index: TrialSetIndex | None = None,
 ) -> dict[str, float]:
     '''Score each fuzzer by coverage elements that fewer peers cover.'''
-    return novelty_scores(fuzzers, trial_coverage_sets)
+    return novelty_scores(fuzzers, trial_coverage_sets, index=trial_set_index)

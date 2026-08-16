@@ -792,8 +792,9 @@ function renderUniqueCoverageMatrix(host, uniqueMatrix, metric, mode) {
   const rendered = mode === 'pct' ? {
     ...matrix,
     matrix: (matrix.matrix || []).map((row, rowIndex) => row.map((value) => {
+      if (value === null || value === undefined || !Number.isFinite(Number(value))) return null;
       const denominator = Number((matrix.covered_counts || [])[rowIndex] || 0);
-      return denominator > 0 ? 100 * Number(value || 0) / denominator : 0;
+      return denominator > 0 ? 100 * Number(value) / denominator : 0;
     })),
     max_value: null,
   } : matrix;

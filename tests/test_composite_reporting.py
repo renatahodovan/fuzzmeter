@@ -59,6 +59,11 @@ class CompositeReportingTest(unittest.TestCase):
             [[100.0 / 3.0, 25.0], [100.0, 100.0]],
             matrix['matrix'],
         )
+        unique = payload['targets'][0]['unique_matrix']['by_metric']['branches']
+        self.assertEqual([[0, 0], [1, 0]], unique['pairwise_unique_any'])
+        self.assertEqual([[0, 0], [1, 0]], unique['pairwise_unique_all'])
+        self.assertEqual([0, 1], unique['exclusive']['exclusive_any'])
+        self.assertEqual([0, 1], unique['exclusive']['exclusive_all'])
 
     def test_build_composite_payload_merges_selected_series(self) -> None:
         '''Two selected run series appear together under one target.'''

@@ -66,14 +66,16 @@ def coverage_summary_from_export(
     return summary
 
 
-def read_covered_keys(path: Path, metric: str) -> set[str]:
+def read_covered_keys(path: Path, metric: str) -> set[str] | None:
     '''Read covered element hash keys for one metric from a coverage set artifact.'''
 
     try:
         doc = json.loads(path.read_text(encoding='utf-8', errors='replace') or '{}')
-        return {str(value) for value in _metric_values(doc, metric)}
+        values = _metric_values(doc, metric)
+        return {str(value) for value in values} if values is not None else None
     except Exception:
-        return set()
+        LOG.warning('Could not read coverage set artifact %s.', path, exc_info=True)
+        return None
 
 
 def write_coverage_sets(path: Path, summary: dict[str, Any], metrics: dict[str, list[int]]) -> None:
@@ -143,11 +145,11 @@ def write_coverage_sets(path: Path, summary: dict[str, Any], metrics: dict[str, 
     path.write_text(json.dumps(doc, separators=(',', ':')), encoding='utf-8')
 
 
-def _metric_values(doc: dict[str, Any], metric: str) -> list[int]:
+def _metric_values(doc: dict[str, Any], metric: str) -> list[int] | None:
     metrics = doc.get('metrics')
     if not isinstance(metrics, dict):
-        LOG.warning('Coverage set document has no metrics mapping; reading %s as empty.', metric)
-        return []
+        LOG.warning('Coverage set document has no metrics mapping; %s is unknown.', metric)
+        return None
 
     values = metrics.get(metric)
 
@@ -158,13 +160,13 @@ def _metric_values(doc: dict[str, Any], metric: str) -> list[int]:
         decoded_values = _decode_compact_metric(values)
         if decoded_values is not None:
             return decoded_values
-        LOG.warning('Could not decode the compact coverage set of %s; reading it as empty.', metric)
-        return []
+        LOG.warning('Could not decode the compact coverage set of %s; treating it as unknown.', metric)
+        return None
 
     # write_coverage_sets always emits every COVERAGE_METRICS entry, and an empty
     # metric still decodes to an empty list, so reaching here means a broken file.
-    LOG.warning('Coverage set of %s is missing or has type %s; reading it as empty.', metric, type(values).__name__)
-    return []
+    LOG.warning('Coverage set of %s is missing or has type %s; treating it as unknown.', metric, type(values).__name__)
+    return None
 
 
 def _covered_hashes(export_obj: dict[str, Any], metric: str) -> list[int]:

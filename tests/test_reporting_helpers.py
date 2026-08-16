@@ -119,6 +119,37 @@ class CoverageDataTest(unittest.TestCase):
             self.assertEqual({'fz': [{'branch-a'}]}, result)
             read_covered_keys.assert_called_once_with(coverage_path.resolve(), 'branches')
 
+    def test_missing_trial_artifact_is_preserved_as_unknown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            coverage_path = run_dir / 'coverage' / 'trial-0' / 'coverage-sets.json'
+            coverage_path.parent.mkdir(parents=True)
+            coverage_path.write_text('{"metrics":{"branches":[1]}}', encoding='utf-8')
+            data = CoverageData(run_dir)
+
+            result = data.trial_coverage_sets_by_fuzzer(
+                trials=[
+                    {
+                        'fuzzer': 'fz',
+                        'benchmark': 'bench',
+                        'fuzz_target': 'target',
+                        'coverage_sets_json_rel': 'coverage/trial-0/coverage-sets.json',
+                    },
+                    {
+                        'fuzzer': 'fz',
+                        'benchmark': 'bench',
+                        'fuzz_target': 'target',
+                        'coverage_sets_json_rel': 'coverage/missing/coverage-sets.json',
+                    },
+                ],
+                fuzzers=['fz'],
+                benchmark='bench',
+                fuzz_target='target',
+                metric='branches',
+            )
+
+        self.assertEqual({'fz': [{'1'}, None]}, result)
+
     def test_returns_empty_counts_for_missing_coverage_sets(self) -> None:
         data = CoverageData(Path('/missing/run'))
 

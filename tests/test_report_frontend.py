@@ -63,6 +63,10 @@ class ReportFrontendTest(unittest.TestCase):
         self.assertEqual(get_args(ChartType), _javascript_string_array(extras, 'ALLOWED_CHART_TYPES'))
         self.assertEqual(get_args(SectionPlacement), _javascript_string_array(extras, 'ALLOWED_PLACEMENTS'))
         self.assertIn('return COVERAGE_METRICS.find(([metric]) => hasMetricData(metric))', page)
+        self.assertIn(
+            'if (value === null || value === undefined || !Number.isFinite(Number(value))) return null;',
+            page,
+        )
 
     def test_comparison_mode_selects_payload_variants_without_losing_unknowns(self) -> None:
         script = r'''
@@ -134,7 +138,7 @@ class ReportFrontendTest(unittest.TestCase):
                 cell_bounds: [['exact', 'unknown'], ['lower', 'exact']],
                 sample_sizes: [2, 3],
               },
-              { formatter: 'int' },
+              { formatter: 'pct' },
             );
 
             const table = host.children[0];
@@ -142,7 +146,7 @@ class ReportFrontendTest(unittest.TestCase):
             const unknownCell = firstDataRow.children[2];
             assert.equal(unknownCell.children[0].textContent, '?');
             const boundedCell = table.children[1].children[1].children[1];
-            assert.equal(boundedCell.children[0].textContent, '≥2');
+            assert.equal(boundedCell.children[0].textContent, '≥2.0%');
             // Sample sizes belong in the matrix note, not in every cell, so a
             // uniform repetition count is not repeated once per fuzzer pair.
             assert.equal(unknownCell.children.length, 1);
@@ -190,7 +194,12 @@ class ReportFrontendTest(unittest.TestCase):
                   },
                   distribution: { regions_pct: [80, 90] },
                   exclusive_bugs: { exclusive_any: 1, exclusive_all: 0 },
-                  exclusive_coverage: { total: 3 },
+                  exclusive_coverage: {
+                    exclusive_any: 3,
+                    exclusive_all: 2,
+                    exclusive_any_bound: 'lower',
+                    exclusive_all_bound: 'exact',
+                  },
                 },
                 {
                   fuzzer: 'beta',
@@ -202,7 +211,12 @@ class ReportFrontendTest(unittest.TestCase):
                   },
                   distribution: { regions_pct: [30, 50] },
                   exclusive_bugs: { exclusive_any: 0, exclusive_all: 0 },
-                  exclusive_coverage: { total: 1 },
+                  exclusive_coverage: {
+                    exclusive_any: 1,
+                    exclusive_all: 1,
+                    exclusive_any_bound: 'exact',
+                    exclusive_all_bound: 'exact',
+                  },
                 },
               ],
             };
@@ -221,7 +235,7 @@ class ReportFrontendTest(unittest.TestCase):
                 relcov_score: 2,
                 relbug_score: 0,
                 exclusive_coverage_count: 3,
-                exclusive_coverage_count_bound: 'exact',
+                exclusive_coverage_count_bound: 'lower',
                 unique_bug_count: 2,
                 exclusive_bug_count: 1,
                 exclusive_bug_count_bound: 'exact',
@@ -243,8 +257,8 @@ class ReportFrontendTest(unittest.TestCase):
             ]);
 
             const strictSummary = computeSummary([enriched], 'all');
-            assert.equal(strictSummary.rankings[0].exclusive_coverage_count, null);
-            assert.equal(strictSummary.rankings[0].exclusive_coverage_count_bound, 'unknown');
+            assert.equal(strictSummary.rankings[0].exclusive_coverage_count, 2);
+            assert.equal(strictSummary.rankings[0].exclusive_coverage_count_bound, 'exact');
             assert.equal(strictSummary.rankings[0].exclusive_bug_count, 0);
         '''
         subprocess.run(

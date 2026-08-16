@@ -33,7 +33,7 @@ from .keys import (
 )
 from .metrics import dt
 from .payload import build_payload
-from .set_comparison import empty_trial_set_comparison
+from .set_comparison import empty_trial_set_comparison, trial_set_index
 
 
 def build_composite_payload(
@@ -287,12 +287,18 @@ def _recompute_matrices(
             coverage_sets_by_metric,
             fuzzers,
         )
+        trial_set_indexes_by_metric = {
+            metric: trial_set_index(fuzzers, trial_coverage_sets_by_metric.get(metric, {}))
+            for metric in COV_METRICS
+        }
         target[UNIQUE_MATRIX_KEY] = coverage_matrices.compute_unique_matrix(
             cov_metrics=COV_METRICS,
             trials=trials,
             benchmark=benchmark,
             fuzz_target=fuzz_target,
-            coverage_sets_by_metric=coverage_sets_by_metric,
+            trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
+            aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
+            trial_set_indexes_by_metric=trial_set_indexes_by_metric,
         )
         target[RELCOV_MATRIX_KEY], target[RELCOV_SCORE_BY_FUZZER_KEY] = coverage_matrices.compute_relcov_matrix(
             cov_metrics=COV_METRICS,
@@ -301,13 +307,18 @@ def _recompute_matrices(
             fuzz_target=fuzz_target,
             trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
             aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
+            trial_set_indexes_by_metric=trial_set_indexes_by_metric,
         )
         target[BRANCH_MWU_MATRIX_KEY], target[BRANCH_A12_MATRIX_KEY] = coverage_matrices.compute_branch_stat_matrices(
             trials=trials,
             benchmark=benchmark,
             fuzz_target=fuzz_target,
         )
-        coverage_matrices.attach_exclusive_coverage_stats(target=target)
+        coverage_matrices.attach_exclusive_coverage_stats(
+            target=target,
+            trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
+            aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
+        )
         target[UNIQUE_BUG_TABLE_KEY] = bug_analysis.compute_unique_bug_table(target)
         target[UNIQUE_BUG_MATRIX_KEY] = bug_analysis.compute_unique_bug_matrix(target)
         target[RELBUG_MATRIX_KEY], target[RELBUG_SCORE_BY_FUZZER_KEY] = bug_analysis.compute_rel_bug_matrix(target)
@@ -362,18 +373,20 @@ def _coverage_sets_by_metric(
         if coverage_path is None:
             continue
         for metric in COV_METRICS:
-            out[metric][fuzzer] = coverage_data.covered_elements(coverage_path, metric)
+            values = coverage_data.covered_elements(coverage_path, metric)
+            if values is not None:
+                out[metric][fuzzer] = values
     return out
 
 
 def _trial_coverage_sets_by_metric(
     target: dict[str, Any],
     source_dirs: dict[tuple[str, str, str], Path],
-) -> dict[str, dict[str, list[set[str]]]]:
+) -> dict[str, dict[str, list[set[str] | None]]]:
     benchmark = str(target.get('benchmark') or '')
     fuzz_target = str(target.get('fuzz_target') or '')
     caches: dict[Path, CoverageData] = {}
-    out: dict[str, dict[str, list[set[str]]]] = {metric: {} for metric in COV_METRICS}
+    out: dict[str, dict[str, list[set[str] | None]]] = {metric: {} for metric in COV_METRICS}
     for entry in target.get('fuzzers') or []:
         fuzzer = str(entry.get('fuzzer') or '')
         source_dir = source_dirs.get((benchmark, fuzz_target, fuzzer))
@@ -384,34 +397,36 @@ def _trial_coverage_sets_by_metric(
             coverage_path = coverage_data.coverage_sets_from_coverage_html_rel(
                 (trial or {}).get('coverage_html_rel')
             )
-            if coverage_path is None:
-                continue
             for metric in COV_METRICS:
-                out[metric].setdefault(fuzzer, []).append(coverage_data.covered_elements(coverage_path, metric))
+                out[metric].setdefault(fuzzer, []).append(
+                    coverage_data.covered_elements(coverage_path, metric)
+                    if coverage_path is not None
+                    else None
+                )
     return out
 
 
 def _with_aggregate_trial_fallback(
-    trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str]]]],
+    trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str] | None]]],
     coverage_sets_by_metric: dict[str, dict[str, set[str]]],
     fuzzers: list[str],
-) -> tuple[dict[str, dict[str, list[set[str]]]], dict[str, set[str]]]:
+) -> tuple[dict[str, dict[str, list[set[str] | None]]], dict[str, set[str]]]:
     '''Use final aggregate coverage sets when trial compact sets are unavailable.'''
 
-    out: dict[str, dict[str, list[set[str]]]] = {}
+    out: dict[str, dict[str, list[set[str] | None]]] = {}
     fallback_fuzzers_by_metric: dict[str, set[str]] = {}
     for metric in COV_METRICS:
         trial_sets = trial_coverage_sets_by_metric.get(metric, {})
         aggregate_sets = coverage_sets_by_metric.get(metric, {})
         merged = {
-            fuzzer: [set(value) for value in values]
+            fuzzer: [set(value) if value is not None else None for value in values]
             for fuzzer, values in trial_sets.items()
         }
         for fuzzer in fuzzers:
-            if merged.get(fuzzer):
+            if any(value is not None for value in merged.get(fuzzer, [])):
                 continue
             aggregate_set = aggregate_sets.get(fuzzer)
-            if aggregate_set:
+            if aggregate_set is not None:
                 merged[fuzzer] = [set(aggregate_set)]
                 fallback_fuzzers_by_metric.setdefault(metric, set()).add(fuzzer)
         out[metric] = merged
