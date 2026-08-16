@@ -73,7 +73,7 @@ class CoverageWorkerTest(unittest.TestCase):
                  patch.object(coverage_build.utils, 'apply_configured_env'), \
                  patch.object(coverage_build.utils, 'build_benchmark'):
                 coverage_build.build()
-                coverage_sets.write_coverage_sets(artifact_path, {}, {})
+                coverage_sets.write_coverage_sets(artifact_path, {}, {}, {})
             artifact = json.loads(artifact_path.read_text(encoding='utf-8'))
 
         provenance = artifact['measurement_provenance']
@@ -91,7 +91,7 @@ class CoverageWorkerTest(unittest.TestCase):
             artifact_path = root / 'coverage-sets.json'
             with patch.object(coverage_sets, 'COVERAGE_BUILD_METADATA_PATH', root / 'missing.json'), \
                  self.assertLogs(coverage_sets.LOG, level='WARNING') as logs:
-                coverage_sets.write_coverage_sets(artifact_path, {}, {})
+                coverage_sets.write_coverage_sets(artifact_path, {}, {}, {})
             artifact = json.loads(artifact_path.read_text(encoding='utf-8'))
 
         provenance = artifact['measurement_provenance']
@@ -104,6 +104,25 @@ class CoverageWorkerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             artifact_path = Path(tmp_dir) / 'coverage-sets.json'
             artifact_path.write_text('{broken', encoding='utf-8')
+
+            with self.assertLogs(coverage_sets.LOG, level='WARNING'):
+                covered = coverage_sets.read_covered_keys(artifact_path, 'branches')
+
+        self.assertIsNone(covered)
+
+    def test_version_one_coverage_set_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            artifact_path = Path(tmp_dir) / 'coverage-sets.json'
+            artifact_path.write_text(
+                json.dumps(
+                    {
+                        'version': 1,
+                        'type': 'fuzzmeter.coverage.sets',
+                        'metrics': {'branches': [1]},
+                    }
+                ),
+                encoding='utf-8',
+            )
 
             with self.assertLogs(coverage_sets.LOG, level='WARNING'):
                 covered = coverage_sets.read_covered_keys(artifact_path, 'branches')
@@ -127,12 +146,114 @@ class CoverageWorkerTest(unittest.TestCase):
             )
             artifact_path = root / 'coverage-sets.json'
             with patch.object(coverage_sets, 'COVERAGE_BUILD_METADATA_PATH', metadata_path):
-                coverage_sets.write_coverage_sets(artifact_path, {}, {})
+                coverage_sets.write_coverage_sets(artifact_path, {}, {}, {})
             artifact = json.loads(artifact_path.read_text(encoding='utf-8'))
 
         provenance = artifact['measurement_provenance']
         self.assertEqual('single', provenance['requested_counter_update_mode'])
         self.assertEqual('clang_default', provenance['requested_counter_update_mode_source'])
+
+    def test_coverage_artifact_separates_report_export_and_set_definitions(self) -> None:
+        report = '''
+Filename    Regions    Missed Regions    Cover    Functions    Missed Functions    Executed    Lines    Missed Lines    Cover    Branches    Missed Branches    Cover
+TOTAL       2          1                 50.00%   1            0                   100.00%      11       0               100.00%  4           2                  50.00%
+'''
+        export_obj = {
+            'data': [
+                {
+                    'files': [
+                        {
+                            'filename': '/src/target.c',
+                            'branches': [],
+                            'functions': [],
+                            'segments': [[10, 1, 1], [20, 1, 0]],
+                        }
+                    ],
+                    'functions': [],
+                    'totals': {
+                        'branches': {'count': 0, 'covered': 0},
+                        'functions': {'count': 0, 'covered': 0},
+                        'lines': {'count': 11, 'covered': 11},
+                        'regions': {'count': 1, 'covered': 1},
+                    },
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            artifact_path = root / 'coverage-sets.json'
+            metadata_path = root / 'coverage-build.json'
+            metadata_path.write_text(
+                json.dumps(
+                    {
+                        'requested_cflags': '-fprofile-update=atomic',
+                        'requested_cxxflags': '-fprofile-update=atomic',
+                        'clang_version': 'clang version 18.1.3',
+                    }
+                ),
+                encoding='utf-8',
+            )
+            cfg = coverage_worker.WorkerConfig(
+                cov_bin=root / 'target',
+                out_dir=root,
+                work_dir=root / 'work',
+                input_list=Path(),
+                profdata=root / 'merged.profdata',
+                coverage_sets=artifact_path,
+                skip_html=True,
+            )
+            with patch.object(coverage_sets, 'COVERAGE_BUILD_METADATA_PATH', metadata_path), \
+                 patch.object(
+                     coverage_worker,
+                     '_run',
+                     side_effect=[
+                         subprocess.CompletedProcess(args=['llvm-cov', 'report'], returncode=0, stdout=report, stderr=''),
+                         subprocess.CompletedProcess(
+                             args=['llvm-cov', 'export'],
+                             returncode=0,
+                             stdout=json.dumps(export_obj),
+                             stderr='',
+                         ),
+                     ],
+                 ) as run:
+                coverage_worker._write_coverage_outputs(cfg)
+
+            artifact = json.loads(artifact_path.read_text(encoding='utf-8'))
+            line_metric = artifact['metrics']['lines']
+            covered_lines = coverage_sets.read_covered_keys(artifact_path, 'lines')
+            commands = [call.args[0] for call in run.call_args_list]
+
+        self.assertEqual(2, artifact['version'])
+        self.assertEqual(
+            {
+                'definition': 'llvm-cov-report-total',
+                'covered_count': 11,
+                'total_count': 11,
+            },
+            line_metric['report_scalar'],
+        )
+        self.assertEqual(
+            {
+                'definition': 'llvm-cov-export-totals',
+                'covered_count': 11,
+                'total_count': 11,
+            },
+            line_metric['export_summary'],
+        )
+        self.assertEqual('hashed-covered-segment-start-lines', line_metric['element_set']['definition'])
+        self.assertEqual(1, line_metric['element_set']['element_count'])
+        self.assertNotIn('total_count', line_metric['element_set'])
+        self.assertEqual(1, len(covered_lines))
+        provenance = artifact['measurement_provenance']['llvm_cov']
+        self.assertEqual([f'-instr-profile={cfg.profdata}'], provenance['report_flags'])
+        self.assertEqual(
+            [f'-instr-profile={cfg.profdata}', '-region-coverage-gt=0', '-skip-expansions'],
+            provenance['export_flags'],
+        )
+        self.assertFalse(provenance['populations_aligned'])
+        self.assertEqual(['llvm-cov', 'report'], commands[0][:2])
+        self.assertEqual(['llvm-cov', 'export'], commands[1][:2])
 
     def test_coverage_summary_uses_real_total_after_total_prefixed_file(self) -> None:
         report = '''

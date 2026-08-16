@@ -15,6 +15,7 @@ import tempfile
 import unittest
 
 from pathlib import Path
+from unittest.mock import Mock
 
 from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.db.snapshot import CoverageSummary, update_agg_snapshot_coverage, upsert_agg_snapshot
@@ -126,6 +127,37 @@ class ReportingMetricsTest(unittest.TestCase):
 
 class CoverageReportingTest(unittest.TestCase):
     '''Verify fuzzer-level campaign coverage artifacts are exposed in reports.'''
+
+    def test_aggregate_scalars_use_report_counts_without_set_reconciliation(self) -> None:
+        builder = _PayloadBuilder.__new__(_PayloadBuilder)
+        builder._latest_agg_snapshots = {
+            ('fz', 'bench', 'target'): {
+                'cov_branches_covered': 3,
+                'cov_lines_covered': 4,
+                'cov_functions_covered': 5,
+                'cov_regions_covered': 6,
+            }
+        }
+        builder._coverage_data = Mock()
+        builder._coverage_data.covered_counts.return_value = {
+            'branches_covered': 99,
+            'lines_covered': 99,
+            'functions_covered': 99,
+            'regions_covered': 99,
+        }
+
+        result = builder._aggregated_coverage_for_fuzzer('fz', 'bench', 'target')
+
+        self.assertEqual(
+            {
+                'branches_covered': 3,
+                'lines_covered': 4,
+                'functions_covered': 5,
+                'regions_covered': 6,
+            },
+            result,
+        )
+        builder._coverage_data.covered_counts.assert_not_called()
 
     def test_exclusive_coverage_stats_use_other_fuzzer_union(self) -> None:
         target = {

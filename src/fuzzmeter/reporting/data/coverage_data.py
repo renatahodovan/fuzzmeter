@@ -57,17 +57,6 @@ class CoverageData:
             self._coverage_set_cache[key] = read_covered_keys(coverage_path, metric)
         return self._coverage_set_cache[key]
 
-    def covered_counts(self, coverage_path: Path | None, metrics: tuple[str, ...]) -> dict[str, int | None]:
-        '''Return covered element counts for each requested metric.'''
-
-        if coverage_path is None or not coverage_path.exists():
-            return {f'{metric}_covered': None for metric in metrics}
-        counts: dict[str, int | None] = {}
-        for metric in metrics:
-            values = self.covered_elements(coverage_path, metric)
-            counts[f'{metric}_covered'] = len(values) if values is not None else None
-        return counts
-
     def coverage_sets_by_fuzzer(
         self,
         *,

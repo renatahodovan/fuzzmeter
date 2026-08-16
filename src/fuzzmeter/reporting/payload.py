@@ -25,7 +25,6 @@ from .data.coverage_data import CoverageData
 from .data.run_data import RunData
 from .keys import (
     BRANCH_A12_MATRIX_KEY,
-    BRANCH_COVERAGE_METRIC,
     BRANCH_MWU_MATRIX_KEY,
     COV_METRICS,
     RELBUG_MATRIX_KEY,
@@ -202,22 +201,10 @@ class _PayloadBuilder:
 
     def _aggregated_coverage_for_fuzzer(self, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, int | None]:
         agg_snapshot = self._agg_snapshot_for_fuzzer(fuzzer, benchmark, fuzz_target)
-        coverage_path = self._coverage_data.coverage_sets_for_snapshot(agg_snapshot)
-        aggregated_coverage = self._coverage_data.covered_counts(coverage_path, COV_METRICS)
-        agg_snapshot_coverage = (
-            self._trial_analysis.coverage_summary_from_snapshot(agg_snapshot)
-            if agg_snapshot
-            else {}
-        )
-        for metric in COV_METRICS:
-            summary_covered = safe_int(agg_snapshot_coverage.get(f'{metric}_covered'))
-            if summary_covered is None:
-                continue
-            summary_count = int(summary_covered)
-            current_count = aggregated_coverage.get(f'{metric}_covered')
-            if current_count is None or metric == BRANCH_COVERAGE_METRIC or summary_count > int(current_count):
-                aggregated_coverage[f'{metric}_covered'] = summary_count
-        return aggregated_coverage
+        return {
+            f'{metric}_covered': safe_int(agg_snapshot.get(f'cov_{metric}_covered'))
+            for metric in COV_METRICS
+        }
 
     @staticmethod
     def _coverage_keys_from_trials(trials: list[dict[str, Any]]) -> list[tuple[str, str, str]]:

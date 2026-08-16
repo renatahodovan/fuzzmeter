@@ -14,6 +14,7 @@ import tempfile
 import unittest
 
 from pathlib import Path
+from unittest.mock import patch
 
 from fuzzmeter.composite import (
     COMPOSITE_ORIGIN_FRESH,
@@ -23,6 +24,7 @@ from fuzzmeter.composite.registry import selection_from_key
 from fuzzmeter.db import DB
 from fuzzmeter.reporting.composite import build_composite_payload
 from fuzzmeter.reporting.metrics import mann_whitney_u_pvalue
+from fuzzmeter.resources.entrypoints import coverage_sets
 from tests.support.composite import make_measurement
 from tests.support.dbs import reporting_run_db
 
@@ -206,18 +208,9 @@ def _composite_payload_with_trial_coverage(root: Path) -> dict:
                         ''',
                         (trial_id, 2, 160, branch_count, 20, coverage_html_rel),
                     )
-                coverage_sets = run_dir / f'coverage/trial-{rep}/coverage-sets.json'
-                coverage_sets.parent.mkdir(parents=True, exist_ok=True)
-                coverage_sets.write_text(
-                    json.dumps({
-                        'metrics': {
-                            'lines': [],
-                            'branches': sorted(covered_set),
-                            'functions': [],
-                            'regions': [],
-                        },
-                    }),
-                    encoding='utf-8',
+                _write_coverage_sets(
+                    run_dir / f'coverage/trial-{rep}/coverage-sets.json',
+                    covered_set,
                 )
 
             aggregate_html_rel = 'coverage/aggregate/html/index.html'
@@ -238,18 +231,9 @@ def _composite_payload_with_trial_coverage(root: Path) -> dict:
         finally:
             db.close()
 
-        aggregate_sets = run_dir / 'coverage/aggregate/coverage-sets.json'
-        aggregate_sets.parent.mkdir(parents=True, exist_ok=True)
-        aggregate_sets.write_text(
-            json.dumps({
-                'metrics': {
-                    'lines': [],
-                    'branches': sorted(set().union(*trial_sets_by_source[source_id])),
-                    'functions': [],
-                    'regions': [],
-                },
-            }),
-            encoding='utf-8',
+        _write_coverage_sets(
+            run_dir / 'coverage/aggregate/coverage-sets.json',
+            set().union(*trial_sets_by_source[source_id]),
         )
         measurements.append(make_measurement(
             source_id=source_id,
@@ -267,6 +251,35 @@ def _composite_payload_with_trial_coverage(root: Path) -> dict:
         )
         for measurement in measurements
     ])
+
+
+def _write_coverage_sets(path: Path, branches: set[int]) -> None:
+    '''Write one valid compact coverage-set fixture.'''
+
+    metadata_path = path.parent / 'coverage-build.json'
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.write_text(
+        json.dumps(
+            {
+                'requested_cflags': '-fprofile-update=atomic',
+                'requested_cxxflags': '-fprofile-update=atomic',
+                'clang_version': 'clang version 18.1.3',
+            }
+        ),
+        encoding='utf-8',
+    )
+    with patch.object(coverage_sets, 'COVERAGE_BUILD_METADATA_PATH', metadata_path):
+        coverage_sets.write_coverage_sets(
+            path,
+            {},
+            {},
+            {
+                'branches': sorted(branches),
+                'lines': [],
+                'functions': [],
+                'regions': [],
+            },
+        )
 
 
 if __name__ == '__main__':

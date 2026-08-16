@@ -127,36 +127,29 @@ class CoverageDataTest(unittest.TestCase):
             coverage_path.write_text('{"metrics":{"branches":[1]}}', encoding='utf-8')
             data = CoverageData(run_dir)
 
-            result = data.trial_coverage_sets_by_fuzzer(
-                trials=[
-                    {
-                        'fuzzer': 'fz',
-                        'benchmark': 'bench',
-                        'fuzz_target': 'target',
-                        'coverage_sets_json_rel': 'coverage/trial-0/coverage-sets.json',
-                    },
-                    {
-                        'fuzzer': 'fz',
-                        'benchmark': 'bench',
-                        'fuzz_target': 'target',
-                        'coverage_sets_json_rel': 'coverage/missing/coverage-sets.json',
-                    },
-                ],
-                fuzzers=['fz'],
-                benchmark='bench',
-                fuzz_target='target',
-                metric='branches',
-            )
+            with patch('fuzzmeter.reporting.data.coverage_data.read_covered_keys', return_value={'1'}):
+                result = data.trial_coverage_sets_by_fuzzer(
+                    trials=[
+                        {
+                            'fuzzer': 'fz',
+                            'benchmark': 'bench',
+                            'fuzz_target': 'target',
+                            'coverage_sets_json_rel': 'coverage/trial-0/coverage-sets.json',
+                        },
+                        {
+                            'fuzzer': 'fz',
+                            'benchmark': 'bench',
+                            'fuzz_target': 'target',
+                            'coverage_sets_json_rel': 'coverage/missing/coverage-sets.json',
+                        },
+                    ],
+                    fuzzers=['fz'],
+                    benchmark='bench',
+                    fuzz_target='target',
+                    metric='branches',
+                )
 
         self.assertEqual({'fz': [{'1'}, None]}, result)
-
-    def test_returns_empty_counts_for_missing_coverage_sets(self) -> None:
-        data = CoverageData(Path('/missing/run'))
-
-        self.assertEqual(
-            {'branches_covered': None, 'lines_covered': None},
-            data.covered_counts(None, ('branches', 'lines')),
-        )
 
     def test_caches_covered_elements_by_path_and_metric(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

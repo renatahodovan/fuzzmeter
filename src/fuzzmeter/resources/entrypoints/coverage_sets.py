@@ -26,6 +26,15 @@ LOG = logging.getLogger(__name__)
 # tests/test_coverage_worker.py keeps the two in step.
 COVERAGE_METRICS = ('branches', 'lines', 'functions', 'regions')
 COVERAGE_BUILD_METADATA_PATH = Path('/opt/fuzzmeter/meta/coverage-build.json')
+COVERAGE_SETS_VERSION = 2
+REPORT_SCALAR_DEFINITION = 'llvm-cov-report-total'
+EXPORT_SUMMARY_DEFINITION = 'llvm-cov-export-totals'
+SET_DEFINITIONS = {
+    'branches': 'hashed-covered-branch-regions',
+    'lines': 'hashed-covered-segment-start-lines',
+    'functions': 'hashed-covered-functions',
+    'regions': 'hashed-covered-segment-start-regions',
+}
 
 
 def coverage_metrics_from_export(export_obj: dict[str, Any]) -> dict[str, list[int]]:
@@ -36,10 +45,8 @@ def coverage_metrics_from_export(export_obj: dict[str, Any]) -> dict[str, list[i
 
 def coverage_summary_from_export(
     export_obj: dict[str, Any],
-    *,
-    metrics: dict[str, list[int]] | None = None,
 ) -> dict[str, int | None]:
-    '''Return fuzzmeter coverage counters from an llvm-cov export object.'''
+    '''Return the summary counters reported by an llvm-cov export object.'''
 
     def nested_int(data: dict[str, Any], metric: str, key: str) -> int | None:
         metric_data = data.get(metric)
@@ -56,14 +63,11 @@ def coverage_summary_from_export(
     if not isinstance(totals, dict):
         totals = {}
 
-    summary = {
+    return {
         key: nested_int(totals, metric, field)
         for metric in COVERAGE_METRICS
         for key, field in ((f'cov_{metric}_total', 'count'), (f'cov_{metric}_covered', 'covered'))
     }
-    for metric, values in (metrics or {}).items():
-        summary[f'cov_{metric}_covered'] = len(values)
-    return summary
 
 
 def read_covered_keys(path: Path, metric: str) -> set[str] | None:
@@ -71,6 +75,14 @@ def read_covered_keys(path: Path, metric: str) -> set[str] | None:
 
     try:
         doc = json.loads(path.read_text(encoding='utf-8', errors='replace') or '{}')
+        if doc.get('version') != COVERAGE_SETS_VERSION or doc.get('type') != 'fuzzmeter.coverage.sets':
+            LOG.warning(
+                'Unsupported coverage set artifact version or type in %s: version=%r, type=%r.',
+                path,
+                doc.get('version'),
+                doc.get('type'),
+            )
+            return None
         values = _metric_values(doc, metric)
         return {str(value) for value in values} if values is not None else None
     except Exception:
@@ -78,7 +90,15 @@ def read_covered_keys(path: Path, metric: str) -> set[str] | None:
         return None
 
 
-def write_coverage_sets(path: Path, summary: dict[str, Any], metrics: dict[str, list[int]]) -> None:
+def write_coverage_sets(
+    path: Path,
+    report_summary: dict[str, Any],
+    export_summary: dict[str, Any],
+    metrics: dict[str, list[int]],
+    *,
+    report_flags: list[str] | None = None,
+    export_flags: list[str] | None = None,
+) -> None:
     '''Write a compact coverage set artifact.'''
 
     try:
@@ -125,18 +145,44 @@ def write_coverage_sets(path: Path, summary: dict[str, Any], metrics: dict[str, 
             },
         }
 
+    measurement_provenance['llvm_cov'] = {
+        'report_flags': list(report_flags) if report_flags is not None else None,
+        'export_flags': list(export_flags) if export_flags is not None else None,
+        'populations_aligned': (
+            report_flags is not None
+            and export_flags is not None
+            and report_flags == export_flags
+        ),
+        'population_note': (
+            'The export uses a filtered function and expansion population; '
+            'its summaries and hashed element sets are not interchangeable with report scalars.'
+        ),
+    }
+
     doc = {
-        'version': 1,
+        'version': COVERAGE_SETS_VERSION,
         'type': 'fuzzmeter.coverage.sets',
         'encoding': 'blake2b64-delta-uvarint-zlib-base64',
         'measurement_provenance': measurement_provenance,
         'metrics': {
             metric: {
-                'covered_count': len(metrics.get(metric, [])),
-                'total_count': summary.get(f'cov_{metric}_total'),
-                'payload': base64.b64encode(
-                    zlib.compress(_encode_delta_varints(metrics.get(metric, [])), level=9),
-                ).decode('ascii'),
+                'report_scalar': {
+                    'definition': REPORT_SCALAR_DEFINITION,
+                    'covered_count': report_summary.get(f'cov_{metric}_covered'),
+                    'total_count': report_summary.get(f'cov_{metric}_total'),
+                },
+                'export_summary': {
+                    'definition': EXPORT_SUMMARY_DEFINITION,
+                    'covered_count': export_summary.get(f'cov_{metric}_covered'),
+                    'total_count': export_summary.get(f'cov_{metric}_total'),
+                },
+                'element_set': {
+                    'definition': SET_DEFINITIONS[metric],
+                    'element_count': len(metrics.get(metric, [])),
+                    'payload': base64.b64encode(
+                        zlib.compress(_encode_delta_varints(metrics.get(metric, [])), level=9),
+                    ).decode('ascii'),
+                },
             }
             for metric in COVERAGE_METRICS
         },
@@ -151,13 +197,10 @@ def _metric_values(doc: dict[str, Any], metric: str) -> list[int] | None:
         LOG.warning('Coverage set document has no metrics mapping; %s is unknown.', metric)
         return None
 
-    values = metrics.get(metric)
-
-    if isinstance(values, list):
-        return [int(value) for value in values]
-
-    if isinstance(values, dict):
-        decoded_values = _decode_compact_metric(values)
+    metric_data = metrics.get(metric)
+    if isinstance(metric_data, dict):
+        element_set = metric_data.get('element_set')
+        decoded_values = _decode_compact_metric(element_set) if isinstance(element_set, dict) else None
         if decoded_values is not None:
             return decoded_values
         LOG.warning('Could not decode the compact coverage set of %s; treating it as unknown.', metric)
@@ -165,7 +208,11 @@ def _metric_values(doc: dict[str, Any], metric: str) -> list[int] | None:
 
     # write_coverage_sets always emits every COVERAGE_METRICS entry, and an empty
     # metric still decodes to an empty list, so reaching here means a broken file.
-    LOG.warning('Coverage set of %s is missing or has type %s; treating it as unknown.', metric, type(values).__name__)
+    LOG.warning(
+        'Coverage set of %s is missing or has type %s; treating it as unknown.',
+        metric,
+        type(metric_data).__name__,
+    )
     return None
 
 

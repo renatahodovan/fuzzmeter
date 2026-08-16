@@ -293,8 +293,9 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
             label='llvm_cov_show',
             check=False,
         )
+    report_flags = [f'-instr-profile={cfg.profdata}', *pe_args]
     report = _run(
-        ['llvm-cov', 'report', str(cfg.cov_bin), f'-instr-profile={cfg.profdata}', *pe_args],
+        ['llvm-cov', 'report', str(cfg.cov_bin), *report_flags],
         out_dir=cfg.out_dir,
         label='llvm_cov_report',
     )
@@ -302,16 +303,20 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
 
     if cfg.coverage_sets is not None:
         export_obj: dict[str, Any] = {}
+        export_summary: dict[str, int | None] = {}
         metrics: dict[str, list[int]] = {}
+        export_flags = [
+            f'-instr-profile={cfg.profdata}',
+            '-region-coverage-gt=0',
+            '-skip-expansions',
+            *pe_args,
+        ]
         export = _run(
             [
                 'llvm-cov',
                 'export',
-                f'-instr-profile={cfg.profdata}',
-                '-region-coverage-gt=0',
-                '-skip-expansions',
+                *export_flags,
                 str(cfg.cov_bin),
-                *pe_args,
             ],
             out_dir=cfg.out_dir,
             label='llvm_cov_export',
@@ -319,12 +324,18 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
         try:
             export_obj = json.loads(export.stdout or '{}')
             metrics = coverage_metrics_from_export(export_obj)
-            if not summary:
-                summary = coverage_summary_from_export(export_obj, metrics=metrics)
+            export_summary = coverage_summary_from_export(export_obj)
         except Exception as exc:
             (cfg.out_dir / 'export_parse_error.txt').write_text(repr(exc), encoding='utf-8', errors='replace')
         try:
-            write_coverage_sets(cfg.coverage_sets, summary, metrics)
+            write_coverage_sets(
+                cfg.coverage_sets,
+                summary,
+                export_summary,
+                metrics,
+                report_flags=report_flags,
+                export_flags=export_flags,
+            )
         except Exception as exc:
             (cfg.out_dir / 'coverage_sets_error.txt').write_text(repr(exc), encoding='utf-8', errors='replace')
 
