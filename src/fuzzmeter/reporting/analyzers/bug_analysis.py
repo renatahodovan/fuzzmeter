@@ -72,12 +72,21 @@ class BugAnalysis:
             fuzzer: set().union(*(values for values in trial_bug_sets.get(fuzzer, []) if values is not None))
             for fuzzer in fuzzers
         }
+        prefixes: list[set[str]] = []
+        all_bug_union: set[str] = set()
+        for fuzzer in fuzzers:
+            prefixes.append(all_bug_union)
+            all_bug_union = all_bug_union | unions[fuzzer]
+        other_unions: dict[str, set[str]] = {}
+        suffix: set[str] = set()
+        for index in range(len(fuzzers) - 1, -1, -1):
+            fuzzer = fuzzers[index]
+            other_unions[fuzzer] = prefixes[index] | suffix
+            suffix.update(unions[fuzzer])
 
         for entry in entries:
             fuzzer = str(entry.get('fuzzer') or '')
-            other_bug_union = set().union(
-                *(bug_sets for other_fuzzer, bug_sets in unions.items() if other_fuzzer != fuzzer)
-            )
+            other_bug_union = other_unions.get(fuzzer, all_bug_union)
             trial_counts = [
                 len(values - other_bug_union)
                 for values in trial_bug_sets.get(fuzzer, [])

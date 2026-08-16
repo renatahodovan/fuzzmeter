@@ -283,20 +283,22 @@ def pairwise_matrix(
     *,
     compare: Callable[[list[float], list[float]], float | None],
     max_value: float | None = None,
-    missing_value: float = 0.0,
     note: str | None = None,
 ) -> dict[str, Any]:
     '''Return a pairwise matrix derived from per-label numeric distributions.'''
 
-    matrix: list[list[float]] = []
+    matrix: list[list[float | None]] = []
     for row_label in labels:
-        row: list[float] = []
+        row: list[float | None] = []
         for col_label in labels:
+            if row_label == col_label:
+                row.append(None)
+                continue
             cell = compare(
                 values_by_label.get(row_label, []),
                 values_by_label.get(col_label, []),
             )
-            row.append(float(cell) if cell is not None else float(missing_value))
+            row.append(float(cell) if cell is not None else None)
         matrix.append(row)
 
     return {
@@ -308,7 +310,10 @@ def pairwise_matrix(
         'max_value': (
             float(max_value)
             if max_value is not None
-            else max((max(row, default=0.0) for row in matrix), default=0.0)
+            else max(
+                (cell for row in matrix for cell in row if cell is not None),
+                default=0.0,
+            )
         ),
     }
 

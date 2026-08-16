@@ -132,7 +132,6 @@ def compute_branch_stat_matrices(
         distributions,
         compare=mann_whitney_u_pvalue,
         max_value=1.0,
-        missing_value=1.0,
         note=note,
     )
     a12_matrix = pairwise_matrix(
@@ -140,7 +139,6 @@ def compute_branch_stat_matrices(
         distributions,
         compare=vargha_delaney_a12,
         max_value=1.0,
-        missing_value=0.5,
         note=note,
     )
     p_value_matrix.update(
@@ -184,15 +182,27 @@ def attach_exclusive_coverage_stats(
     all_bounds = exclusive.get('exclusive_all_bounds') or []
     sets_by_fuzzer = (trial_coverage_sets_by_metric or {}).get(metric, {})
     fallback_fuzzers = (aggregate_fallback_fuzzers_by_metric or {}).get(metric, set())
+    index_by_fuzzer = {fuzzer: index for index, fuzzer in enumerate(fuzzers)}
     unions = {
         fuzzer: set().union(*(values for values in sets_by_fuzzer.get(fuzzer, []) if values is not None))
         for fuzzer in fuzzers
     }
+    prefixes: list[set[str]] = []
+    all_union: set[str] = set()
+    for fuzzer in fuzzers:
+        prefixes.append(all_union)
+        all_union = all_union | unions[fuzzer]
+    other_unions: dict[str, set[str]] = {}
+    suffix: set[str] = set()
+    for index in range(len(fuzzers) - 1, -1, -1):
+        fuzzer = fuzzers[index]
+        other_unions[fuzzer] = prefixes[index] | suffix
+        suffix.update(unions[fuzzer])
 
     for entry in entries:
         fuzzer = str(entry.get('fuzzer') or '')
-        idx = fuzzers.index(fuzzer) if fuzzer in fuzzers else -1
-        other_union = set().union(*(values for other, values in unions.items() if other != fuzzer))
+        idx = index_by_fuzzer.get(fuzzer, -1)
+        other_union = other_unions.get(fuzzer, all_union)
         trial_sets = sets_by_fuzzer.get(fuzzer, [])
         trial_counts = (
             []

@@ -49,16 +49,11 @@ class TrialAnalysis:
     def latest_effective_snapshot_for_trial(
         self,
         trial_id: int,
-        snapshot_rows: list[dict[str, Any]],
         latest_snapshots: dict[int, dict[str, Any]],
     ) -> dict[str, Any]:
         '''Return the latest snapshot row that should represent a trial.'''
 
-        rows = [row for row in snapshot_rows if int(row.get('trial_id') or 0) == int(trial_id)]
-        if not rows:
-            return latest_snapshots.get(int(trial_id), {})
-        rows = sorted(rows, key=lambda row: int(row.get('idx') or 0))
-        return rows[-1]
+        return latest_snapshots.get(int(trial_id), {})
 
     def coverage_summary_from_snapshot(self, latest: dict[str, Any]) -> dict[str, Any]:
         '''Build a coverage summary from a snapshot row.'''
@@ -100,7 +95,6 @@ class TrialAnalysis:
         *,
         trial_rows: list[dict[str, Any]],
         latest_snapshots: dict[int, dict[str, Any]],
-        snapshot_rows: list[dict[str, Any]],
         bug_stats_by_trial: dict[int, tuple[int, int]],
         rel_to_url: Callable[[str | None], str | None],
     ) -> list[dict[str, Any]]:
@@ -109,7 +103,7 @@ class TrialAnalysis:
         trials: list[dict[str, Any]] = []
         for row in trial_rows:
             trial_id = int(row['trial_id'])
-            latest = self.latest_effective_snapshot_for_trial(trial_id, snapshot_rows, latest_snapshots)
+            latest = self.latest_effective_snapshot_for_trial(trial_id, latest_snapshots)
             coverage_html_rel = None
             if self.snapshot_has_coverage(latest):
                 coverage_html_rel = latest.get('coverage_html_dir')

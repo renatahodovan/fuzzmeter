@@ -18,7 +18,7 @@ from fuzzmeter.reporting.analyzers.trial_analysis import TrialAnalysis
 from fuzzmeter.reporting.keys import SNAPSHOT_COVERAGE_FIELDS
 from fuzzmeter.reporting.metrics import median
 from fuzzmeter.reporting.payload import _PayloadBuilder
-from fuzzmeter.reporting.set_comparison import relative_containment_matrix, trial_set_comparison
+from fuzzmeter.reporting.set_comparison import pairwise_matrix, relative_containment_matrix, trial_set_comparison
 
 COV_METRICS = ('branches',)
 CURVE_MAX_POINTS = 100
@@ -54,10 +54,8 @@ class TrialAnalysisTest(unittest.TestCase):
                     'status': 'done',
                 }
             ],
-            latest_snapshots={1: {'idx': 1, 'ts': 120, 'cov_branches_covered': 1, 'cov_branches_total': 2}},
-            snapshot_rows=[
-                {'trial_id': 1, 'snapshot_id': 10, 'idx': 1, 'ts': 120, 'cov_branches_covered': 1},
-                {
+            latest_snapshots={
+                1: {
                     'trial_id': 1,
                     'snapshot_id': 11,
                     'idx': 2,
@@ -70,8 +68,8 @@ class TrialAnalysisTest(unittest.TestCase):
                     'coverage_sets_json_rel': 'coverage/coverage-sets.json',
                     'cov_branches_covered': 2,
                     'cov_branches_total': 4,
-                },
-            ],
+                }
+            },
             bug_stats_by_trial={1: (3, 2)},
             rel_to_url=lambda path: f'url:{path}' if path else None,
         )
@@ -268,6 +266,28 @@ class BugAnalysisBehaviorTest(unittest.TestCase):
 
 class TrialSetComparisonTest(unittest.TestCase):
     '''Verify strict/non-strict set comparison semantics and uncertainty.'''
+
+    def test_pairwise_matrix_skips_diagonal_and_preserves_missing_cells(self) -> None:
+        calls: list[tuple[list[float], list[float]]] = []
+
+        def compare(left: list[float], right: list[float]) -> float | None:
+            calls.append((left, right))
+            if len(left) < 2 or len(right) < 2:
+                return None
+            return left[0] + right[0]
+
+        result = pairwise_matrix(
+            ['alpha', 'beta', 'gamma'],
+            {'alpha': [1.0], 'beta': [2.0, 3.0], 'gamma': [4.0, 5.0]},
+            compare=compare,
+        )
+
+        self.assertEqual(
+            [[None, None, None], [None, None, 6.0], [None, 6.0, None]],
+            result['matrix'],
+        )
+        self.assertEqual(6.0, result['max_value'])
+        self.assertEqual(6, len(calls))
 
     def test_disagreeing_trials_exclude_flaky_values_from_strict_counts(self) -> None:
         result = trial_set_comparison(

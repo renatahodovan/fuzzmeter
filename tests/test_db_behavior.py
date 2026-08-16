@@ -503,6 +503,32 @@ class DatabaseBehaviorTest(unittest.TestCase):
         self.assertEqual({'done': 1}, counts['status_counts'])
         self.assertEqual('config', counts['config_src'])
 
+    def test_latest_snapshot_query_matches_max_idx_snapshot_row(self) -> None:
+        '''The precomputed latest-snapshot mapping matches the former scan path.'''
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / 'fuzzmeter.db'
+            with _open_test_db(db_path) as db:
+                trial_id = _ensure_trial(db)
+                for idx in (1, 3, 2):
+                    db_snapshot.save_snapshot_data(
+                        db,
+                        _snapshot_record(
+                            trial_id=trial_id,
+                            tick_idx=idx,
+                            end_ts=100 + idx,
+                            corpus_files=idx,
+                        ),
+                    )
+
+            with ReportingDB(db_path) as reporting_db:
+                rows = reporting_db.snapshot_rows([trial_id])
+                latest = reporting_db.latest_snapshots_by_trial([trial_id])
+                empty = reporting_db.latest_snapshots_by_trial([trial_id + 1])
+
+        self.assertEqual(max(rows, key=lambda row: int(row['idx'])), latest[trial_id])
+        self.assertEqual({}, empty)
+
     def test_metadata_rows_are_replaceable(self) -> None:
         '''Composite descriptor rows are keyed by run, fuzzer, and target.'''
         with _open_test_db() as db:

@@ -283,7 +283,6 @@ class _PayloadBuilder:
         return self._trial_analysis.collect_trials(
             trial_rows=self._trial_rows,
             latest_snapshots=self._latest_snapshots,
-            snapshot_rows=self._snapshot_rows,
             bug_stats_by_trial=self._bug_stats_by_trial,
             rel_to_url=self._rel_to_url,
         )
