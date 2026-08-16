@@ -365,8 +365,11 @@ TOTAL       2          1                 50.00%   1            0                
             line_metric = artifact['metrics']['lines']
             covered_lines = coverage_sets.read_covered_keys(artifact_path, 'lines')
             commands = [call.args[0] for call in run.call_args_list]
+            standalone_provenance = json.loads(
+                (root / 'measurement-provenance.json').read_text(encoding='utf-8')
+            )
 
-        self.assertEqual(4, artifact['version'])
+        self.assertEqual(5, artifact['version'])
         self.assertEqual(
             {
                 'definition': 'llvm-cov-report-total',
@@ -404,6 +407,18 @@ TOTAL       2          1                 50.00%   1            0                
             provenance['export_flags'],
         )
         self.assertFalse(provenance['populations_aligned'])
+        measurement = artifact['measurement_provenance']
+        self.assertEqual(2, measurement['schema_version'])
+        self.assertEqual(5, measurement['branch_definition_version'])
+        self.assertEqual(
+            'llvm-cov-export-per-instantiation-branches',
+            measurement['branch_counting_definition'],
+        )
+        self.assertEqual('unknown', measurement['measurement']['mode'])
+        self.assertEqual(
+            measurement,
+            standalone_provenance,
+        )
         self.assertEqual(['llvm-cov', 'report'], commands[0][:2])
         self.assertEqual(['llvm-cov', 'export'], commands[1][:2])
         self.assertEqual(['llvm-cov', 'export'], commands[2][:2])
@@ -636,8 +651,13 @@ TOTAL                                        31                 5    83.87%     
             coverage_worker._run_finalize_mode(cfg)
 
             summary = (out_dir / 'summary.json').read_text(encoding='utf-8')
+            provenance = json.loads(
+                (out_dir / 'measurement-provenance.json').read_text(encoding='utf-8')
+            )
 
         self.assertEqual('{}', summary)
+        self.assertEqual('invalid', provenance['validity']['status'])
+        self.assertEqual('unavailable', provenance['coverage_sets']['freshness'])
 
     def test_write_coverage_outputs_skips_html_when_skip_env_is_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

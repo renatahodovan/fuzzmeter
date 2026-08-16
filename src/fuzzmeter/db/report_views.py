@@ -162,7 +162,8 @@ class ReportingDB:
                    cov_branches_covered, cov_branches_total,
                    cov_functions_covered, cov_functions_total,
                    cov_regions_covered, cov_regions_total,
-                   coverage_html_dir, coverage_sets_json_rel
+                   coverage_html_dir, coverage_sets_json_rel,
+                   measurement_provenance_json
             FROM snapshots
             WHERE trial_id IN ({placeholders})
             ORDER BY trial_id, idx

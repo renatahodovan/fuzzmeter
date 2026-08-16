@@ -10,13 +10,14 @@
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import logging
 import os
 import shutil
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from ..docker import DockerClient, DockerRuntime
 from .coverage_state import load_coverage_summary
@@ -197,6 +198,7 @@ def merge_coverage_outputs(
     write_coverage_sets: bool = True,
     container_name: str | None = None,
     trial_key: str | None = None,
+    measurement_context: dict[str, Any] | None = None,
 ) -> dict:
     '''Merge batch profiles into one coverage output root and refresh its artifacts.'''
     docker = DockerClient(docker_runtime)
@@ -216,6 +218,37 @@ def merge_coverage_outputs(
     )
     coverage_sets_path = tmp_root / 'coverage-sets.json'
 
+    context = dict(measurement_context or {})
+    images = dict(context.get('images') or {})
+    images['coverage'] = image
+    images['fuzzer_target_digest'] = docker.image_id(image)
+    images['digest_scope'] = 'combined-fuzzer-target-coverage-image'
+    images.setdefault('fuzzer_digest', None)
+    images.setdefault('target_digest', None)
+    context['images'] = images
+    if images['fuzzer_target_digest'] is None:
+        validity = dict(context.get('validity') or {})
+        validity['status'] = 'degraded'
+        validity['diagnostics'] = [
+            *(validity.get('diagnostics') or []),
+            'coverage image digest unavailable',
+        ]
+        context['validity'] = validity
+    if write_coverage_sets:
+        context['coverage_sets'] = {
+            'freshness': 'fresh',
+            'source_tick': context.get('snapshot_tick'),
+            'source_profdata_sha256': None,
+        }
+    else:
+        previous_provenance = _load_json(out_root / 'measurement-provenance.json')
+        previous_sets = previous_provenance.get('coverage_sets') or {}
+        context['coverage_sets'] = {
+            'freshness': 'carried_forward' if (out_root / 'coverage-sets.json').is_file() else 'unavailable',
+            'source_tick': previous_sets.get('source_tick'),
+            'source_profdata_sha256': previous_sets.get('source_profdata_sha256'),
+        }
+
     env = {
         'FM_OUT_DIR': docker.container_path(tmp_root),
         'FM_TARGET_NAME': fuzz_target,
@@ -223,6 +256,7 @@ def merge_coverage_outputs(
         'FM_PROFDATA_PATH': docker.container_path(profdata_path),
         'FM_WORK_DIR': docker.container_path(work_dir),
         'FM_LOG_LEVEL': str(os.environ.get('FM_LOG_LEVEL', 'INFO')).upper(),
+        'FM_MEASUREMENT_CONTEXT': json.dumps(context, sort_keys=True, separators=(',', ':')),
     }
     if src_root.is_dir():
         env['FM_PATH_EQ_FROM'] = '/src'
@@ -245,12 +279,100 @@ def merge_coverage_outputs(
 
     if not write_coverage_sets:
         _preserve_previous_artifacts(out_root=out_root, tmp_root=tmp_root, names=('coverage-sets.json',))
+    _synchronize_coverage_set_provenance(tmp_root)
     _replace_out_root(out_root=out_root, tmp_root=tmp_root, protected_dir=state_dir)
     return load_coverage_summary(out_root / 'summary.json')
 
 
+def coverage_measurement_context(
+    *,
+    batches: list[CoverageBatch],
+    image: str,
+    snapshot_tick: int,
+    repetitions: int,
+) -> dict[str, Any]:
+    '''Summarize replay semantics and diagnostics for persisted provenance.'''
+
+    status_counts = dict.fromkeys(('ok', 'timeout', 'failed', 'missing_profraw'), 0)
+    diagnostics = []
+    for batch in batches:
+        payload = _load_json(batch.diagnostics_dir / 'out' / 'input_exec_diagnostics.json')
+        for status, count in (payload.get('status_counts') or {}).items():
+            status_counts[str(status)] = status_counts.get(str(status), 0) + int(count)
+    problematic = sum(status_counts[status] for status in ('timeout', 'failed', 'missing_profraw'))
+    if problematic:
+        diagnostics.append(f'{problematic} replay input(s) did not produce a clean profile')
+    if not batches:
+        diagnostics.append('no replay batches were available for this measurement')
+    input_mode = batches[0].input_mode if batches else 'unknown'
+    batched = input_mode == 'in_process'
+    lost_profiles = 0
+    if batched:
+        for batch in batches:
+            batch_counts = _load_json(
+                batch.diagnostics_dir / 'out' / 'input_exec_diagnostics.json'
+            ).get('status_counts') or {}
+            if any(batch_counts.get(status, 0) for status in ('timeout', 'failed', 'missing_profraw')):
+                lost_profiles += len(batch.inputs)
+    if lost_profiles:
+        diagnostics.append(f'{lost_profiles} profile(s) may be lost with a failed batch mate')
+    return {
+        'snapshot_tick': snapshot_tick,
+        'measurement': {
+            'mode': 'batched-stateful' if batched else 'stateless',
+            'batch_size': max((len(batch.inputs) for batch in batches), default=0),
+            'ordering': 'path-sorted; libFuzzer merge order for batched-stateful replay' if batched else 'path-sorted',
+            'artificial_restarts': (
+                max(0, len(batches) - 1)
+                if batched
+                else max(0, sum(len(batch.inputs) for batch in batches) - 1)
+            ),
+        },
+        'validity': {
+            'status': 'degraded' if diagnostics else 'valid',
+            'diagnostics': diagnostics,
+        },
+        'repetitions': {
+            'n': repetitions,
+            'threshold': None,
+            'threshold_met': None,
+        },
+        'images': {
+            'coverage': image,
+            'fuzzer_digest': None,
+            'target_digest': None,
+        },
+        'inputs': {
+            'scope': 'current_snapshot_replay',
+            'status_counts': status_counts,
+            'profiles_lost_to_batch_mate_crash': lost_profiles,
+        },
+    }
+
+
 def _usable_profiles(paths: list[Path]) -> list[Path]:
     return [path for path in paths if path.is_file() and path.stat().st_size > 64]
+
+
+def _load_json(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _synchronize_coverage_set_provenance(out_root: Path) -> None:
+    artifact_path = out_root / 'coverage-sets.json'
+    provenance = _load_json(out_root / 'measurement-provenance.json')
+    artifact = _load_json(artifact_path)
+    if not provenance or not artifact:
+        return
+    artifact['measurement_provenance'] = provenance
+    artifact_path.write_text(
+        json.dumps(artifact, sort_keys=True, separators=(',', ':')),
+        encoding='utf-8',
+    )
 
 
 def _preserve_previous_artifacts(*, out_root: Path, tmp_root: Path, names: tuple[str, ...]) -> None:

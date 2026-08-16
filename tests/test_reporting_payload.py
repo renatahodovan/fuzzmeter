@@ -19,9 +19,10 @@ from pathlib import Path
 from typing import Any
 
 from fuzzmeter.reporting import build_payload, write_report
+from fuzzmeter.reporting.provenance import attach_measurement_provenance
 from tests.support.dbs import reporting_run_db
 
-PAYLOAD_HASH = '0b737c80fc06c6d52ec7e6c5b38f5fd10114c46ca3639482d8f3df3522ce75c8'
+PAYLOAD_HASH = 'f40745c06695cf0bd1a583343a64f24361abc63363832fce34a23d9d20461b4f'
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _BUNDLE_SMOKE_SCRIPT = r'''
 import fs from 'node:fs';
@@ -124,6 +125,44 @@ class ReportingPayloadTest(unittest.TestCase):
         normalized = _normalize_payload(payload)
         self.assertEqual(PAYLOAD_HASH, _payload_hash(normalized))
 
+    def test_mixed_provenance_adds_visible_comparison_warning(self) -> None:
+        targets = [{
+            'benchmark': 'bench',
+            'fuzz_target': 'target',
+            'fuzzers': [{'fuzzer': 'a'}, {'fuzzer': 'b'}],
+        }]
+        base = {
+            'schema_version': 2,
+            'requested_counter_update_mode': 'atomic',
+            'branch_definition_version': 5,
+            'branch_counting_definition': 'per-instantiation',
+            'measurement': {'mode': 'stateless'},
+            'coverage_build': {'clang_version': '18'},
+            'llvm_cov': {'report_flags': ['-instr-profile=x']},
+            'coverage_sets': {'freshness': 'fresh'},
+        }
+        snapshots = {
+            ('a', 'bench', 'target'): {
+                'measurement_provenance_json': json.dumps(base),
+            },
+            ('b', 'bench', 'target'): {
+                'measurement_provenance_json': json.dumps({
+                    **base,
+                    'measurement': {'mode': 'batched-stateful'},
+                }),
+            },
+        }
+
+        run_provenance = attach_measurement_provenance(
+            targets=targets,
+            agg_snapshots=snapshots,
+        )
+
+        self.assertIn('different or unavailable provenance', targets[0]['provenance_warning'])
+        self.assertEqual('mixed_or_unavailable', run_provenance['consistency'])
+        self.assertIn('mixed or unavailable provenance', run_provenance['warning'])
+        self.assertTrue(run_provenance['threats_table'])
+
     def test_write_report_writes_static_payload_and_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
@@ -147,6 +186,14 @@ class ReportingPayloadTest(unittest.TestCase):
             self.assertIn(
                 'id="comparisonModeAny"',
                 (report_dir / 'report.html').read_text(encoding='utf-8'),
+            )
+            self.assertIn(
+                'id="measurementProvenancePanel"',
+                (report_dir / 'report.html').read_text(encoding='utf-8'),
+            )
+            self.assertIn(
+                'provenance_warning',
+                (report_dir / 'report.js').read_text(encoding='utf-8'),
             )
             self.assertIn(
                 'id="comparisonModeAll"',

@@ -507,5 +507,20 @@ class DockerHelperTest(unittest.TestCase):
             with self.assertRaises(DockerTimeoutError):
                 client.is_running('c1')
 
+    def test_image_id_returns_immutable_local_digest(self) -> None:
+        client = DockerClient()
+        with patch.object(
+            client,
+            '_run',
+            return_value=subprocess.CompletedProcess([], 0, 'sha256:abc\n', ''),
+        ) as run:
+            image_id = client.image_id('coverage:dev')
+
+        self.assertEqual('sha256:abc', image_id)
+        self.assertEqual(
+            ['docker', 'image', 'inspect', '--format', '{{.Id}}', 'coverage:dev'],
+            run.call_args.args[0],
+        )
+
 if __name__ == '__main__':
     unittest.main()

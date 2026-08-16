@@ -44,7 +44,29 @@ def load_coverage_summary(summary_path: Path) -> dict:
         return {}
 
 
-def apply_snapshot_summary(*, db: DB, run_dir: Path, snapshot_id: int, out_root: Path, summary: dict) -> None:
+def load_measurement_provenance(path: Path, *, carried_forward: bool = False) -> dict:
+    '''Load measurement provenance and optionally mark reused coverage sets.'''
+
+    provenance = load_coverage_summary(path)
+    if not isinstance(provenance, dict):
+        return {}
+    if carried_forward and provenance:
+        provenance = dict(provenance)
+        coverage_sets = dict(provenance.get('coverage_sets') or {})
+        coverage_sets['freshness'] = 'carried_forward'
+        provenance['coverage_sets'] = coverage_sets
+    return provenance
+
+
+def apply_snapshot_summary(
+    *,
+    db: DB,
+    run_dir: Path,
+    snapshot_id: int,
+    out_root: Path,
+    summary: dict,
+    carried_forward: bool = False,
+) -> None:
     '''Store coverage summary fields for one snapshot.'''
     idx_path = out_root / 'html' / 'index.html'
     coverage_sets_path = out_root / 'coverage-sets.json'
@@ -57,4 +79,8 @@ def apply_snapshot_summary(*, db: DB, run_dir: Path, snapshot_id: int, out_root:
         snapshot_id=snapshot_id,
         coverage=CoverageSummary.from_mapping(coverage_html_dir=rel_html, summary=summary),
         coverage_sets_json_rel=coverage_sets_json_rel,
+        measurement_provenance=load_measurement_provenance(
+            out_root / 'measurement-provenance.json',
+            carried_forward=carried_forward,
+        ),
     )

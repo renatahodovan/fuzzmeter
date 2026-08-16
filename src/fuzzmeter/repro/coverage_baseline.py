@@ -18,8 +18,13 @@ from pathlib import Path
 from ..db import open_db
 from ..db.snapshot import SEED_BASELINE_IDX, CoverageSummary, update_agg_snapshot_coverage, upsert_agg_snapshot
 from ..docker import DockerRuntime
-from .coverage_measure import build_coverage_replay_batches, merge_coverage_outputs, replay_coverage_batches
-from .coverage_state import collect_inputs, seed_coverage_root
+from .coverage_measure import (
+    build_coverage_replay_batches,
+    coverage_measurement_context,
+    merge_coverage_outputs,
+    replay_coverage_batches,
+)
+from .coverage_state import collect_inputs, load_measurement_provenance, seed_coverage_root
 from .ingest import DetectedFile, prepare_snapshot_inputs
 
 LOG = logging.getLogger(__name__)
@@ -108,6 +113,12 @@ def measure_seed_baseline(
         work_dir=state_dir / '_tmp_seed',
         profile_inputs=batch_profdata_paths,
         container_name=f'fm-{run_id}-cov-seed-{job.fuzzer}-{job.benchmark}-{job.fuzz_target}-merge',
+        measurement_context=coverage_measurement_context(
+            batches=coverage_batches,
+            image=job.coverage_image,
+            snapshot_tick=SEED_BASELINE_IDX,
+            repetitions=1,
+        ),
     )
 
     html_index = base_root / 'html' / 'index.html'
@@ -132,5 +143,8 @@ def measure_seed_baseline(
                 summary=summary,
             ),
             coverage_sets_json_rel=str(coverage_sets.relative_to(run_dir)) if coverage_sets.exists() else None,
+            measurement_provenance=load_measurement_provenance(
+                base_root / 'measurement-provenance.json'
+            ),
         )
     LOG.debug('Seed coverage summary for %s/%s/%s: %s', job.fuzzer, job.benchmark, job.fuzz_target, summary)

@@ -26,7 +26,8 @@ LOG = logging.getLogger(__name__)
 # tests/test_coverage_worker.py keeps the two in step.
 COVERAGE_METRICS = ('branches', 'lines', 'functions', 'regions')
 COVERAGE_BUILD_METADATA_PATH = Path('/opt/fuzzmeter/meta/coverage-build.json')
-COVERAGE_SETS_VERSION = 4
+COVERAGE_SETS_VERSION = 5
+MEASUREMENT_PROVENANCE_VERSION = 2
 REPORT_SCALAR_DEFINITION = 'llvm-cov-report-total'
 BRANCH_SCALAR_DEFINITION = 'llvm-cov-export-per-instantiation-branches'
 EXPORT_SUMMARY_DEFINITION = 'llvm-cov-export-totals'
@@ -123,72 +124,16 @@ def write_coverage_sets(
     report_flags: list[str] | None = None,
     branch_export_flags: list[str] | None = None,
     export_flags: list[str] | None = None,
+    measurement_context: dict[str, Any] | None = None,
 ) -> None:
     '''Write a compact coverage set artifact.'''
 
-    try:
-        build_metadata = json.loads(COVERAGE_BUILD_METADATA_PATH.read_text(encoding='utf-8'))
-        requested_cflags = build_metadata['requested_cflags']
-        requested_cxxflags = build_metadata['requested_cxxflags']
-        clang_version = build_metadata['clang_version']
-        if not all(isinstance(value, str) for value in (requested_cflags, requested_cxxflags, clang_version)):
-            raise TypeError('coverage build metadata fields must be strings')
-        requested_flags = [*requested_cflags.split(), *requested_cxxflags.split()]
-        profile_update_modes = [
-            flag.partition('=')[2]
-            for flag in requested_flags
-            if flag.startswith('-fprofile-update=') and flag.partition('=')[2]
-        ]
-        if profile_update_modes:
-            requested_counter_update_mode = profile_update_modes[-1]
-            requested_counter_update_mode_source = 'explicit_flag'
-        else:
-            requested_counter_update_mode = 'single'
-            requested_counter_update_mode_source = 'clang_default'
-        measurement_provenance = {
-            'schema_version': 1,
-            'requested_counter_update_mode': requested_counter_update_mode,
-            'requested_counter_update_mode_source': requested_counter_update_mode_source,
-            'coverage_build': {
-                'status': 'recorded',
-                'cflags': requested_cflags,
-                'cxxflags': requested_cxxflags,
-                'clang_version': clang_version,
-            },
-        }
-    except (OSError, ValueError, KeyError, TypeError) as exc:
-        LOG.warning('Coverage build provenance is unavailable from %s: %s', COVERAGE_BUILD_METADATA_PATH, exc)
-        measurement_provenance = {
-            'schema_version': 1,
-            'requested_counter_update_mode': 'unknown',
-            'requested_counter_update_mode_source': 'unavailable',
-            'coverage_build': {
-                'status': 'unknown',
-                'cflags': None,
-                'cxxflags': None,
-                'clang_version': None,
-            },
-        }
-
-    measurement_provenance['llvm_cov'] = {
-        'report_flags': list(report_flags) if report_flags is not None else None,
-        'branch_export_flags': list(branch_export_flags) if branch_export_flags is not None else None,
-        'export_flags': list(export_flags) if export_flags is not None else None,
-        'branch_population_aligned': (
-            report_flags is not None
-            and branch_export_flags is not None
-            and report_flags == branch_export_flags
-        ),
-        'populations_aligned': (
-            report_flags is not None
-            and export_flags is not None
-            and report_flags == export_flags
-        ),
-        'population_note': (
-            'The export uses a filtered function and expansion population; '
-            'its summaries and hashed element sets are not interchangeable with report scalars.'
-        ),
-    }
+    measurement_provenance = build_measurement_provenance(
+        report_flags=report_flags,
+        branch_export_flags=branch_export_flags,
+        export_flags=export_flags,
+        measurement_context=measurement_context,
+    )
 
     doc = {
         'version': COVERAGE_SETS_VERSION,
@@ -237,6 +182,123 @@ def write_coverage_sets(
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(doc, separators=(',', ':')), encoding='utf-8')
+
+
+def build_measurement_provenance(
+    *,
+    report_flags: list[str] | None,
+    branch_export_flags: list[str] | None,
+    export_flags: list[str] | None,
+    measurement_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    '''Build the versioned provenance record shared by scalar and set coverage.'''
+
+    try:
+        build_metadata = json.loads(COVERAGE_BUILD_METADATA_PATH.read_text(encoding='utf-8'))
+        requested_cflags = build_metadata['requested_cflags']
+        requested_cxxflags = build_metadata['requested_cxxflags']
+        clang_version = build_metadata['clang_version']
+        if not all(isinstance(value, str) for value in (requested_cflags, requested_cxxflags, clang_version)):
+            raise TypeError('coverage build metadata fields must be strings')
+        requested_flags = [*requested_cflags.split(), *requested_cxxflags.split()]
+        profile_update_modes = [
+            flag.partition('=')[2]
+            for flag in requested_flags
+            if flag.startswith('-fprofile-update=') and flag.partition('=')[2]
+        ]
+        if profile_update_modes:
+            requested_counter_update_mode = profile_update_modes[-1]
+            requested_counter_update_mode_source = 'explicit_flag'
+        else:
+            requested_counter_update_mode = 'single'
+            requested_counter_update_mode_source = 'clang_default'
+        measurement_provenance: dict[str, Any] = {
+            'schema_version': MEASUREMENT_PROVENANCE_VERSION,
+            'requested_counter_update_mode': requested_counter_update_mode,
+            'requested_counter_update_mode_source': requested_counter_update_mode_source,
+            'coverage_build': {
+                'status': 'recorded',
+                'cflags': requested_cflags,
+                'cxxflags': requested_cxxflags,
+                'clang_version': clang_version,
+            },
+        }
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        LOG.warning('Coverage build provenance is unavailable from %s: %s', COVERAGE_BUILD_METADATA_PATH, exc)
+        measurement_provenance = {
+            'schema_version': MEASUREMENT_PROVENANCE_VERSION,
+            'requested_counter_update_mode': 'unknown',
+            'requested_counter_update_mode_source': 'unavailable',
+            'coverage_build': {
+                'status': 'unknown',
+                'cflags': None,
+                'cxxflags': None,
+                'clang_version': None,
+            },
+        }
+
+    measurement_provenance['llvm_cov'] = {
+        'report_flags': list(report_flags) if report_flags is not None else None,
+        'branch_export_flags': list(branch_export_flags) if branch_export_flags is not None else None,
+        'export_flags': list(export_flags) if export_flags is not None else None,
+        'branch_population_aligned': (
+            report_flags is not None
+            and branch_export_flags is not None
+            and report_flags == branch_export_flags
+        ),
+        'populations_aligned': (
+            report_flags is not None
+            and export_flags is not None
+            and report_flags == export_flags
+        ),
+        'population_note': (
+            'The export uses a filtered function and expansion population; '
+            'its summaries and hashed element sets are not interchangeable with report scalars.'
+        ),
+    }
+    context = measurement_context if isinstance(measurement_context, dict) else {}
+    measurement_provenance.update({
+        'branch_definition_version': COVERAGE_SETS_VERSION,
+        'branch_counting_definition': BRANCH_SCALAR_DEFINITION,
+        'measurement': context.get('measurement') or {
+            'mode': 'unknown',
+            'batch_size': None,
+            'ordering': 'unknown',
+            'artificial_restarts': None,
+        },
+        'validity': context.get('validity') or {
+            'status': 'degraded',
+            'diagnostics': ['measurement context unavailable'],
+        },
+        'repetitions': context.get('repetitions') or {
+            'n': None,
+            'threshold': None,
+            'threshold_met': None,
+        },
+        'images': context.get('images') or {
+            'coverage': None,
+            'fuzzer_target_digest': None,
+            'digest_scope': 'combined-fuzzer-target-coverage-image',
+            'fuzzer_digest': None,
+            'target_digest': None,
+        },
+        'inputs': context.get('inputs') or {
+            'scope': 'unavailable',
+            'status_counts': {
+                'ok': 0,
+                'timeout': 0,
+                'failed': 0,
+                'missing_profraw': 0,
+            },
+            'profiles_lost_to_batch_mate_crash': 0,
+        },
+        'coverage_sets': context.get('coverage_sets') or {
+            'freshness': 'unavailable',
+            'source_tick': None,
+            'source_profdata_sha256': None,
+        },
+    })
+    return measurement_provenance
 
 
 def _metric_values(doc: dict[str, Any], metric: str) -> list[int] | None:

@@ -406,6 +406,27 @@ function installSidebarNavigation() {
   });
 }
 
+function renderMeasurementProvenance(data) {
+  const provenance = data.measurement_provenance || {};
+  const summary = byId('measurementProvenanceSummary');
+  const warning = byId('measurementProvenanceWarning');
+  const rows = byId('measurementProvenanceRows');
+  if (!summary || !warning || !rows) return;
+  summary.textContent = `${provenance.record_count || 0} coverage series • ${provenance.consistency || 'unavailable'}`;
+  warning.textContent = provenance.warning || '';
+  warning.hidden = !provenance.warning;
+  rows.textContent = '';
+  (provenance.threats_table || []).forEach((entry) => {
+    const row = el('tr');
+    row.appendChild(el('td', null, entry.field || '—'));
+    row.appendChild(el('td', `provenance-status-${entry.status || 'unavailable'}`, entry.status || 'unavailable'));
+    row.appendChild(el('td', entry.affected ? 'provenance-status-deviation' : null, entry.affected ? 'yes' : 'no'));
+    row.appendChild(el('td', null, (entry.values || []).join(', ') || 'unavailable'));
+    row.appendChild(el('td', 'muted small', entry.threat || ''));
+    rows.appendChild(row);
+  });
+}
+
 function renderView(data) {
   syncComparisonModeControl(data);
   data.summary = computeSummary(data.targets || [], FM_APP.state.comparisonMode);
@@ -420,6 +441,7 @@ function renderView(data) {
   const tickFailureMessage = tickFailureNotice(overview);
   tickFailureWarning.textContent = tickFailureMessage || '';
   tickFailureWarning.hidden = !tickFailureMessage;
+  renderMeasurementProvenance(data);
 
   buildSummaryRows(data);
   buildWinnerCards(data);

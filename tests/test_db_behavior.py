@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -112,10 +113,13 @@ class DatabaseBehaviorTest(unittest.TestCase):
                 ensure_schema(db)
 
                 columns = {str(row['name']) for row in db.q('PRAGMA table_info(snapshots)')}
+                agg_columns = {str(row['name']) for row in db.q('PRAGMA table_info(agg_snapshots)')}
             finally:
                 db.close()
 
         self.assertIn('coverage_sets_json_rel', columns)
+        self.assertIn('measurement_provenance_json', columns)
+        self.assertIn('measurement_provenance_json', agg_columns)
 
     def test_trial_rows_are_idempotent_and_refresh_started_timestamp(self) -> None:
         '''Repeated trial creation returns the same row and updates start time.'''
@@ -167,6 +171,10 @@ class DatabaseBehaviorTest(unittest.TestCase):
                     cov_functions_total=4,
                 ),
                 coverage_sets_json_rel='coverage/covered/coverage-sets.json',
+                measurement_provenance={
+                    'schema_version': 2,
+                    'coverage_sets': {'freshness': 'fresh', 'source_tick': 3},
+                },
             )
 
             copied_id = db_snapshot.save_snapshot_data(
@@ -187,6 +195,9 @@ class DatabaseBehaviorTest(unittest.TestCase):
         self.assertEqual(17, copied['cov_regions_total'])
         self.assertEqual(2, copied['cov_functions_covered'])
         self.assertEqual(4, copied['cov_functions_total'])
+        copied_provenance = json.loads(copied['measurement_provenance_json'])
+        self.assertEqual('carried_forward', copied_provenance['coverage_sets']['freshness'])
+        self.assertEqual(3, copied_provenance['coverage_sets']['source_tick'])
 
     def test_seed_baseline_coverage_copy_uses_aggregate_snapshot_index_zero(self) -> None:
         '''Seed baseline copy only uses the aggregate snapshot at index zero.'''
@@ -725,6 +736,7 @@ def _snapshot_coverage_row(db: DB, snapshot_id: int) -> dict:
         '''
         SELECT coverage_html_dir,
                coverage_sets_json_rel,
+               measurement_provenance_json,
                cov_lines_covered,
                cov_lines_total,
                cov_branches_covered,

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 
@@ -67,6 +68,13 @@ class SnapshotCoverageTest(unittest.TestCase):
             out_root = run_dir / 'coverage' / 'fz' / 'bench' / 'target' / 'trial'
             out_root.mkdir(parents=True)
             (out_root / 'coverage-sets.json').write_text('{}', encoding='utf-8')
+            (out_root / 'measurement-provenance.json').write_text(
+                json.dumps({
+                    'schema_version': 2,
+                    'coverage_sets': {'freshness': 'fresh', 'source_tick': 1},
+                }),
+                encoding='utf-8',
+            )
             db = DB.open(run_dir / 'fuzzmeter.db')
             try:
                 ensure_schema(db)
@@ -106,7 +114,12 @@ class SnapshotCoverageTest(unittest.TestCase):
                     },
                 )
                 row = db.q1(
-                    'SELECT coverage_html_dir, coverage_sets_json_rel FROM snapshots WHERE snapshot_id=?',
+                    '''
+                    SELECT coverage_html_dir, coverage_sets_json_rel,
+                           measurement_provenance_json
+                      FROM snapshots
+                     WHERE snapshot_id=?
+                    ''',
                     (snapshot_id,),
                 )
             finally:
@@ -117,6 +130,8 @@ class SnapshotCoverageTest(unittest.TestCase):
             'coverage/fz/bench/target/trial/coverage-sets.json',
             row['coverage_sets_json_rel'],
         )
+        provenance = json.loads(row['measurement_provenance_json'])
+        self.assertEqual('fresh', provenance['coverage_sets']['freshness'])
 
 
 def _trial_instance(root: Path) -> TrialInstance:

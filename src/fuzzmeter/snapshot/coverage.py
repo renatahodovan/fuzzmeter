@@ -19,7 +19,9 @@ from ..db import DB, open_db
 from ..db import snapshot as db_snapshot
 from ..docker import DockerRuntime
 from ..repro.coverage_measure import (
+    CoverageBatch,
     build_coverage_replay_batches,
+    coverage_measurement_context,
     merge_coverage_outputs,
     replay_coverage_batches,
 )
@@ -27,6 +29,7 @@ from ..repro.coverage_state import (
     apply_snapshot_summary,
     collect_inputs,
     load_coverage_summary,
+    load_measurement_provenance,
     seed_coverage_root,
     trial_coverage_root,
 )
@@ -43,6 +46,7 @@ class TrialCoverageSnapshotState:
     snapshot: TrialCoverageSnapshot
     state_dir: Path
     batch_profdata_paths: list[Path]
+    batches: list[CoverageBatch]
 
 
 def process_snapshot_coverage(
@@ -85,6 +89,7 @@ def process_snapshot_coverage(
                 snapshot_id=snapshot.snapshot_id,
                 out_root=latest_root,
                 summary=load_coverage_summary(latest_root / 'summary.json'),
+                carried_forward=True,
             )
             db.commit()
             continue
@@ -104,6 +109,7 @@ def process_snapshot_coverage(
             snapshot=snapshot,
             state_dir=state_dir,
             batch_profdata_paths=batch_profdata_paths,
+            batches=batches,
         )
         coverage_states.append(coverage_state)
         coverage_batches.extend(batches)
@@ -164,6 +170,20 @@ def process_snapshot_coverage(
         if not profile_inputs:
             continue
 
+        campaign_trial_keys = {
+            trial.config.trial_key
+            for trial in campaign_trials
+            if trial.config.fuzzer == fuzzer
+            and trial.config.benchmark == benchmark
+            and trial.config.fuzz_target == fuzz_target
+        }
+        campaign_batches = [
+            batch
+            for coverage_state in coverage_states
+            for batch in coverage_state.batches
+            if batch.trial_key in campaign_trial_keys
+        ]
+
         agg_root = run_dir / 'coverage' / fuzzer / benchmark / fuzz_target / 'campaign'
         state_dir = agg_root / '_state'
         summary = merge_coverage_outputs(
@@ -178,6 +198,12 @@ def process_snapshot_coverage(
             profile_inputs=profile_inputs,
             write_coverage_sets=write_export,
             container_name=f'fm-{run_id}-cov-{tick_idx}-{fuzzer}-{benchmark}-{fuzz_target}-campaign',
+            measurement_context=coverage_measurement_context(
+                batches=campaign_batches,
+                image=image,
+                snapshot_tick=tick_idx,
+                repetitions=len(profile_inputs),
+            ),
         )
 
         coverage_sets_json_rel = None
@@ -206,6 +232,9 @@ def process_snapshot_coverage(
                 summary=summary,
             ),
             coverage_sets_json_rel=coverage_sets_json_rel,
+            measurement_provenance=load_measurement_provenance(
+                agg_root / 'measurement-provenance.json'
+            ),
         )
     db.commit()
 
@@ -244,6 +273,12 @@ def merge_trial_coverage_outputs(
             f'{trial_config.trial_key}-merge'
         ),
         trial_key=trial_config.trial_key,
+        measurement_context=coverage_measurement_context(
+            batches=coverage_state.batches,
+            image=trial_config.images.coverage,
+            snapshot_tick=snapshot.tick_idx,
+            repetitions=1,
+        ),
     )
     with open_db(db_path) as worker_db:
         apply_snapshot_summary(
@@ -277,6 +312,7 @@ def bootstrap_from_seed_baseline(
     for name in (
         'summary.json',
         'coverage-sets.json',
+        'measurement-provenance.json',
         'input_exec_diagnostics.json',
     ):
         src = base_root / name

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 
@@ -17,8 +18,11 @@ from unittest.mock import Mock, patch
 
 from fuzzmeter.repro.coverage_measure import (
     CoverageBatch,
+    _preserve_previous_artifacts,
     _replace_out_root,
+    _synchronize_coverage_set_provenance,
     build_coverage_replay_batches,
+    coverage_measurement_context,
     replay_coverage_batches,
 )
 
@@ -214,6 +218,74 @@ class CoverageMeasureTest(unittest.TestCase):
 
         self.assertIn('first failure', str(raised.exception))
         self.assertIn('second failure', str(raised.exception))
+
+    def test_measurement_context_records_batch_semantics_and_profile_loss(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            batch = CoverageBatch(
+                image='coverage-image@sha256:abc',
+                fuzz_target='target',
+                input_mode='in_process',
+                inputs=[root / 'a', root / 'b', root / 'c'],
+                profdata_path=root / 'batch.profdata',
+                diagnostics_dir=root / 'diag',
+                timeout_s=1.0,
+            )
+            diagnostics = batch.diagnostics_dir / 'out'
+            diagnostics.mkdir(parents=True)
+            (diagnostics / 'input_exec_diagnostics.json').write_text(
+                json.dumps({'status_counts': {'failed': 1}}),
+                encoding='utf-8',
+            )
+
+            context = coverage_measurement_context(
+                batches=[batch],
+                image=batch.image,
+                snapshot_tick=7,
+                repetitions=3,
+            )
+
+        self.assertEqual('batched-stateful', context['measurement']['mode'])
+        self.assertEqual(3, context['measurement']['batch_size'])
+        self.assertEqual(0, context['measurement']['artificial_restarts'])
+        self.assertEqual('degraded', context['validity']['status'])
+        self.assertEqual(1, context['inputs']['status_counts']['failed'])
+        self.assertEqual(3, context['inputs']['profiles_lost_to_batch_mate_crash'])
+        self.assertEqual(3, context['repetitions']['n'])
+
+    def test_carried_coverage_set_embeds_original_source_and_freshness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            previous = root / 'previous'
+            current = root / 'current'
+            previous.mkdir()
+            current.mkdir()
+            (previous / 'coverage-sets.json').write_text(
+                json.dumps({'version': 5, 'measurement_provenance': {'coverage_sets': {'freshness': 'fresh'}}}),
+                encoding='utf-8',
+            )
+            carried = {
+                'schema_version': 2,
+                'coverage_sets': {
+                    'freshness': 'carried_forward',
+                    'source_tick': 4,
+                    'source_profdata_sha256': 'abc',
+                },
+            }
+            (current / 'measurement-provenance.json').write_text(
+                json.dumps(carried),
+                encoding='utf-8',
+            )
+
+            _preserve_previous_artifacts(
+                out_root=previous,
+                tmp_root=current,
+                names=('coverage-sets.json',),
+            )
+            _synchronize_coverage_set_provenance(current)
+            artifact = json.loads((current / 'coverage-sets.json').read_text(encoding='utf-8'))
+
+        self.assertEqual(carried, artifact['measurement_provenance'])
 
     def test_replace_out_root_skips_unrelated_protected_directory_without_exception_flow(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -76,6 +76,7 @@ _SCHEMA = [
 
       coverage_html_dir TEXT,
       coverage_sets_json_rel TEXT,
+      measurement_provenance_json TEXT,
 
       cov_lines_covered INTEGER,
       cov_lines_total INTEGER,
@@ -107,6 +108,7 @@ _SCHEMA = [
       ts INTEGER NOT NULL,
       coverage_html_dir TEXT,
       coverage_sets_json_rel TEXT,
+      measurement_provenance_json TEXT,
 
       cov_lines_covered INTEGER,
       cov_lines_total INTEGER,
@@ -203,6 +205,7 @@ def ensure_schema(db: DB) -> None:
     _ensure_metadata_schema_version_column(db)
     _ensure_snapshot_tick_status_columns(db)
     _ensure_snapshot_coverage_sets_column(db)
+    _ensure_measurement_provenance_columns(db)
     db.commit()
 
 
@@ -224,3 +227,12 @@ def _ensure_snapshot_coverage_sets_column(db: DB) -> None:
     columns = {str(row['name']) for row in db.q('PRAGMA table_info(snapshots)')}
     if columns and 'coverage_sets_json_rel' not in columns:
         db.exec('ALTER TABLE snapshots ADD COLUMN coverage_sets_json_rel TEXT')
+
+
+def _ensure_measurement_provenance_columns(db: DB) -> None:
+    '''Add coverage provenance storage to existing run databases.'''
+
+    for table in ('snapshots', 'agg_snapshots'):
+        columns = {str(row['name']) for row in db.q(f'PRAGMA table_info({table})')}
+        if columns and 'measurement_provenance_json' not in columns:
+            db.exec(f'ALTER TABLE {table} ADD COLUMN measurement_provenance_json TEXT')

@@ -233,6 +233,7 @@ def copy_previous_coverage_fields(db: DB, *, trial_row_id: int, snapshot_id: int
         '''
         SELECT coverage_html_dir,
                coverage_sets_json_rel,
+               measurement_provenance_json,
                cov_lines_covered,
                cov_lines_total,
                cov_branches_covered,
@@ -262,6 +263,9 @@ def copy_previous_coverage_fields(db: DB, *, trial_row_id: int, snapshot_id: int
         snapshot_id=snapshot_id,
         coverage=CoverageSummary.from_row(previous[0]),
         coverage_sets_json_rel=previous[0].get('coverage_sets_json_rel'),
+        measurement_provenance=_carried_forward_provenance(
+            previous[0].get('measurement_provenance_json')
+        ),
     )
 
 
@@ -279,6 +283,7 @@ def copy_seed_baseline_coverage_fields(
         '''
         SELECT coverage_html_dir,
                coverage_sets_json_rel,
+               measurement_provenance_json,
                cov_lines_covered,
                cov_lines_total,
                cov_branches_covered,
@@ -304,6 +309,9 @@ def copy_seed_baseline_coverage_fields(
         snapshot_id=snapshot_id,
         coverage=CoverageSummary.from_row(baseline[0]),
         coverage_sets_json_rel=baseline[0].get('coverage_sets_json_rel'),
+        measurement_provenance=_carried_forward_provenance(
+            baseline[0].get('measurement_provenance_json')
+        ),
     )
     return True
 
@@ -314,6 +322,7 @@ def set_snapshot_coverage_fields(
     snapshot_id: int,
     coverage: CoverageSummary,
     coverage_sets_json_rel: str | None = None,
+    measurement_provenance: dict[str, Any] | None = None,
 ) -> None:
     '''Store coverage summary fields on one snapshot row.'''
 
@@ -340,6 +349,7 @@ def set_snapshot_coverage_fields(
         snapshot_id=snapshot_id,
         coverage=coverage,
         coverage_sets_json_rel=coverage_sets_json_rel,
+        measurement_provenance=measurement_provenance,
     )
 
 
@@ -349,6 +359,7 @@ def _update_snapshot_coverage(
     snapshot_id: int,
     coverage: CoverageSummary,
     coverage_sets_json_rel: str | None = None,
+    measurement_provenance: dict[str, Any] | None = None,
 ) -> None:
     '''Store coverage fields on one snapshot row without extra validation.
 
@@ -361,6 +372,7 @@ def _update_snapshot_coverage(
     assignments: dict[str, Any] = {
         'coverage_html_dir': coverage.coverage_html_dir,
         'coverage_sets_json_rel': coverage_sets_json_rel,
+        'measurement_provenance_json': _provenance_json(measurement_provenance),
         'cov_lines_covered': coverage.cov_lines_covered,
         'cov_lines_total': coverage.cov_lines_total,
         'cov_branches_covered': coverage.cov_branches_covered,
@@ -421,6 +433,7 @@ def update_agg_snapshot_coverage(
     agg_snapshot_id: int,
     coverage: CoverageSummary,
     coverage_sets_json_rel: str | None = None,
+    measurement_provenance: dict[str, Any] | None = None,
 ) -> None:
     '''Store aggregated coverage outputs on one aggregated snapshot row.'''
 
@@ -436,12 +449,35 @@ def update_agg_snapshot_coverage(
                cov_regions_total=?,
                cov_functions_covered=?,
                cov_functions_total=?,
-               coverage_sets_json_rel=?
+               coverage_sets_json_rel=?,
+               measurement_provenance_json=?
          WHERE agg_snapshot_id=?
         ''',
         (
             *coverage.values(),
             coverage_sets_json_rel,
+            _provenance_json(measurement_provenance),
             int(agg_snapshot_id),
         ),
     )
+
+
+def _provenance_json(provenance: dict[str, Any] | None) -> str | None:
+    return (
+        json.dumps(provenance, sort_keys=True, separators=(',', ':'), default=str)
+        if provenance
+        else None
+    )
+
+
+def _carried_forward_provenance(value: Any) -> dict[str, Any] | None:
+    try:
+        provenance = json.loads(str(value))
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(provenance, dict):
+        return None
+    coverage_sets = dict(provenance.get('coverage_sets') or {})
+    coverage_sets['freshness'] = 'carried_forward'
+    provenance['coverage_sets'] = coverage_sets
+    return provenance

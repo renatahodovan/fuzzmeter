@@ -213,6 +213,16 @@ class DockerClient:
         )
         return result.stdout.strip()
 
+    def image_id(self, image: str) -> str | None:
+        '''Return the immutable local image identifier when available.'''
+
+        result = self._run(
+            ['docker', 'image', 'inspect', '--format', '{{.Id}}', image],
+            check=False,
+            capture=True,
+        )
+        return result.stdout.strip() or None if result.returncode == 0 else None
+
     def copy_from_image(self, *, image: str, src_path: str, dst_path: str | Path) -> None:
         '''Copy a path from an image to the host.'''
         dst = Path(dst_path)

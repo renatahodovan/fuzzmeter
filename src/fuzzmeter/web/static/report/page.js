@@ -1183,6 +1183,21 @@ export function createTargetSection(target) {
   }
   const header = sectionEl.querySelector('.card-header');
   header?.classList.add('target-banner');
+  const titleHost = part(sectionEl, 'title').parentElement;
+  if (target.provenance_warning && titleHost) {
+    titleHost.appendChild(el('div', 'provenance-warning', target.provenance_warning));
+  }
+  if ((target.provenance_badges || []).length && titleHost) {
+    const badges = el('div', 'row provenance-badges');
+    (target.provenance_badges || []).forEach((badge) => {
+      badges.appendChild(el(
+        'span',
+        `badge provenance-status-${badge.status || 'unavailable'}`,
+        `${badge.fuzzer}: ${badge.label}`,
+      ));
+    });
+    titleHost.appendChild(badges);
+  }
 
   const section = {
     target,

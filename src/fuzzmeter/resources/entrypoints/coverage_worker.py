@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import glob
+import hashlib
 import json
 import logging
 import os
@@ -25,6 +26,7 @@ from typing import Any
 
 from coverage_sets import (
     branch_summary_from_export,
+    build_measurement_provenance,
     coverage_metrics_from_export,
     coverage_summary_from_export,
     write_coverage_sets,
@@ -59,6 +61,7 @@ class WorkerConfig:
     path_eq_from: str = ''
     path_eq_to: str = ''
     skip_html: bool = False
+    measurement_context: dict[str, Any] | None = None
 
     @classmethod
     def from_env(cls) -> WorkerConfig:
@@ -75,6 +78,10 @@ class WorkerConfig:
         path_eq_from = os.environ.get('FM_PATH_EQ_FROM', '').strip()
         path_eq_to = os.environ.get('FM_PATH_EQ_TO', '').strip()
         skip_html = 'FM_SKIP_HTML' in os.environ
+        try:
+            measurement_context = json.loads(os.environ.get('FM_MEASUREMENT_CONTEXT', '{}'))
+        except json.JSONDecodeError:
+            measurement_context = {}
 
         if batch_profdata_env:
             return cls(
@@ -90,6 +97,7 @@ class WorkerConfig:
                 path_eq_from=path_eq_from,
                 path_eq_to=path_eq_to,
                 skip_html=skip_html,
+                measurement_context=measurement_context,
             )
         return cls(
             cov_bin=cov_bin,
@@ -101,6 +109,7 @@ class WorkerConfig:
             path_eq_from=path_eq_from,
             path_eq_to=path_eq_to,
             skip_html=skip_html,
+            measurement_context=measurement_context,
         )
 
 
@@ -167,6 +176,24 @@ def _run_finalize_mode(cfg: WorkerConfig) -> None:
 
     if not cfg.profdata.is_file():
         (cfg.out_dir / 'summary.json').write_text('{}', encoding='utf-8', errors='replace')
+        provenance = build_measurement_provenance(
+            report_flags=None,
+            branch_export_flags=None,
+            export_flags=None,
+            measurement_context={
+                **(cfg.measurement_context or {}),
+                'coverage_sets': {
+                    'freshness': 'unavailable',
+                    'source_tick': None,
+                    'source_profdata_sha256': None,
+                },
+                'validity': {
+                    'status': 'invalid',
+                    'diagnostics': ['merged coverage profile is unavailable'],
+                },
+            },
+        )
+        _write_measurement_provenance(cfg.out_dir, provenance)
         return
 
     _write_coverage_outputs(cfg)
@@ -310,6 +337,7 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
     branch_summary = branch_summary_from_export(json.loads(branch_export.stdout or '{}'))
     summary = {**report_summary, **branch_summary}
 
+    export_flags = None
     if cfg.coverage_sets is not None:
         export_obj: dict[str, Any] = {}
         export_summary: dict[str, int | None] = {}
@@ -346,11 +374,45 @@ def _write_coverage_outputs(cfg: WorkerConfig) -> None:
                 report_flags=report_flags,
                 branch_export_flags=branch_export_flags,
                 export_flags=export_flags,
+                measurement_context=cfg.measurement_context,
             )
         except Exception as exc:
             (cfg.out_dir / 'coverage_sets_error.txt').write_text(repr(exc), encoding='utf-8', errors='replace')
 
+    measurement_context = dict(cfg.measurement_context or {})
+    coverage_sets = dict(measurement_context.get('coverage_sets') or {})
+    if coverage_sets.get('freshness') == 'fresh':
+        coverage_sets['source_profdata_sha256'] = _sha256_file(cfg.profdata)
+    measurement_context['coverage_sets'] = coverage_sets
+    provenance = build_measurement_provenance(
+        report_flags=report_flags,
+        branch_export_flags=branch_export_flags,
+        export_flags=export_flags,
+        measurement_context=measurement_context,
+    )
+    _write_measurement_provenance(cfg.out_dir, provenance)
+    if cfg.coverage_sets is not None and cfg.coverage_sets.exists():
+        artifact = json.loads(cfg.coverage_sets.read_text(encoding='utf-8'))
+        artifact['measurement_provenance'] = provenance
+        cfg.coverage_sets.write_text(json.dumps(artifact, separators=(',', ':')), encoding='utf-8')
     (cfg.out_dir / 'summary.json').write_text(json.dumps(summary, indent=2), encoding='utf-8', errors='replace')
+
+
+def _write_measurement_provenance(out_dir: Path, provenance: dict[str, Any]) -> None:
+    '''Write the standalone provenance artifact produced by every finalization.'''
+
+    (out_dir / 'measurement-provenance.json').write_text(
+        json.dumps(provenance, sort_keys=True, separators=(',', ':')),
+        encoding='utf-8',
+    )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _coverage_summary_from_report(report: str) -> dict[str, int | None]:

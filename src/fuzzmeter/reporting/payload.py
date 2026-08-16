@@ -38,6 +38,7 @@ from .keys import (
 )
 from .metrics import dt, safe_int
 from .plugin_sections import attach_extra_sections
+from .provenance import attach_measurement_provenance
 from .set_comparison import TrialSetIndex, empty_trial_set_comparison, trial_set_index
 
 LOG = logging.getLogger(__name__)
@@ -123,6 +124,10 @@ class _PayloadBuilder:
         attach_custom_metric_sections(targets, timeseries)
         LOG.info('Collect uniqueness matrices')
         targets = self.create_matrices(targets, trials)
+        measurement_provenance = attach_measurement_provenance(
+            targets=targets,
+            agg_snapshots=self._latest_agg_snapshots,
+        )
 
         if self._fuzzers_root is not None and not has_custom_metric_sections(targets):
             LOG.info('Collect extra sections')
@@ -146,6 +151,7 @@ class _PayloadBuilder:
             'trials': trials,
             'timeseries': timeseries,
             'bugs': bugs,
+            'measurement_provenance': measurement_provenance,
         }
 
     def collect_overview(self) -> dict[str, Any]:

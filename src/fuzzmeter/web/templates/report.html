@@ -86,6 +86,19 @@
         <div class="section-banner card-title target-banner-title">Overview</div>
         <div class="overview-body">
           <div id="tickFailureWarning" class="tick-failure-warning" role="alert" hidden></div>
+          <section id="measurementProvenancePanel" class="provenance-panel">
+            <div class="subcard-head">
+              <div class="block-title">MEASUREMENT PROVENANCE</div>
+              <div id="measurementProvenanceSummary" class="muted small"></div>
+            </div>
+            <div id="measurementProvenanceWarning" class="provenance-warning" role="alert" hidden></div>
+            <div class="table-scroll">
+              <table class="table compact-table">
+                <thead><tr><th>Field</th><th>Status</th><th>Affected</th><th>Observed values</th><th>Threat</th></tr></thead>
+                <tbody id="measurementProvenanceRows"></tbody>
+              </table>
+            </div>
+          </section>
           <section id="highlightsPanel">
             <div id="summaryHighlights" class="winner-strip"></div>
           </section>
