@@ -21,7 +21,7 @@ independently from the fuzzers, reproduces crashes, stores all raw and derived
 data in a SQLite database, and generates interactive reports.
 
 The goal of FuzzMeter is not to collapse performance into a single ranking, but
-to help researchers and preacticioners analyze different aspects of fuzzer
+to help researchers and practicioners analyze different aspects of fuzzer
 behavior: coverage growth, bug discovery, corpus evolution, execution speed,
 resource usage, statistical comparisons, replayed artifacts, and fuzzer-specific
 measurements.
@@ -63,7 +63,8 @@ measurements.
 |                                                                          |
 | * **Interactive and static web reports** with filtering, sortable        |
 |   rankings, target charts, bug tables, coverage links, and exportable    |
-|   PDF/PNG figures.                                                       |
+|   PDF/PNG figures or even with composite results assembled from previous |
+|   evaluations.                                                           |
 |                                                                          |
 | * **Configuration inheritance** for fuzzer variants, allowing one base   |
 |   implementation to be reused with different build/runtime settings,     |
@@ -188,6 +189,10 @@ that change::
           args:
             - -mutate_depth=5
 
+Target Configuration
+====================
+
+Target configuration defines one or more fuzz targets that are available.
 Target configuration can also influence fuzzer configuration. For example, a target
 can tell a grammar-based fuzzer which grammar rule or grammar file should be
 used for that target. Benchmark files can use either the legacy single-target
@@ -218,18 +223,11 @@ For a live campaign, FuzzMeter performs the following steps:
    target-specific overrides.
 2. Builds the Docker images required for fuzzing, coverage replay, and
    sanitizer-based crash reproduction.
-3. Starts one isolated trial workspace for every fuzzer-target repetition.
+3. Starts one isolated trial for every fuzzer-target repetition.
 4. Periodically snapshots corpus, crash, hang, statistics, and resource data.
 5. Runs measurement workers over the captured artifacts.
 6. Stores raw and derived data in database.
 7. Generates a report from the database and associated coverage artifacts.
-
-Coverage replay containers (a.k.a. workers) re-execute corpus elements with
-coverage-instrumented target binaries, while crash reproduction workers
-re-execute candidate failures with sanitizer-enabled target binaries. Both use
-``2 * fuzz_target_timeout`` as the per-input timeout to leave room for the
-slower measurement execution. This separation keeps fuzzer execution and
-measurement independent.
 
 
 Replay Mode
