@@ -72,7 +72,7 @@ def run_experiment(
         memory=campaign_config.settings.memory,
         memory_swap=campaign_config.settings.memory_swap,
     )
-    run_dir = Path(out_root) / 'runs' / run_id
+    run_dir = Path(out_root) / run_id
     with RunShutdown(docker_runtime) as shutdown:
         run_dir.mkdir(parents=True)
 

@@ -224,9 +224,6 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         os.environ['FM_RUNS_ROOT'] = str(webapp.RUNS_ROOT)
-        os.environ['FM_OUT_ROOT'] = (
-            str(webapp.RUNS_ROOT.parent) if webapp.RUNS_ROOT.name == 'runs' else str(webapp.RUNS_ROOT)
-        )
         if args.debug:
             os.environ['FM_WEB_DEBUG'] = '1'
 

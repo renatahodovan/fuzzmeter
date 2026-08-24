@@ -67,7 +67,6 @@ def run_one_trial(
         config=config,
         run_dir=run_dir,
         input_corpus_dir=host_input_corpus_dir,
-        run_id=run_id,
         fuzzer_log=layout.fuzzer_log,
         start_ts=start_ts,
     )

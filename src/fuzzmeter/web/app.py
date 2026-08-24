@@ -20,12 +20,10 @@ from .routes import composite_bp, files_bp, reports_bp, runs_bp
 
 
 def resolve_runs_root(path: Path) -> Path:
-    '''Return the run-directory root for an output root, runs root, or run directory.'''
+    '''Return the run-directory root for an output root or run directory.'''
     root = Path(path).resolve()
     if (root / 'fuzzmeter.db').is_file():
         return root.parent
-    if (root / 'runs').is_dir():
-        return (root / 'runs').resolve()
     return root
 
 

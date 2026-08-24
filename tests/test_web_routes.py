@@ -183,17 +183,15 @@ class WebRoutesTest(unittest.TestCase):
         self.assertEqual(str(runs_root.resolve()), response.json['runs_root'])
         self.assertEqual(1, len(response.json['measurements']))
 
-    def test_resolve_runs_root_accepts_output_runs_and_single_run_dirs(self) -> None:
+    def test_resolve_runs_root_accepts_output_and_single_run_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
-            runs_root = root / 'runs'
-            run_dir = runs_root / 'run-a'
+            run_dir = root / 'run-a'
             run_dir.mkdir(parents=True)
             (run_dir / 'fuzzmeter.db').write_text('', encoding='utf-8')
 
-            self.assertEqual(runs_root.resolve(), resolve_runs_root(root))
-            self.assertEqual(runs_root.resolve(), resolve_runs_root(runs_root))
-            self.assertEqual(runs_root.resolve(), resolve_runs_root(run_dir))
+            self.assertEqual(root.resolve(), resolve_runs_root(root))
+            self.assertEqual(root.resolve(), resolve_runs_root(run_dir))
 
     def test_composite_expired_view_returns_not_found(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

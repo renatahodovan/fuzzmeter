@@ -38,7 +38,6 @@ class TrialContainer:
         config: TrialConfig,
         run_dir: Path,
         input_corpus_dir: Path,
-        run_id: str,
         fuzzer_log: Path,
         start_ts: int,
     ) -> None:
@@ -47,7 +46,7 @@ class TrialContainer:
         self.cfg = config
         self.run_dir = Path(run_dir)
         self.input_corpus_dir = Path(input_corpus_dir)
-        self.run_mount_dir = Path('/tmp/fuzzmeter/out') / 'runs' / run_id
+        self.run_mount_dir = Path(docker_runtime.map_out_path(self.run_dir))
         self.trial_mount_dir = self.run_mount_dir / 'trials' / config.trial_key
         self.fuzzer_log = Path(fuzzer_log)
         self.start_ts = start_ts

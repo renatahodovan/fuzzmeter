@@ -78,6 +78,10 @@ class _StubbornLogProcess:
 @dataclass(frozen=True)
 class _DockerRuntimeStub:
     fuzzers_root: Path
+    out_root: Path
+
+    def map_out_path(self, host_path: Path, *, container_root: str = '/tmp/fuzzmeter/out') -> str:
+        return str(Path(container_root) / Path(host_path).relative_to(self.out_root))
 
 
 def _trial_config(root: Path) -> TrialConfig:
@@ -106,7 +110,8 @@ class TrialRuntimeTest(unittest.TestCase):
 
     def test_trial_container_uses_run_scoped_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            run_dir = Path(tmp_dir) / 'run'
+            out_root = Path(tmp_dir) / 'out'
+            run_dir = out_root / '2026-05-19_133200'
             input_seed_root = run_dir / 'seed_corpora' / '_empty' / 'aflplusplus__sqlite3-sqlite__rep0' / 'corpus'
             target_bin = run_dir / 'targets' / 'sqlite'
             input_seed_root.mkdir(parents=True)
@@ -114,22 +119,21 @@ class TrialRuntimeTest(unittest.TestCase):
             target_bin.write_text('', encoding='utf-8')
 
             container = TrialContainer(
-                docker_runtime=_DockerRuntimeStub(fuzzers_root=run_dir),
-                container_name='fm_20260519-133200_7_aflplusplus__sqlite3-sqlite__rep0',
+                docker_runtime=_DockerRuntimeStub(fuzzers_root=run_dir, out_root=out_root),
+                container_name='fm_01234567-89ab-cdef-0123-456789abcdef_7_aflplusplus__sqlite3-sqlite__rep0',
                 config=_trial_config(run_dir),
                 run_dir=run_dir,
                 input_corpus_dir=input_seed_root,
-                run_id='20260519-133200',
                 fuzzer_log=run_dir / 'trials' / 'aflplusplus__sqlite3-sqlite__rep0' / 'logs' / 'fuzzer.log',
                 start_ts=1,
             )
 
             self.assertEqual(
-                Path('/tmp/fuzzmeter/out/runs/20260519-133200/trials/aflplusplus__sqlite3-sqlite__rep0'),
+                Path('/tmp/fuzzmeter/out/2026-05-19_133200/trials/aflplusplus__sqlite3-sqlite__rep0'),
                 container.trial_mount_dir,
             )
             self.assertEqual(
-                Path('/tmp/fuzzmeter/out/runs/20260519-133200/targets/sqlite'),
+                Path('/tmp/fuzzmeter/out/2026-05-19_133200/targets/sqlite'),
                 container._mounted_path(target_bin),
             )
 
@@ -141,12 +145,11 @@ class TrialRuntimeTest(unittest.TestCase):
             target_bin = root / 'target'
             target_bin.write_text('', encoding='utf-8')
             runtime = TrialContainer(
-                docker_runtime=_DockerRuntimeStub(fuzzers_root=root),
+                docker_runtime=_DockerRuntimeStub(fuzzers_root=root, out_root=root),
                 container_name='container',
                 config=_trial_config(root),
                 run_dir=root,
                 input_corpus_dir=root,
-                run_id='run',
                 fuzzer_log=log_path,
                 start_ts=int(time.time()) - 10,
             )
@@ -165,12 +168,11 @@ class TrialRuntimeTest(unittest.TestCase):
             target_bin = root / 'target'
             target_bin.write_text('', encoding='utf-8')
             runtime = TrialContainer(
-                docker_runtime=_DockerRuntimeStub(fuzzers_root=root),
+                docker_runtime=_DockerRuntimeStub(fuzzers_root=root, out_root=root),
                 container_name='container',
                 config=_trial_config(root),
                 run_dir=root,
                 input_corpus_dir=root,
-                run_id='run',
                 fuzzer_log=log_path,
                 start_ts=1,
             )
@@ -190,12 +192,11 @@ class TrialRuntimeTest(unittest.TestCase):
             target_bin = root / 'target'
             target_bin.write_text('', encoding='utf-8')
             runtime = TrialContainer(
-                docker_runtime=_DockerRuntimeStub(fuzzers_root=root),
+                docker_runtime=_DockerRuntimeStub(fuzzers_root=root, out_root=root),
                 container_name='ordered-container',
                 config=_trial_config(root),
                 run_dir=root,
                 input_corpus_dir=root,
-                run_id='run',
                 fuzzer_log=root / 'fuzzer.log',
                 start_ts=1,
             )

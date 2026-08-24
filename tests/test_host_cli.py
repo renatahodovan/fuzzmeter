@@ -48,7 +48,7 @@ class HostCliTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             out_root = Path(tmp_dir) / 'out'
-            runs_root = out_root / 'runs'
+            runs_root = out_root
             runs_root.mkdir(parents=True)
 
             with patch.object(webapp.app, 'run') as app_run:
