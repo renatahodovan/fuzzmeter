@@ -13,12 +13,20 @@ class CiConfigurationTest(unittest.TestCase):
         config = configparser.ConfigParser()
         config.read(PROJECT_ROOT / 'tox.ini')
 
-        self.assertEqual('lint, type, unit, cov', config['tox']['env_list'])
+        self.assertEqual('lint, type, unit, package, package-sdist, cov', config['tox']['env_list'])
         self.assertEqual('ruff check src tests fuzzers', config['testenv:lint']['commands'].strip())
         self.assertEqual('mypy src', config['testenv:type']['commands'].strip())
         self.assertEqual(
             'python -m unittest discover -s tests',
             config['testenv:unit']['commands'].strip(),
+        )
+        self.assertEqual(
+            'python -I {toxinidir}/tests/packaging/check_installed_resources.py',
+            config['testenv:package']['commands'].strip(),
+        )
+        self.assertEqual(
+            'python -I {toxinidir}/tests/packaging/check_installed_resources.py',
+            config['testenv:package-sdist']['commands'].strip(),
         )
         self.assertEqual(
             'coverage erase\n'
@@ -34,7 +42,7 @@ class CiConfigurationTest(unittest.TestCase):
         self.assertIn('push:', workflow)
         self.assertIn('pull_request:', workflow)
         self.assertIn("python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']", workflow)
-        self.assertIn('python -m tox run -e lint,type,unit', workflow)
+        self.assertIn('python -m tox run -e lint,type,unit,package,package-sdist', workflow)
         self.assertIn('name: Coverage', workflow)
         self.assertIn('python -m tox run -e cov', workflow)
         self.assertIn('uses: coverallsapp/github-action@v2', workflow)
