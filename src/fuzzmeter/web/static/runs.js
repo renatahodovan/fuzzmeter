@@ -90,10 +90,16 @@ export function statusSummaryText(run) {
   return items.length ? items.join(' · ') : '—';
 }
 
+function runDirectoryName(run) {
+  return run.directory_name;
+}
+
 export function matchesFilter(run, filterText) {
   if (!filterText) return true;
   const haystack = [
+    runDirectoryName(run),
     run.run_id,
+    run.label || '',
     ...(run.summary?.config?.fuzzers || []),
     ...(run.summary?.config?.targets || []),
     Object.keys(run.summary?.status_counts || {}),
@@ -104,7 +110,7 @@ export function matchesFilter(run, filterText) {
 
 export function visibleRunIds(runs, filterText) {
   const normalizedFilter = String(filterText || '').trim().toLowerCase();
-  return runs.filter((run) => matchesFilter(run, normalizedFilter)).map((run) => run.run_id);
+  return runs.filter((run) => matchesFilter(run, normalizedFilter)).map(runDirectoryName);
 }
 
 export function toggleVisibleSelection(state, runIds) {
@@ -158,11 +164,12 @@ function appendPolicy(host, policy) {
 }
 
 function renderRunCard(run, state = RUNS_STATE) {
+  const directoryName = runDirectoryName(run);
   const card = el('article', 'run-card');
-  card.dataset.runId = run.run_id;
+  card.dataset.runId = directoryName;
   card.addEventListener('click', (event) => {
     if (event.target.closest('button, a')) return;
-    toggleRunSelection(state, run.run_id);
+    toggleRunSelection(state, directoryName);
     updateSelectionUi(state);
   });
   const [statusClass, statusText] = statusBadge(run);
@@ -173,11 +180,12 @@ function renderRunCard(run, state = RUNS_STATE) {
   const main = el('div', 'run-card-main');
 
   const titleWrap = el('div');
-  titleWrap.appendChild(el('div', 'run-card-title mono', run.run_id));
+  const title = el('div', 'run-card-title mono', directoryName);
+  title.title = `Run ID: ${run.run_id}`;
+  titleWrap.appendChild(title);
   const subtitle = el('div', 'run-card-subtitle');
   subtitle.appendChild(el('span', null, `Created: ${formatTs(summary.created_ts)}`));
   subtitle.appendChild(el('span', null, `Updated: ${formatTs(run.updated_ts)}`));
-  subtitle.appendChild(el('span', null, `Path: ${run.path}`));
   titleWrap.appendChild(subtitle);
   main.appendChild(titleWrap);
   head.appendChild(main);
@@ -210,12 +218,12 @@ function renderRunCard(run, state = RUNS_STATE) {
   const actions = el('div', 'run-actions');
   const actionsMain = el('div', 'run-actions-main');
   const openLive = el('button', 'btn', 'Open live');
-  openLive.onclick = () => { location.href = `/run/${encodeURIComponent(run.run_id)}`; };
+  openLive.onclick = () => { location.href = `/run/${encodeURIComponent(directoryName)}`; };
   actionsMain.appendChild(openLive);
 
   if (run.has_static_report) {
     const openStatic = el('button', 'btn', 'Open static');
-    openStatic.onclick = () => window.open(`/file/${encodeURIComponent(run.run_id)}/report/report.html`, '_blank');
+    openStatic.onclick = () => window.open(`/file/${encodeURIComponent(directoryName)}/report/report.html`, '_blank');
     actionsMain.appendChild(openStatic);
   }
 
@@ -225,8 +233,8 @@ function renderRunCard(run, state = RUNS_STATE) {
     const original = generateStatic.textContent;
     generateStatic.textContent = run.has_static_report ? 'Refreshing…' : 'Generating…';
     try {
-      await fetchJSON(`/api/run/${encodeURIComponent(run.run_id)}/generate`, { method: 'POST' });
-      window.open(`/file/${encodeURIComponent(run.run_id)}/report/report.html`, '_blank');
+      await fetchJSON(`/api/run/${encodeURIComponent(directoryName)}/generate`, { method: 'POST' });
+      window.open(`/file/${encodeURIComponent(directoryName)}/report/report.html`, '_blank');
     } finally {
       generateStatic.disabled = false;
       generateStatic.textContent = original;
@@ -239,8 +247,8 @@ function renderRunCard(run, state = RUNS_STATE) {
   actionsSide.appendChild(el('div', 'run-action-help', 'Live reads the current DB. Static opens a saved snapshot report.'));
   const deleteBtn = el('button', 'btn danger', 'Delete');
   deleteBtn.onclick = async () => {
-    if (!confirm(`Delete run ${run.run_id}?`)) return;
-    await fetchJSON(`/api/run/${encodeURIComponent(run.run_id)}`, { method: 'DELETE' });
+    if (!confirm(`Delete run ${directoryName}?`)) return;
+    await fetchJSON(`/api/run/${encodeURIComponent(directoryName)}`, { method: 'DELETE' });
     await refresh(state);
   };
   actionsSide.appendChild(deleteBtn);
@@ -270,7 +278,7 @@ function renderRuns(state = RUNS_STATE) {
 
   visibleRuns
     .slice()
-    .sort((a, b) => String(b.run_id).localeCompare(String(a.run_id)))
+    .sort((a, b) => String(runDirectoryName(b)).localeCompare(String(runDirectoryName(a))))
     .forEach((run) => list.appendChild(renderRunCard(run, state)));
   status.textContent = `Showing ${visibleRuns.length} of ${state.runs.length} runs.`;
   updateSelectionUi(state);
@@ -315,7 +323,9 @@ function renderCompositeMeasurements(state = RUNS_STATE) {
     const key = measurementKey(measurement);
     const main = el('div', 'measurement-main');
     main.appendChild(el('div', 'measurement-title', measurementTitle(measurement)));
-    main.appendChild(el('div', 'measurement-subtitle', `Run ${key.run_id || '—'} · Source ${key.source_id || '—'}`));
+    const subtitle = el('div', 'measurement-subtitle', `Run ${key.source_id || '—'}`);
+    subtitle.title = `Run ID: ${key.run_id || '—'}\nPath: ${measurement.source_path || '—'}`;
+    main.appendChild(subtitle);
     row.appendChild(main);
     const meta = el('div', 'measurement-meta');
     meta.appendChild(makeBadge(
@@ -332,8 +342,7 @@ function renderCompositeMeasurements(state = RUNS_STATE) {
     invalid.forEach((source) => invalidList.appendChild(el('div', 'invalid-source-row', invalidSourceText(source))));
     list.appendChild(invalidList);
   }
-  const rootText = state.compositeRunsRoot ? ` Scanned: ${state.compositeRunsRoot}.` : '';
-  status.textContent = `${measurements.length} measurements. ${invalid.length} invalid source(s).${rootText}`;
+  status.textContent = `${measurements.length} measurements. ${invalid.length} invalid source(s).`;
   updateSelectionUi(state);
 }
 
@@ -389,7 +398,7 @@ export async function refresh(state = RUNS_STATE) {
   state.measurements = composite.measurements || [];
   state.invalidSources = composite.invalid_sources || [];
   state.compositeRunsRoot = composite.runs_root || '';
-  const runIds = new Set(state.runs.map((run) => run.run_id));
+  const runIds = new Set(state.runs.map(runDirectoryName));
   state.selectedRuns = new Set(Array.from(state.selectedRuns).filter((runId) => runIds.has(runId)));
   const measurementIds = new Set(state.measurements.map((measurement) => measurementId(measurement)));
   state.selectedMeasurements = new Set(Array.from(state.selectedMeasurements).filter((id) => measurementIds.has(id)));

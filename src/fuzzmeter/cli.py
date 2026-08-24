@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import subprocess
 
 from pathlib import Path
@@ -123,6 +124,8 @@ def main(argv: list[str] | None = None) -> int:
                         help='Host path to the config YAML')
     ap_run.add_argument('--out', type=Path, default=Path('out'),
                         help='Host output directory')
+    ap_run.add_argument('--label', type=str,
+                        help='Human-readable label for this run')
     ap_run.add_argument('--fuzzers', type=Path, default=None,
                         help='Directory containing fuzzer definitions')
     ap_run.add_argument('--targets', type=Path, default=None,
@@ -159,6 +162,10 @@ def main(argv: list[str] | None = None) -> int:
         if not config_path.is_file():
             ap.error(f'Config file is not a file: {config_path}')
 
+        if args.label:
+            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', args.label):
+                ap.error('Label must start with a letter or digit and contain only ASCII letters, digits, "_", or "-"')
+
         fm_out = args.out.expanduser().resolve()
         if fm_out.exists() and not fm_out.is_dir():
             ap.error(f'Output directory is not a directory: {fm_out}')
@@ -182,6 +189,7 @@ def main(argv: list[str] | None = None) -> int:
                 out_root=fm_out,
                 external_roots=external_roots,
                 config_src=config_src,
+                label=args.label,
             )
         except KeyboardInterrupt:
             logger.warning('Interrupted by user')

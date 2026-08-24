@@ -40,6 +40,7 @@ class WebRoutesTest(unittest.TestCase):
 
         self.assertEqual(200, response.status_code)
         self.assertEqual('run', response.json['runs'][0]['run_id'])
+        self.assertEqual('run', response.json['runs'][0]['directory_name'])
         self.assertEqual(str((root / 'run').resolve()), response.json['runs'][0]['path'])
         self.assertEqual({}, response.json['runs'][0]['summary']['status_counts'])
 

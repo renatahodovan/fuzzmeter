@@ -88,13 +88,17 @@ def run_listing_db(
     run_id: str,
     created_ts: int,
     config_src: str = 'fuzzers: [fz]\n',
+    label: str | None = None,
     with_trial_data: bool = False,
 ) -> None:
     '''Create a run database used by web run-listing service tests.'''
     db = DB.open(run_dir / 'fuzzmeter.db')
     try:
         ensure_schema(db)
-        db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', (run_id, created_ts, config_src))
+        db.exec(
+            'INSERT INTO runs(run_id, created_ts, config_src, label) VALUES(?,?,?,?)',
+            (run_id, created_ts, config_src, label),
+        )
         if with_trial_data:
             db.exec(
                 '''

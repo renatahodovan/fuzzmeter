@@ -12,10 +12,17 @@ from __future__ import annotations
 from .base import DB
 
 
-def upsert_run(db: DB, *, run_id: str, created_ts: int, config_src: str) -> None:
+def upsert_run(
+    db: DB,
+    *,
+    run_id: str,
+    created_ts: int,
+    config_src: str,
+    label: str | None = None,
+) -> None:
     '''Insert or replace one run row.'''
 
     db.exec(
-        'INSERT OR REPLACE INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)',
-        (str(run_id), int(created_ts), str(config_src)),
+        'INSERT OR REPLACE INTO runs(run_id, created_ts, config_src, label) VALUES(?,?,?,?)',
+        (str(run_id), int(created_ts), str(config_src), label),
     )

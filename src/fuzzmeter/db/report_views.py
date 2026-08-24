@@ -109,6 +109,7 @@ class ReportingDB:
             ),
             'status_counts': self.status_counts(run_id),
             'config_src': overview.get('config_src'),
+            'label': self.scalar('SELECT label FROM runs WHERE run_id=? LIMIT 1', (run_id,)),
         }
 
     def trial_rows(self, run_id: str) -> list[dict[str, Any]]:

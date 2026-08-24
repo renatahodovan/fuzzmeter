@@ -283,6 +283,7 @@ class ReportFrontendTest(unittest.TestCase):
 
             const alpha = {
               run_id: 'alpha-run',
+              directory_name: 'alpha-directory',
               error: '',
               summary: {
                 trials: 6,
@@ -301,6 +302,7 @@ class ReportFrontendTest(unittest.TestCase):
             };
             const beta = {
               run_id: 'beta-run',
+              directory_name: 'beta-directory',
               error: 'metadata failed',
               summary: {
                 trials: 2,
@@ -322,7 +324,7 @@ class ReportFrontendTest(unittest.TestCase):
             assert.equal(formatDuration(300, { coarse: true }), '5m');
             assert.equal(formatDuration(3900, { coarse: true }), '1h 5m');
             assert.equal(formatDuration(90000, { coarse: true }), '1d 1h');
-            assert.deepEqual(visibleRunIds([alpha, beta], 'HONG'), ['beta-run']);
+            assert.deepEqual(visibleRunIds([alpha, beta], 'HONG'), ['beta-directory']);
 
             const state = { selectedRuns: new Set() };
             toggleRunSelection(state, 'alpha-run');

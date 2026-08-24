@@ -16,7 +16,8 @@ _SCHEMA = [
     CREATE TABLE IF NOT EXISTS runs(
       run_id TEXT PRIMARY KEY,
       created_ts INTEGER,
-      config_src TEXT
+      config_src TEXT,
+      label TEXT
     )
     ''',
     '''

@@ -60,6 +60,8 @@ class RunEntry:
     '''Describe one discovered run directory for the web run list.'''
 
     run_id: str
+    directory_name: str
+    label: str | None
     path: Path
     has_static_report: bool
     updated_ts: int | None
@@ -152,23 +154,6 @@ def _fuzzer_name(item: Any) -> str | None:
     return None
 
 
-def _run_summary(db: ReportingDB, run_id: str) -> RunSummary:
-    counts = db.run_summary_counts(run_id)
-    config = parse_config(counts.get('config_src'))
-
-    return RunSummary(
-        created_ts=counts['created_ts'],
-        trials=counts['trials'],
-        snapshots=counts['snapshots'],
-        bugs=counts['bugs'],
-        benchmark_count=counts['benchmark_count'],
-        target_count=counts['target_count'],
-        fuzzer_count=counts['fuzzer_count'] or len(config.fuzzers),
-        status_counts=counts['status_counts'],
-        config=config,
-    )
-
-
 def _updated_ts(run_dir: Path) -> int | None:
     candidates = [
         run_dir,
@@ -190,7 +175,9 @@ def _updated_ts(run_dir: Path) -> int | None:
 def _list_run_entry(run_dir: Path) -> RunEntry:
     run_dir = Path(run_dir).resolve()
     updated_ts = _updated_ts(run_dir)
-    run_id = run_dir.name
+    directory_name = run_dir.name
+    run_id = directory_name
+    label: str | None = None
     has_static_report = (run_dir / 'report' / 'report.html').is_file()
     db_path = run_dir / 'fuzzmeter.db'
     config_path = run_dir / 'config.yaml'
@@ -207,12 +194,27 @@ def _list_run_entry(run_dir: Path) -> RunEntry:
         try:
             with ReportingDB(db_path) as db:
                 inferred_run_id = db.infer_run_id(run_id)
-                summary = _run_summary(db, inferred_run_id)
-                run_id = inferred_run_id or run_id
+                counts = db.run_summary_counts(inferred_run_id)
+                config = parse_config(counts.get('config_src'))
+                summary = RunSummary(
+                    created_ts=counts['created_ts'],
+                    trials=counts['trials'],
+                    snapshots=counts['snapshots'],
+                    bugs=counts['bugs'],
+                    benchmark_count=counts['benchmark_count'],
+                    target_count=counts['target_count'],
+                    fuzzer_count=counts['fuzzer_count'] or len(config.fuzzers),
+                    status_counts=counts['status_counts'],
+                    config=config,
+                )
+                label = counts['label']
+                run_id = inferred_run_id
         except Exception as exc:
             error = str(exc)
     return RunEntry(
         run_id=run_id,
+        directory_name=directory_name,
+        label=label,
         path=run_dir,
         has_static_report=has_static_report,
         updated_ts=updated_ts,

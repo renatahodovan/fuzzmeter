@@ -20,7 +20,7 @@ def load_report_payload(runs_root: Path, run_id: str) -> dict[str, Any]:
     '''Build the live report payload for one existing run.'''
 
     run_dir = require_run_dir(runs_root, run_id)
-    return build_payload(run_dir, run_id=run_id, file_url_prefix=f'/file/{run_id}/')
+    return build_payload(run_dir, file_url_prefix=f'/file/{run_id}/')
 
 
 def export_static_report(runs_root: Path, run_id: str) -> Path:

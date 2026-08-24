@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+import uuid
 
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -61,9 +62,10 @@ def run_experiment(
     out_root: Path,
     external_roots: ExternalRoots,
     config_src: str,
+    label: str | None = None,
 ) -> Path:
     '''Run a fuzzing or replay experiment and return the run directory.'''
-    run_id = time.strftime('%Y-%m-%d_%H%M%S', time.localtime())
+    run_id = str(uuid.uuid4())
     docker_runtime = DockerRuntime.from_paths(
         fuzzers_root=external_roots.fuzzers_root,
         out_root=out_root,
@@ -72,7 +74,10 @@ def run_experiment(
         memory=campaign_config.settings.memory,
         memory_swap=campaign_config.settings.memory_swap,
     )
-    run_dir = Path(out_root) / run_id
+    timestamp = time.strftime('%Y-%m-%d_%H%M%S', time.localtime())
+    if label is not None:
+        timestamp = f'{timestamp}-{label}'
+    run_dir = Path(out_root) / timestamp
     with RunShutdown(docker_runtime) as shutdown:
         run_dir.mkdir(parents=True)
 
@@ -82,6 +87,7 @@ def run_experiment(
             run_id=run_id,
             config_src=config_src,
             campaign_config=campaign_config,
+            label=label,
         )
 
         fuzz_binaries = prepare_artifacts(
@@ -126,8 +132,6 @@ def run_experiment(
             stop_event=shutdown.stop_event,
         )
         return run_dir
-
-
 def _run_live_experiment(
     *,
     db_path: Path,

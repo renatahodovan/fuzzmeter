@@ -513,6 +513,7 @@ class DatabaseBehaviorTest(unittest.TestCase):
         self.assertEqual(1, counts['fuzzer_count'])
         self.assertEqual({'done': 1}, counts['status_counts'])
         self.assertEqual('config', counts['config_src'])
+        self.assertIsNone(counts['label'])
 
     def test_latest_snapshot_query_matches_max_idx_snapshot_row(self) -> None:
         '''The precomputed latest-snapshot mapping matches the former scan path.'''

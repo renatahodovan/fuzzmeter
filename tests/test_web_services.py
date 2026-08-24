@@ -157,6 +157,7 @@ class WebRunsServiceTest(unittest.TestCase):
                 run_dir,
                 run_id='db-run',
                 created_ts=70,
+                label='database label',
                 config_src='''
                 fuzzers: [database]
                 targets: [db-target]
@@ -169,6 +170,8 @@ class WebRunsServiceTest(unittest.TestCase):
             entry = list_runs(Path(tmp_dir))[0]
 
         self.assertEqual('db-run', entry.run_id)
+        self.assertEqual('folder-name', entry.directory_name)
+        self.assertEqual('database label', entry.label)
         self.assertEqual(['database'], entry.summary.config.fuzzers)
         self.assertEqual(['db-target'], entry.summary.config.targets)
         self.assertEqual(11, entry.summary.config.policy.time_seconds)
@@ -217,7 +220,7 @@ class WebReportServiceTest(unittest.TestCase):
             ) as build_payload:
                 self.assertEqual({'ok': True}, load_report_payload(root, 'run'))
 
-        build_payload.assert_called_once_with(run_dir.resolve(), run_id='run', file_url_prefix='/file/run/')
+        build_payload.assert_called_once_with(run_dir.resolve(), file_url_prefix='/file/run/')
 
     def test_static_report_exports_to_run_report_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
