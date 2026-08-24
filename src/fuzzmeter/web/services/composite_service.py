@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +35,6 @@ LOG = logging.getLogger(__name__)
 def list_measurements(registry: CompositeRegistry) -> dict[str, Any]:
     '''Return discoverable measurements and invalid sources.'''
     return {
-        'runs_root': str(registry.runs_root.resolve()),
         'measurements': [measurement.to_json() for measurement in registry.measurements()],
         'invalid_sources': [source.to_json() for source in registry.invalid_sources()],
     }
@@ -52,9 +52,9 @@ def create_view(store: CompositeViewStore, data: dict[str, Any]) -> dict[str, An
     return view.to_json()
 
 
-def create_view_from_run(runs_root: Path, store: CompositeViewStore, run_id: str) -> dict[str, Any]:
+def create_view_from_run(run_dirs: Iterable[Path], store: CompositeViewStore, run_id: str) -> dict[str, Any]:
     '''Create a composite view seeded with all measurements from an active run.'''
-    measurements = _run_measurements(runs_root, run_id)
+    measurements = _run_measurements(run_dirs, run_id)
     selections = [
         selection_from_key(measurement.key, origin=COMPOSITE_ORIGIN_FRESH)
         for measurement in measurements
@@ -73,14 +73,14 @@ def remove_measurement(store: CompositeViewStore, view_id: str, selection_id: st
 
 
 def view_summary(
-    runs_root: Path,
+    run_dirs: Iterable[Path],
     registry: CompositeRegistry,
     store: CompositeViewStore,
     view_id: str,
 ) -> dict[str, Any]:
     '''Return selected measurement summaries for one view.'''
     view = _require_view(store, view_id)
-    resolved = _resolve_summary_entries(runs_root, registry, view.selections)
+    resolved = _resolve_summary_entries(run_dirs, registry, view.selections)
     return {
         **view.to_json(),
         'sources': [
@@ -92,14 +92,14 @@ def view_summary(
 
 
 def view_report_data(
-    runs_root: Path,
+    run_dirs: Iterable[Path],
     registry: CompositeRegistry,
     store: CompositeViewStore,
     view_id: str,
 ) -> dict[str, Any]:
     '''Build the full report payload for a composite view.'''
     view = _require_view(store, view_id)
-    entries = _resolve_entries(runs_root, registry, view.selections)
+    entries = _resolve_entries(run_dirs, registry, view.selections)
     payload = build_composite_payload(entries)
     payload['meta']['view_id'] = view.view_id
     if _has_historical(entries):
@@ -138,7 +138,7 @@ def _selections_from_payload(data: dict[str, Any], *, default_origin: str) -> li
 
 
 def _resolve_entries(
-    runs_root: Path,
+    run_dirs: Iterable[Path],
     registry: CompositeRegistry,
     selections: tuple[CompositeSelection, ...],
 ) -> list[tuple[CompositeSelection, CompositeMeasurement]]:
@@ -146,7 +146,7 @@ def _resolve_entries(
     for selection in selections:
         measurement = registry.get(selection.key)
         if measurement is None:
-            measurement = _read_run_measurement(runs_root, selection.key)
+            measurement = _read_run_measurement(run_dirs, selection.key)
         if measurement is None:
             raise FileNotFoundError(f'Measurement not found: {selection.key.as_id()}')
         entries.append((selection, measurement))
@@ -154,14 +154,14 @@ def _resolve_entries(
 
 
 def _resolve_summary_entries(
-    runs_root: Path,
+    run_dirs: Iterable[Path],
     registry: CompositeRegistry,
     selections: tuple[CompositeSelection, ...],
 ) -> list[tuple[CompositeSelection, CompositeMeasurement | None]]:
     entries: list[tuple[CompositeSelection, CompositeMeasurement | None]] = []
     for selection in selections:
         try:
-            measurement = registry.get(selection.key) or _read_run_measurement(runs_root, selection.key)
+            measurement = registry.get(selection.key) or _read_run_measurement(run_dirs, selection.key)
         except Exception as exc:
             LOG.warning('Could not resolve composite selection %s: %s', selection.selection_id, exc)
             measurement = None
@@ -169,13 +169,16 @@ def _resolve_summary_entries(
     return entries
 
 
-def _run_measurements(runs_root: Path, run_id: str) -> list[CompositeMeasurement]:
-    run_dir = require_run_dir(runs_root, run_id)
+def _run_measurements(run_dirs: Iterable[Path], run_id: str) -> list[CompositeMeasurement]:
+    run_dir = require_run_dir(run_dirs, run_id)
     return read_measurements(run_dir / 'fuzzmeter.db', run_id)
 
 
-def _read_run_measurement(runs_root: Path, key: CompositeMeasurementKey) -> CompositeMeasurement | None:
-    run_dir = resolve_run_dir(runs_root, key.source_id)
+def _read_run_measurement(run_dirs: Iterable[Path], key: CompositeMeasurementKey) -> CompositeMeasurement | None:
+    try:
+        run_dir = resolve_run_dir(run_dirs, key.source_id)
+    except FileNotFoundError:
+        return None
     if not run_dir.is_dir():
         return None
     for measurement in read_measurements(run_dir / 'fuzzmeter.db', key.source_id):

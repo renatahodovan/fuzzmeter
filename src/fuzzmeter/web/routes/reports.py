@@ -15,7 +15,7 @@ import time
 from flask import Blueprint, abort, jsonify, render_template, request
 
 from ..services.report_service import export_static_report, load_report_payload
-from ._common import runs_root
+from ._common import run_dirs
 
 LOG = logging.getLogger(__name__)
 bp = Blueprint('reports', __name__)
@@ -41,7 +41,7 @@ def api_run_data(run_id: str):
 
     try:
         ts = time.time()
-        payload = load_report_payload(runs_root(), run_id)
+        payload = load_report_payload(run_dirs(), run_id)
         LOG.info('Report payload for %s ready in %.2f seconds', run_id, time.time() - ts)
         return jsonify(payload)
     except FileNotFoundError as exc:
@@ -57,7 +57,7 @@ def api_generate_run(run_id: str):
     '''Generate a static report for an existing run.'''
 
     try:
-        out = export_static_report(runs_root(), run_id)
+        out = export_static_report(run_dirs(), run_id)
     except FileNotFoundError:
         abort(404)
     except ValueError as exc:

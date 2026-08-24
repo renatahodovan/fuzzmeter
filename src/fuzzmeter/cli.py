@@ -140,8 +140,8 @@ def main(argv: list[str] | None = None) -> int:
                            help='Directory containing reporting plugins for fuzzers')
 
     ap_srv = sub.add_parser('serve', help='Run the dynamic DB-backed web UI')
-    ap_srv.add_argument('--root', type=Path, default=Path('out'),
-                        help='OUT_ROOT or RUNS_ROOT directly')
+    ap_srv.add_argument('--root', type=Path, action='append', nargs='+', required=True,
+                        metavar='RUN_DIR', help='Run directories containing fuzzmeter.db')
     ap_srv.add_argument('--host', default='0.0.0.0',
                         help='Host interface for the web UI')
     ap_srv.add_argument('--port', type=int, default=8000,
@@ -223,15 +223,15 @@ def main(argv: list[str] | None = None) -> int:
         import fuzzmeter.web.app as webapp
 
         try:
-            root = args.root.expanduser().resolve()
-            webapp.configure_runs_root(root)
-            if not webapp.RUNS_ROOT.is_dir():
-                raise NotADirectoryError(f'Runs root is not a directory: {webapp.RUNS_ROOT}')
+            run_dirs = [path.expanduser().resolve() for paths in args.root for path in paths]
+            webapp.configure_run_dirs(run_dirs)
         except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
-            logger.error('Invalid runs root: %s', exc)
+            logger.error('Invalid run directory: %s', exc)
+            return 1
+        except ValueError as exc:
+            logger.error('Invalid run directories: %s', exc)
             return 1
 
-        os.environ['FM_RUNS_ROOT'] = str(webapp.RUNS_ROOT)
         if args.debug:
             os.environ['FM_WEB_DEBUG'] = '1'
 

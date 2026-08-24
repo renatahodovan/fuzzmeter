@@ -15,6 +15,7 @@ import time
 import uuid
 
 from collections import OrderedDict
+from collections.abc import Iterable
 from pathlib import Path
 
 from .discovery import discover_measurements
@@ -36,15 +37,15 @@ LOG = logging.getLogger(__name__)
 class CompositeRegistry:
     '''Cache discovered composite measurement descriptors for one serve process.'''
 
-    def __init__(self, runs_root: Path):
-        self.runs_root = Path(runs_root)
+    def __init__(self, run_dirs: Iterable[Path]):
+        self.run_dirs = tuple(Path(run_dir).resolve() for run_dir in run_dirs)
         self._discovery = CompositeDiscovery()
         self._by_key: dict[CompositeMeasurementKey, CompositeMeasurement] = {}
         self.refresh()
 
     def refresh(self) -> CompositeDiscovery:
-        '''Refresh descriptors from direct run directories.'''
-        self._discovery = discover_measurements(self.runs_root)
+        '''Refresh descriptors from configured run directories.'''
+        self._discovery = discover_measurements(self.run_dirs)
         self._by_key = {measurement.key: measurement for measurement in self._discovery.measurements}
         LOG.info(
             'Composite registry refreshed: %d measurements, %d invalid sources',

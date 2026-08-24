@@ -9,22 +9,20 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from flask import Blueprint, abort, current_app, jsonify
 
 from ...composite import CompositeRegistry, CompositeViewExpired
 from ..services import composite_service
-from ._common import json_object_payload, runs_root
+from ._common import json_object_payload, run_dirs
 
 bp = Blueprint('composite', __name__)
 
 
 def _registry():
-    current_runs_root = runs_root()
+    current_run_dirs = run_dirs()
     registry = current_app.config['COMPOSITE_REGISTRY']
-    if Path(registry.runs_root).resolve() != current_runs_root:
-        registry = CompositeRegistry(current_runs_root)
+    if registry.run_dirs != current_run_dirs:
+        registry = CompositeRegistry(current_run_dirs)
         current_app.config['COMPOSITE_REGISTRY'] = registry
     return registry
 
@@ -64,7 +62,7 @@ def api_composite_create_view():
 def api_composite_create_view_from_run(run_id: str):
     '''Create a temporary composite view from an active run.'''
     try:
-        return jsonify(composite_service.create_view_from_run(runs_root(), _store(), run_id))
+        return jsonify(composite_service.create_view_from_run(run_dirs(), _store(), run_id))
     except FileNotFoundError:
         abort(404)
     except ValueError as exc:
@@ -93,7 +91,7 @@ def api_composite_remove_measurement(view_id: str, selection_id: str):
 def api_composite_view(view_id: str):
     '''Return one temporary composite view summary.'''
     try:
-        return jsonify(composite_service.view_summary(runs_root(), _registry(), _store(), view_id))
+        return jsonify(composite_service.view_summary(run_dirs(), _registry(), _store(), view_id))
     except FileNotFoundError as exc:
         abort(404, description=str(exc))
     except ValueError as exc:
@@ -104,7 +102,7 @@ def api_composite_view(view_id: str):
 def api_composite_view_data(view_id: str):
     '''Return report payload data for one temporary composite view.'''
     try:
-        return jsonify(composite_service.view_report_data(runs_root(), _registry(), _store(), view_id))
+        return jsonify(composite_service.view_report_data(run_dirs(), _registry(), _store(), view_id))
     except FileNotFoundError as exc:
         abort(404, description=str(exc))
     except ValueError as exc:

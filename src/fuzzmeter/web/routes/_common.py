@@ -17,10 +17,10 @@ from typing import Any
 from flask import abort, current_app, request
 
 
-def runs_root() -> Path:
-    """Return the configured runs root as an absolute path."""
-    provider = current_app.config['RUNS_ROOT_PROVIDER']
-    return Path(provider()).resolve()
+def run_dirs() -> tuple[Path, ...]:
+    """Return the configured direct run directories as absolute paths."""
+    provider = current_app.config['RUN_DIRS_PROVIDER']
+    return tuple(Path(path).resolve() for path in provider())
 
 
 def json_object_payload() -> dict[str, Any]:

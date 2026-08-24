@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
 import unittest
 
@@ -37,8 +36,8 @@ class HostCliTest(unittest.TestCase):
             self.assertEqual(root.resolve() / 'fuzzers', roots.fuzzers_root)
             self.assertEqual(root.resolve() / 'targets', roots.targets_root)
 
-    def test_serve_accepts_out_root(self) -> None:
-        '''Verify that serving with an output root uses its runs directory.'''
+    def test_serve_accepts_direct_run_directories(self) -> None:
+        '''Verify repeated and multi-value roots configure direct run directories.'''
         try:
             from fuzzmeter.web import app as webapp
         except ModuleNotFoundError as exc:
@@ -47,16 +46,25 @@ class HostCliTest(unittest.TestCase):
             raise
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            out_root = Path(tmp_dir) / 'out'
-            runs_root = out_root
-            runs_root.mkdir(parents=True)
+            root = Path(tmp_dir)
+            first = root / 'first'
+            second = root / 'second'
+            third = root / 'third'
+            for run_dir in (first, second, third):
+                run_dir.mkdir()
+                (run_dir / 'fuzzmeter.db').write_text('', encoding='utf-8')
 
             with patch.object(webapp.app, 'run') as app_run:
-                self.assertEqual(0, cli.main(['--log-level', 'CRITICAL', 'serve', '--root', str(out_root)]))
+                self.assertEqual(
+                    0,
+                    cli.main([
+                        '--log-level', 'CRITICAL', 'serve', '--root', str(first), str(second), '--root', str(third),
+                    ]),
+                )
 
-            self.assertEqual(runs_root.resolve(), webapp.RUNS_ROOT)
-            self.assertEqual(runs_root.resolve(), webapp.app.config['COMPOSITE_REGISTRY'].runs_root.resolve())
-            self.assertEqual(str(runs_root.resolve()), os.environ['FM_RUNS_ROOT'])
+            run_dirs = (first.resolve(), second.resolve(), third.resolve())
+            self.assertEqual(run_dirs, webapp.app.config['RUN_DIRS_PROVIDER']())
+            self.assertEqual(run_dirs, webapp.app.config['COMPOSITE_REGISTRY'].run_dirs)
             app_run.assert_called_once()
 
 

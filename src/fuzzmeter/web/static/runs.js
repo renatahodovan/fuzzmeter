@@ -26,7 +26,6 @@ export const RUNS_STATE = {
   runs: [],
   measurements: [],
   invalidSources: [],
-  compositeRunsRoot: '',
   filterText: '',
   selectedRuns: new Set(),
   selectedMeasurements: new Set(),
@@ -397,7 +396,6 @@ export async function refresh(state = RUNS_STATE) {
   state.runs = data.runs || [];
   state.measurements = composite.measurements || [];
   state.invalidSources = composite.invalid_sources || [];
-  state.compositeRunsRoot = composite.runs_root || '';
   const runIds = new Set(state.runs.map(runDirectoryName));
   state.selectedRuns = new Set(Array.from(state.selectedRuns).filter((runId) => runIds.has(runId)));
   const measurementIds = new Set(state.measurements.map((measurement) => measurementId(measurement)));

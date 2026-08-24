@@ -9,34 +9,35 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 
-def resolve_run_dir(runs_root: Path, run_id: str) -> Path:
-    '''Return a run directory path after preventing traversal outside the runs root.'''
+def resolve_run_dir(run_dirs: Iterable[Path], run_id: str) -> Path:
+    '''Return one configured run directory after validating its name.'''
 
-    root = Path(runs_root).resolve()
-    run_dir = (root / run_id).resolve()
-    try:
-        run_dir.relative_to(root)
-    except ValueError as exc:
-        raise ValueError('invalid run path') from exc
-    return run_dir
+    if run_id != Path(run_id).name or run_id in ('', '.', '..'):
+        raise ValueError('invalid run path')
+    for run_dir in run_dirs:
+        resolved = Path(run_dir).resolve()
+        if resolved.name == run_id:
+            return resolved
+    raise FileNotFoundError(run_id)
 
 
-def require_run_dir(runs_root: Path, run_id: str) -> Path:
+def require_run_dir(run_dirs: Iterable[Path], run_id: str) -> Path:
     '''Return an existing run directory or raise FileNotFoundError.'''
 
-    run_dir = resolve_run_dir(runs_root, run_id)
+    run_dir = resolve_run_dir(run_dirs, run_id)
     if not run_dir.is_dir():
         raise FileNotFoundError(str(run_dir))
     return run_dir
 
 
-def resolve_run_file(runs_root: Path, run_id: str, relpath: str) -> Path:
+def resolve_run_file(run_dirs: Iterable[Path], run_id: str, relpath: str) -> Path:
     '''Return a run-local file path after preventing traversal outside the run.'''
 
-    run_dir = resolve_run_dir(runs_root, run_id)
+    run_dir = resolve_run_dir(run_dirs, run_id)
     rel = Path(relpath)
     if '..' in rel.parts:
         raise ValueError('invalid relative path')
@@ -52,10 +53,10 @@ def resolve_run_file(runs_root: Path, run_id: str, relpath: str) -> Path:
     return full
 
 
-def require_run_file(runs_root: Path, run_id: str, relpath: str) -> Path:
+def require_run_file(run_dirs: Iterable[Path], run_id: str, relpath: str) -> Path:
     '''Return an existing run-local file or raise FileNotFoundError.'''
 
-    full = resolve_run_file(runs_root, run_id, relpath)
+    full = resolve_run_file(run_dirs, run_id, relpath)
     if not full.is_file():
         raise FileNotFoundError(str(full))
     return full

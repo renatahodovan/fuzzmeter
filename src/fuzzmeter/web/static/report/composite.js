@@ -30,7 +30,6 @@ import {
 const COMPOSITE_STATE = {
   measurements: [],
   invalidSources: [],
-  runsRoot: '',
   selected: new Set(),
   reloadReport: null,
 };
@@ -132,10 +131,8 @@ async function loadMeasurements() {
   const data = await apiJSON('/api/composite/sources/refresh', { method: 'POST' });
   COMPOSITE_STATE.measurements = data.measurements || [];
   COMPOSITE_STATE.invalidSources = data.invalid_sources || [];
-  COMPOSITE_STATE.runsRoot = data.runs_root || '';
   renderMeasurementOptions();
-  const rootText = COMPOSITE_STATE.runsRoot ? ` Scanned: ${COMPOSITE_STATE.runsRoot}.` : '';
-  setStatus(`${COMPOSITE_STATE.measurements.length} measurements. ${COMPOSITE_STATE.invalidSources.length} invalid source(s).${rootText}`);
+  setStatus(`${COMPOSITE_STATE.measurements.length} measurements. ${COMPOSITE_STATE.invalidSources.length} invalid source(s).`);
 }
 
 async function addSelectedMeasurements() {

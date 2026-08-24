@@ -22,8 +22,8 @@ from tests.support.dbs import measurement_run_db
 class CompositeDiscoveryTest(unittest.TestCase):
     '''Verify read-only direct run discovery behavior.'''
 
-    def test_discovers_direct_child_measurements_and_invalid_sources(self) -> None:
-        '''Only direct child run directories are scanned and invalid DBs are isolated.'''
+    def test_discovers_explicit_measurements_and_invalid_sources(self) -> None:
+        '''Configured run directories are scanned and invalid DBs are isolated.'''
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             measurement_run_db(root / 'run-a', source_id='run-a')
@@ -32,7 +32,7 @@ class CompositeDiscoveryTest(unittest.TestCase):
             nested_parent.mkdir()
             measurement_run_db(nested_parent / 'run-b', source_id='run-b')
 
-            discovery = discover_measurements(root)
+            discovery = discover_measurements([root / 'run-a', root / 'broken', nested_parent])
 
         self.assertEqual(['run-a'], [measurement.key.source_id for measurement in discovery.measurements])
         self.assertEqual(['broken', 'nested'], [source.source_id for source in discovery.invalid_sources])
@@ -51,7 +51,7 @@ class CompositeDiscoveryTest(unittest.TestCase):
             finally:
                 con.close()
 
-            discovery = discover_measurements(root)
+            discovery = discover_measurements([run_dir])
 
         self.assertEqual((), discovery.measurements)
         self.assertEqual(1, len(discovery.invalid_sources))
@@ -67,7 +67,7 @@ class CompositeDiscoveryTest(unittest.TestCase):
                 con.execute('UPDATE metadata SET metadata_schema_version=?', (999,))
                 con.commit()
 
-            discovery = discover_measurements(root)
+            discovery = discover_measurements([root / 'future-run'])
 
         self.assertEqual((), discovery.measurements)
         self.assertEqual(1, len(discovery.invalid_sources))

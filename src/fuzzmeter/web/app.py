@@ -9,8 +9,7 @@
 
 from __future__ import annotations
 
-import os
-
+from collections.abc import Iterable
 from pathlib import Path
 
 from flask import Flask
@@ -19,37 +18,32 @@ from ..composite import CompositeRegistry, CompositeViewStore
 from .routes import composite_bp, files_bp, reports_bp, runs_bp
 
 
-def resolve_runs_root(path: Path) -> Path:
-    '''Return the run-directory root for an output root or run directory.'''
-    root = Path(path).resolve()
-    if (root / 'fuzzmeter.db').is_file():
-        return root.parent
-    return root
+def configure_run_dirs(paths: Iterable[Path], flask_app: Flask | None = None) -> tuple[Path, ...]:
+    '''Bind the dynamic web app and composite registry to direct run directories.'''
 
+    run_dirs = tuple(Path(path).resolve() for path in paths)
+    names: set[str] = set()
+    for run_dir in run_dirs:
+        if not run_dir.is_dir():
+            raise NotADirectoryError(f'Run directory is not a directory: {run_dir}')
+        if not (run_dir / 'fuzzmeter.db').is_file():
+            raise FileNotFoundError(f'Run directory does not contain fuzzmeter.db: {run_dir}')
+        if run_dir.name in names:
+            raise ValueError(f'Duplicate run directory name: {run_dir.name}')
+        names.add(run_dir.name)
 
-_env_runs_root = os.environ.get('FM_RUNS_ROOT')
-if _env_runs_root:
-    RUNS_ROOT = resolve_runs_root(Path(_env_runs_root))
-else:
-    RUNS_ROOT = resolve_runs_root(Path(os.environ.get('FM_OUT', '/tmp/fuzzmeter/out')))
-
-
-def configure_runs_root(path: Path, flask_app: Flask | None = None) -> Path:
-    '''Bind the dynamic web app and composite registry to a runs root.'''
-    runs_root = resolve_runs_root(path)
-    globals()['RUNS_ROOT'] = runs_root
     target_app = flask_app or globals().get('app')
     if target_app is not None:
-        target_app.config['RUNS_ROOT_PROVIDER'] = lambda: RUNS_ROOT
-        target_app.config['COMPOSITE_REGISTRY'] = CompositeRegistry(runs_root)
-    return runs_root
+        target_app.config['RUN_DIRS_PROVIDER'] = lambda: run_dirs
+        target_app.config['COMPOSITE_REGISTRY'] = CompositeRegistry(run_dirs)
+    return run_dirs
 
 
 def create_app() -> Flask:
-    '''Create the dynamic web app bound to the current runs root.'''
+    '''Create the dynamic web app bound to configured run directories.'''
     app = Flask(__name__, template_folder='templates', static_folder='static')
-    app.config['RUNS_ROOT_PROVIDER'] = lambda: RUNS_ROOT
-    app.config['COMPOSITE_REGISTRY'] = CompositeRegistry(RUNS_ROOT)
+    app.config['RUN_DIRS_PROVIDER'] = lambda: ()
+    app.config['COMPOSITE_REGISTRY'] = CompositeRegistry(())
     app.config['COMPOSITE_VIEW_STORE'] = CompositeViewStore()
     app.register_blueprint(runs_bp)
     app.register_blueprint(reports_bp)

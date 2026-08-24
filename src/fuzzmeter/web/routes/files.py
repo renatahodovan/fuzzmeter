@@ -9,9 +9,10 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, abort, current_app, send_from_directory
+from flask import Blueprint, abort, send_from_directory
 
 from ..services.file_service import require_run_file
+from ._common import run_dirs
 
 bp = Blueprint('files', __name__)
 
@@ -21,8 +22,7 @@ def serve_run_file(run_id: str, relpath: str):
     '''Serve one existing file from a run directory.'''
 
     try:
-        provider = current_app.config['RUNS_ROOT_PROVIDER']
-        full = require_run_file(provider(), run_id, relpath)
+        full = require_run_file(run_dirs(), run_id, relpath)
     except ValueError as exc:
         abort(400, description=str(exc))
     except FileNotFoundError:

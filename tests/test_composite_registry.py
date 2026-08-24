@@ -26,10 +26,12 @@ class CompositeRegistryTest(unittest.TestCase):
         '''Manual refresh picks up direct run directory descriptor changes.'''
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            registry = CompositeRegistry(root)
+            run_dir = root / 'run-a'
+            run_dir.mkdir()
+            registry = CompositeRegistry([run_dir])
             self.assertEqual((), registry.measurements())
 
-            measurement_run_db(root / 'run-a', source_id='run-a')
+            measurement_run_db(run_dir, source_id='run-a')
             registry.refresh()
 
             self.assertEqual(1, len(registry.measurements()))

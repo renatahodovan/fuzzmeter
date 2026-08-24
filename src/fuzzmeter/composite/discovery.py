@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from ..db import metadata as db_metadata
@@ -27,13 +28,12 @@ from .models import (
 LOG = logging.getLogger(__name__)
 
 
-def discover_sources(runs_root: Path) -> list[CompositeSource]:
-    '''Return direct child run sources below runs_root.'''
-    root = Path(runs_root).resolve()
-    if not root.is_dir():
-        return []
+def discover_sources(run_dirs: Iterable[Path]) -> list[CompositeSource]:
+    '''Return configured run sources.'''
+
     sources: list[CompositeSource] = []
-    for path in sorted(root.iterdir()):
+    for run_dir in sorted(run_dirs):
+        path = Path(run_dir).resolve()
         if not path.is_dir():
             continue
         db_path = path / 'fuzzmeter.db'
@@ -52,11 +52,11 @@ def discover_sources(runs_root: Path) -> list[CompositeSource]:
     return sources
 
 
-def discover_measurements(runs_root: Path) -> CompositeDiscovery:
-    '''Read all composite descriptors from discovered run sources.'''
+def discover_measurements(run_dirs: Iterable[Path]) -> CompositeDiscovery:
+    '''Read all composite descriptors from configured run sources.'''
     measurements: list[CompositeMeasurement] = []
     invalid_sources: list[CompositeSource] = []
-    for source in discover_sources(runs_root):
+    for source in discover_sources(run_dirs):
         if source.status != 'ok':
             invalid_sources.append(source)
             continue

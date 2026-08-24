@@ -34,43 +34,41 @@ from tests.support.dbs import run_listing_db
 
 class WebFileServiceTest(unittest.TestCase):
     def test_run_path_traversal_is_rejected(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            with self.assertRaises(ValueError):
-                resolve_run_dir(Path(tmp_dir), '../outside')
+        with self.assertRaises(ValueError):
+            resolve_run_dir([], '../outside')
 
     def test_file_path_traversal_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            (root / 'run').mkdir()
+            run_dir = Path(tmp_dir) / 'run'
+            run_dir.mkdir()
 
             with self.assertRaises(ValueError):
-                resolve_run_file(root, 'run', '../secret')
+                resolve_run_file([run_dir], 'run', '../secret')
 
     def test_directory_request_resolves_to_index_html(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            index = root / 'run' / 'report' / 'index.html'
+            run_dir = Path(tmp_dir) / 'run'
+            index = run_dir / 'report' / 'index.html'
             index.parent.mkdir(parents=True)
             index.write_text('index', encoding='utf-8')
 
-            self.assertEqual(index.resolve(), resolve_run_file(root, 'run', 'report'))
-            self.assertEqual(index.resolve(), require_run_file(root, 'run', 'report'))
+            self.assertEqual(index.resolve(), resolve_run_file([run_dir], 'run', 'report'))
+            self.assertEqual(index.resolve(), require_run_file([run_dir], 'run', 'report'))
 
     def test_missing_run_and_file_raise_file_not_found(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            (root / 'run').mkdir()
+            run_dir = Path(tmp_dir) / 'run'
+            run_dir.mkdir()
 
             with self.assertRaises(FileNotFoundError):
-                require_run_dir(root, 'missing')
+                require_run_dir([run_dir], 'missing')
             with self.assertRaises(FileNotFoundError):
-                require_run_file(root, 'run', 'missing.html')
+                require_run_file([run_dir], 'run', 'missing.html')
 
 
 class WebRunsServiceTest(unittest.TestCase):
-    def test_missing_runs_root_lists_no_runs(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            self.assertEqual([], list_runs(Path(tmp_dir) / 'missing'))
+    def test_empty_run_directories_list_no_runs(self) -> None:
+        self.assertEqual([], list_runs([]))
 
     def test_parse_config_extracts_web_summary_fields(self) -> None:
         config = parse_config(
@@ -122,7 +120,7 @@ class WebRunsServiceTest(unittest.TestCase):
             _touch(third / 'fuzzmeter.db', 20)
             _touch(third, 10)
 
-            entries = list_runs(root)
+            entries = list_runs([first, second, third])
 
         self.assertEqual(['second', 'first', 'third'], [entry.run_id for entry in entries])
         self.assertEqual(50, entries[0].updated_ts)
@@ -142,7 +140,7 @@ class WebRunsServiceTest(unittest.TestCase):
                 return con
 
             with patch('fuzzmeter.db.report_views.open_readonly_connection', side_effect=open_and_touch):
-                entry = list_runs(root)[0]
+                entry = list_runs([run_dir])[0]
 
             self.assertEqual(100, int(run_dir.stat().st_mtime))
 
@@ -167,7 +165,7 @@ class WebRunsServiceTest(unittest.TestCase):
                 with_trial_data=True,
             )
 
-            entry = list_runs(Path(tmp_dir))[0]
+            entry = list_runs([run_dir])[0]
 
         self.assertEqual('db-run', entry.run_id)
         self.assertEqual('folder-name', entry.directory_name)
@@ -189,48 +187,48 @@ class WebRunsServiceTest(unittest.TestCase):
             run_dir.mkdir()
             (run_dir / 'fuzzmeter.db').write_text('not sqlite', encoding='utf-8')
 
-            entry = list_runs(Path(tmp_dir))[0]
+            entry = list_runs([run_dir])[0]
 
         self.assertEqual('broken', entry.run_id)
         self.assertIsNotNone(entry.error)
 
     def test_delete_runs_reports_deleted_missing_and_invalid_ids(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            (root / 'run').mkdir()
+            run_dir = Path(tmp_dir) / 'run'
+            run_dir.mkdir()
 
-            result = delete_runs(root, ['run', 'missing', '../outside'])
+            result = delete_runs([run_dir], ['run', 'missing', '../outside'])
+            remaining = list_runs([run_dir])
 
         self.assertFalse(result['ok'])
         self.assertEqual(['run'], result['deleted'])
         self.assertEqual(['missing'], result['missing'])
         self.assertEqual([{'run_id': '../outside', 'error': 'invalid run path'}], result['failed'])
+        self.assertEqual([], remaining)
 
 
 class WebReportServiceTest(unittest.TestCase):
     def test_live_payload_uses_run_file_url_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            run_dir = root / 'run'
+            run_dir = Path(tmp_dir) / 'run'
             run_dir.mkdir()
 
             with patch(
                 'fuzzmeter.web.services.report_service.build_payload',
                 return_value={'ok': True},
             ) as build_payload:
-                self.assertEqual({'ok': True}, load_report_payload(root, 'run'))
+                self.assertEqual({'ok': True}, load_report_payload([run_dir], 'run'))
 
         build_payload.assert_called_once_with(run_dir.resolve(), file_url_prefix='/file/run/')
 
     def test_static_report_exports_to_run_report_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            run_dir = root / 'run'
+            run_dir = Path(tmp_dir) / 'run'
             run_dir.mkdir()
             report_dir = run_dir / 'report'
 
             with patch('fuzzmeter.web.services.report_service.write_report', return_value=report_dir) as write_report:
-                self.assertEqual(report_dir, export_static_report(root, 'run'))
+                self.assertEqual(report_dir, export_static_report([run_dir], 'run'))
 
         write_report.assert_called_once_with(run_dir.resolve(), out_dir=run_dir.resolve() / 'report')
 

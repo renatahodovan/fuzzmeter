@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import shutil
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -97,13 +98,10 @@ def parse_config(config_src: str | None) -> RunConfig:
     )
 
 
-def list_runs(runs_root: Path) -> list[RunEntry]:
-    '''List all discovered runs sorted by most recent activity.'''
+def list_runs(run_dirs: Iterable[Path]) -> list[RunEntry]:
+    '''List configured runs sorted by most recent activity.'''
 
-    root = Path(runs_root).resolve()
-    if not root.is_dir():
-        return []
-    runs = [_list_run_entry(path) for path in root.iterdir() if path.is_dir()]
+    runs = [_list_run_entry(path) for path in run_dirs if Path(path).is_dir()]
     runs.sort(
         key=lambda item: (
             int(item.updated_ts or 0),
@@ -115,14 +113,14 @@ def list_runs(runs_root: Path) -> list[RunEntry]:
     return runs
 
 
-def delete_run(runs_root: Path, run_id: str) -> None:
+def delete_run(run_dirs: Iterable[Path], run_id: str) -> None:
     '''Delete one run directory after validating its path.'''
 
-    run_dir = require_run_dir(runs_root, run_id)
+    run_dir = require_run_dir(run_dirs, run_id)
     shutil.rmtree(run_dir, ignore_errors=False)
 
 
-def delete_runs(runs_root: Path, run_ids: list[Any]) -> dict[str, Any]:
+def delete_runs(run_dirs: Iterable[Path], run_ids: list[Any]) -> dict[str, Any]:
     '''Delete multiple runs and return a structured outcome summary.'''
 
     deleted: list[str] = []
@@ -131,7 +129,7 @@ def delete_runs(runs_root: Path, run_ids: list[Any]) -> dict[str, Any]:
 
     for run_id in [str(run_id) for run_id in run_ids if str(run_id).strip()]:
         try:
-            delete_run(runs_root, run_id)
+            delete_run(run_dirs, run_id)
             deleted.append(run_id)
         except FileNotFoundError:
             missing.append(run_id)
