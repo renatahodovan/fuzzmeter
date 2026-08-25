@@ -58,6 +58,98 @@ def _docker_command_available(*args: str) -> bool:
     return result.returncode == 0
 
 
+def _execute_run(parser, args):
+    from .config import load_campaign_config
+    from .reporting import write_report
+    from .run.runner import run_experiment
+
+    if not _docker_command_available('version') or not _docker_command_available('buildx', 'version'):
+        logger.error('Docker or Docker Buildx is not available.'
+                        'Ensure that they are installed, start Docker and retry.')
+        return 1
+
+    config_path = args.config.expanduser().resolve()
+    if not config_path.is_file():
+        parser.error(f'Config file is not a file: {config_path}')
+
+    if args.label and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', args.label):
+        parser.error('Label must start with a letter or digit and contain only ASCII letters, digits, "_", or "-"')
+
+    out_root = args.out.expanduser().resolve()
+    if out_root.exists() and not out_root.is_dir():
+        parser.error(f'Output directory is not a directory: {out_root}')
+    out_root.mkdir(parents=True, exist_ok=True)
+
+    try:
+        config_src = config_path.read_text(encoding='utf-8')
+        fuzzer_dirs = _resolve_resource_dirs(args.fuzzers, checkout_subdir='fuzzers', label='Fuzzer')
+        target_dirs = _resolve_resource_dirs(args.targets, checkout_subdir='targets', label='Target')
+        if not fuzzer_dirs:
+            raise NotADirectoryError('No fuzzer directories were configured.')
+        if not target_dirs:
+            raise NotADirectoryError('No target directories were configured.')
+        campaign_config = load_campaign_config(
+            fuzzer_dirs=fuzzer_dirs,
+            target_dirs=target_dirs,
+            text=config_src,
+        )
+    except (OSError, UnicodeDecodeError, TypeError, ValueError, RuntimeError) as exc:
+        parser.error(str(exc))
+
+    os.environ['FM_OUT_SRC'] = str(out_root)
+    try:
+        logger.info('Start experiment')
+        run_dir = run_experiment(
+            campaign_config,
+            out_root=out_root,
+            config_src=config_src,
+            label=args.label,
+        )
+    except KeyboardInterrupt:
+        logger.warning('Interrupted by user')
+        return 130
+
+    logger.info('Experiment completed: %s', run_dir)
+    report_dir = write_report(Path(run_dir), fuzzer_dirs=campaign_config.fuzzer_dirs)
+    logger.info('Static report generated to: %s', report_dir)
+    return 0
+
+
+def _execute_report(args):
+    from .reporting import write_report
+
+    run_dir = args.run_dir.expanduser().resolve()
+    out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
+    try:
+        fuzzer_dirs = _resolve_resource_dirs(args.fuzzers, checkout_subdir='fuzzers', label='Fuzzer')
+    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError, ValueError) as exc:
+        logger.error('Invalid fuzzer directories: %s', exc)
+        return 1
+    report_dir = write_report(run_dir, out_dir=out_dir, fuzzer_dirs=fuzzer_dirs or None)
+    logger.info('Static report generated to: %s', report_dir)
+    return 0
+
+
+def _execute_serve(args):
+    from .web.app import app, configure_run_dirs
+
+    try:
+        run_dirs = [path.expanduser().resolve() for paths in args.root for path in paths]
+        configure_run_dirs(run_dirs)
+    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
+        logger.error('Invalid run directory: %s', exc)
+        return 1
+    except ValueError as exc:
+        logger.error('Invalid run directories: %s', exc)
+        return 1
+
+    if args.debug:
+        os.environ['FM_WEB_DEBUG'] = '1'
+
+    app.run(host=args.host, port=args.port, debug=args.debug)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     '''Run fuzzmeter commands from the host.'''
     ap = argparse.ArgumentParser(prog='fuzzmeter')
@@ -107,98 +199,15 @@ def main(argv: list[str] | None = None) -> int:
     os.environ['FM_LOG_LEVEL'] = args.log_level
 
     if args.cmd == 'run':
-        from .config import load_campaign_config
-        from .reporting import write_report
-        from .run.runner import run_experiment
-
-        if not _docker_command_available('version') or not _docker_command_available('buildx', 'version'):
-            logger.error('Docker or Docker Buildx is not available.'
-                         'Ensure that they are installed, start Docker and retry.')
-            return 1
-
-        config_path = args.config.expanduser().resolve()
-        if not config_path.is_file():
-            ap.error(f'Config file is not a file: {config_path}')
-
-        if args.label:
-            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', args.label):
-                ap.error('Label must start with a letter or digit and contain only ASCII letters, digits, "_", or "-"')
-
-        fm_out = args.out.expanduser().resolve()
-        if fm_out.exists() and not fm_out.is_dir():
-            ap.error(f'Output directory is not a directory: {fm_out}')
-        fm_out.mkdir(parents=True, exist_ok=True)
-
-        try:
-            config_src = config_path.read_text(encoding='utf-8')
-            fuzzer_dirs = _resolve_resource_dirs(args.fuzzers, checkout_subdir='fuzzers', label='Fuzzer')
-            target_dirs = _resolve_resource_dirs(args.targets, checkout_subdir='targets', label='Target')
-            if not fuzzer_dirs:
-                raise NotADirectoryError('No fuzzer directories were configured.')
-            if not target_dirs:
-                raise NotADirectoryError('No target directories were configured.')
-            campaign_config = load_campaign_config(
-                fuzzer_dirs=fuzzer_dirs,
-                target_dirs=target_dirs,
-                text=config_src,
-            )
-        except (OSError, UnicodeDecodeError, TypeError, ValueError, RuntimeError) as exc:
-            ap.error(str(exc))
-
-        os.environ['FM_OUT_SRC'] = str(fm_out)
-        try:
-            logger.info('Start experiment')
-            run_dir = run_experiment(
-                campaign_config,
-                out_root=fm_out,
-                config_src=config_src,
-                label=args.label,
-            )
-        except KeyboardInterrupt:
-            logger.warning('Interrupted by user')
-            return 130
-
-        logger.info('Experiment completed: %s', run_dir)
-        report_dir = write_report(Path(run_dir), fuzzer_dirs=campaign_config.fuzzer_dirs)
-        logger.info('Static report generated to: %s', report_dir)
-        return 0
+        return _execute_run(ap, args)
 
     if args.cmd == 'report':
-        from .reporting import write_report
-
-        run_dir = args.run_dir.expanduser().resolve()
-        out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
-        try:
-            fuzzer_dirs = _resolve_resource_dirs(args.fuzzers, checkout_subdir='fuzzers', label='Fuzzer')
-        except (FileNotFoundError, NotADirectoryError, PermissionError, OSError, ValueError) as exc:
-            logger.error('Invalid fuzzer directories: %s', exc)
-            return 1
-        report_dir = write_report(run_dir, out_dir=out_dir, fuzzer_dirs=fuzzer_dirs or None)
-        logger.info('Static report generated to: %s', report_dir)
-        return 0
+        return _execute_report(args)
 
     if args.cmd == 'serve':
-        import fuzzmeter.web.app as webapp
+        return _execute_serve(args)
 
-        try:
-            run_dirs = [path.expanduser().resolve() for paths in args.root for path in paths]
-            webapp.configure_run_dirs(run_dirs)
-        except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
-            logger.error('Invalid run directory: %s', exc)
-            return 1
-        except ValueError as exc:
-            logger.error('Invalid run directories: %s', exc)
-            return 1
-
-        if args.debug:
-            os.environ['FM_WEB_DEBUG'] = '1'
-
-        from .web.app import app
-
-        app.run(host=args.host, port=args.port, debug=args.debug)
-        return 0
-
-    return 2
+    return 1
 
 
 if __name__ == '__main__':
