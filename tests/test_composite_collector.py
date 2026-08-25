@@ -41,14 +41,14 @@ class CompositeCollectorTest(unittest.TestCase):
             case=_case(),
             environment={'host': {'system': 'Darwin'}},
             fuzzer_dirs={},
-            target_dirs={},
+            benchmark_dirs={},
             source_info_enabled=False,
         )
 
         self.assertIsNotNone(metadata.environment_digest)
         self.assertIsNotNone(metadata.config_digest)
         self.assertIsNotNone(metadata.source_digest)
-        self.assertEqual('missing', metadata.source['target_source']['status'])
+        self.assertEqual('missing', metadata.source['benchmark_source']['status'])
         self.assertEqual('missing', metadata.source['fuzzer_version']['status'])
 
     def test_environment_digest_ignores_volatile_docker_counters(self) -> None:

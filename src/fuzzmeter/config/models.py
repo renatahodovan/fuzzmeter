@@ -17,7 +17,7 @@ from typing import Any
 
 
 def target_key(benchmark: str, fuzz_target: str) -> str:
-    '''Return the internal key used for target-specific artifacts.'''
+    '''Return the internal key used for fuzz-target-specific artifacts.'''
     return f'{benchmark}-{fuzz_target}'
 
 
@@ -30,7 +30,7 @@ def implementation_fuzzer(fuzzer_chain: tuple[str, ...]) -> str:
 
 @dataclass(frozen=True)
 class CampaignCase:
-    '''Describe one fuzzer-target combination in a campaign.'''
+    '''Describe one fuzzer/fuzz-target combination in a campaign.'''
 
     fuzzer_name: str
     fuzzer_chain: tuple[str, ...]
@@ -65,4 +65,4 @@ class CampaignConfig:
     settings: CampaignSettings
     cases: list[CampaignCase]
     fuzzer_dirs: dict[str, Path] = field(default_factory=dict)
-    target_dirs: dict[str, Path] = field(default_factory=dict)
+    benchmark_dirs: dict[str, Path] = field(default_factory=dict)

@@ -83,14 +83,14 @@ def _execute_run(parser, args):
     try:
         config_src = config_path.read_text(encoding='utf-8')
         fuzzer_dirs = _resolve_resource_dirs(args.fuzzers, checkout_subdir='fuzzers', label='Fuzzer')
-        target_dirs = _resolve_resource_dirs(args.targets, checkout_subdir='targets', label='Target')
+        benchmark_dirs = _resolve_resource_dirs(args.benchmarks, checkout_subdir='benchmarks', label='Benchmark')
         if not fuzzer_dirs:
             raise NotADirectoryError('No fuzzer directories were configured.')
-        if not target_dirs:
-            raise NotADirectoryError('No target directories were configured.')
+        if not benchmark_dirs:
+            raise NotADirectoryError('No benchmark directories were configured.')
         campaign_config = load_campaign_config(
             fuzzer_dirs=fuzzer_dirs,
-            target_dirs=target_dirs,
+            benchmark_dirs=benchmark_dirs,
             text=config_src,
         )
     except (OSError, UnicodeDecodeError, TypeError, ValueError, RuntimeError) as exc:
@@ -173,8 +173,8 @@ def main(argv: list[str] | None = None) -> int:
                         help='Human-readable label for this run')
     ap_run.add_argument('--fuzzers', type=Path, action='append', nargs='+',
                         metavar='FUZZER_DIR', help='Fuzzer definition directories')
-    ap_run.add_argument('--targets', type=Path, action='append', nargs='+',
-                        metavar='TARGET_DIR', help='Target definition directories')
+    ap_run.add_argument('--benchmarks', type=Path, action='append', nargs='+',
+                        metavar='BENCHMARK_DIR', help='Benchmark definition directories')
 
     ap_report = sub.add_parser('report', help='Generate a static report for an existing run')
     ap_report.add_argument('run_dir', type=Path,

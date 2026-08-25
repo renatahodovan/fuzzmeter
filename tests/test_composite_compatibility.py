@@ -95,7 +95,7 @@ class CompositeCompatibilityTest(unittest.TestCase):
 
         self.assertEqual(COMPATIBLE, result.level)
 
-    def test_target_source_metadata_is_compared(self) -> None:
+    def test_benchmark_source_metadata_is_compared(self) -> None:
         '''Target source metadata differences are visible risk signals.'''
         result = compare_metadata(
             _metadata(source=_source(target_revision='abc', fuzzer_revision='same')),
@@ -104,7 +104,7 @@ class CompositeCompatibilityTest(unittest.TestCase):
 
         self.assertEqual(RISKY, result.level)
         self.assertEqual('source', result.issues[0].domain)
-        self.assertEqual('target_source.revision', result.diffs[0]['path'])
+        self.assertEqual('benchmark_source.revision', result.diffs[0]['path'])
 
     def test_fresh_target_reference_is_preferred(self) -> None:
         '''Fresh measurements are the target reference for historical rows.'''
@@ -218,7 +218,7 @@ def _metadata(
         source=source
         if source is not None
         else {
-            'target_source': {'status': 'ok', 'data': {'revision': 'abc'}},
+            'benchmark_source': {'status': 'ok', 'data': {'revision': 'abc'}},
             'fuzzer_version': {'status': 'ok', 'data': {'revision': 'def'}},
         },
     )
@@ -226,7 +226,7 @@ def _metadata(
 
 def _source(*, target_revision: str = 'abc', fuzzer_revision: str = 'def') -> dict:
     return {
-        'target_source': {'status': 'ok', 'data': {'revision': target_revision}},
+        'benchmark_source': {'status': 'ok', 'data': {'revision': target_revision}},
         'fuzzer_version': {'status': 'ok', 'data': {'revision': fuzzer_revision}},
     }
 

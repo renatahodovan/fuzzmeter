@@ -18,7 +18,7 @@ def initialize_env(env: dict[str, str] | None = None) -> None:
     if env is None:
         env = os.environ
 
-    env['FUZZ_TARGET'] = utils.get_active_target_name(env)
+    env['FUZZ_TARGET'] = utils.get_active_fuzz_target_name(env)
     env['CFLAGS'] = ''
     env['CXXFLAGS'] = ''
     utils.append_flags(

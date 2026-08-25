@@ -108,7 +108,7 @@ Usage
 =====
 
 FuzzMeter runs a *campaign*. A campaign is configured by a YAML file that
-selects the participating fuzzers, targets, and runtime settings.
+selects the participating fuzzers, fuzz targets, and runtime settings.
 
 A small campaign looks like this::
 
@@ -120,7 +120,7 @@ A small campaign looks like this::
         runtime:
           args:
             - -entropic=1
-    targets:
+    fuzz_targets:
       - jerryscript:jerry
     run:
       time_seconds: 300
@@ -161,9 +161,9 @@ The most important campaign are:
      - Names or derived entries. A plain string loads
        ``fuzzers/<name>/fuzzer.yaml``. A mapping can define a fuzzer variant
        with ``fuzzer`` and ``parent``.
-   * - ``targets``
-     - Target specifications in ``project:fuzz_target`` form. The project
-       loads ``targets/<project>/benchmark.yaml``. A single benchmark file can
+   * - ``fuzz_targets``
+     - Fuzz target specifications in ``benchmark:fuzz_target`` form. The
+       benchmark definition in ``benchmarks/<benchmark>/benchmark.yaml`` can
        define more than one ``fuzz_target`` entry.
    * - ``run.time_seconds``
      - Fuzzing duration of each trial (i.e., one repetition of a fuzzer-target
@@ -189,16 +189,16 @@ that change::
           args:
             - -mutate_depth=5
 
-Target Configuration
-====================
+Benchmark Configuration
+=======================
 
-Target configuration defines one or more fuzz targets that are available.
-Target configuration can also influence fuzzer configuration. For example, a target
-can tell a grammar-based fuzzer which grammar rule or grammar file should be
-used for that target. Benchmark files can use either the legacy single-target
+Benchmark configuration defines one or more fuzz targets that are available.
+Fuzz target configuration can also influence fuzzer configuration. For example,
+a fuzz target can tell a grammar-based fuzzer which grammar rule or grammar file
+should be used for that target. Benchmark files can use either the legacy single-target
 schema or the newer multi-target schema::
 
-    project: jerryscript
+    benchmark: jerryscript
     fuzz_targets:
       jerry:
         input_mode: in_process
@@ -209,7 +209,7 @@ schema or the newer multi-target schema::
               env:
                 GRAMMARINATOR_RULE: program
 
-Campaign files still refer to targets as ``project:fuzz_target``. Legacy
+Campaign files refer to fuzz targets as ``benchmark:fuzz_target``. Legacy
 benchmark files with root-level ``fuzz_target`` remain supported as an
 interim compatibility format.
 
@@ -219,8 +219,7 @@ Basic Workflow
 
 For a live campaign, FuzzMeter performs the following steps:
 
-1. Loads the campaign YAML, the selected fuzzer and target configurations, and
-   target-specific overrides.
+1. Loads the selected fuzzer and fuzz target configurations.
 2. Builds the Docker images required for fuzzing, coverage replay, and
    sanitizer-based crash reproduction.
 3. Starts one isolated trial for every fuzzer-target repetition.
@@ -252,15 +251,17 @@ Replay sources are configured on fuzzer entries with ``replay_trials``::
     fuzzers:
       - fuzzer: aflplusplus_old
         parent: aflplusplus
-        allowed_benchmarks: jerryscript:jerry
+        allowed_fuzz_targets:
+          - jerryscript:jerry
         replay_trials:
           - /data/old-runs/afl/default
       - fuzzer: libfuzzer_old
         parent: libfuzzer
-        allowed_benchmarks: jerryscript:jerry
+        allowed_fuzz_targets:
+          - jerryscript:jerry
         replay_trials:
           - /data/old-runs/libfuzzer/corpus
-    targets:
+    fuzz_targets:
       - jerryscript:jerry
     run:
       time_seconds: 86400
@@ -344,9 +345,9 @@ user to judge. Runtime length, repetition count, and fuzzer version metadata
 are displayed in the source summary and report payload, but they do not block
 selection.
 
-Project-specific source metadata is optional. If ``run.source_info`` is true,
-FuzzMeter looks for ``source_info.py`` hooks under target and fuzzer roots and
-runs the same hook infrastructure with two scopes: ``target_source`` and
+Benchmark-specific source metadata is optional. If ``run.source_info`` is
+true, FuzzMeter looks for ``source_info.py`` hooks under benchmark and fuzzer
+roots and runs the same hook infrastructure with two scopes: ``benchmark_source`` and
 ``fuzzer_version``. Hook output is redacted before storage: likely secret
 fields and private absolute path fragments are replaced with placeholder
 values, and the report treats missing source metadata as ``risky`` rather than

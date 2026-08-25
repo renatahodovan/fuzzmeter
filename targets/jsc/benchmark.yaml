@@ -1,4 +1,0 @@
-project: jsc
-fuzz_target: jsc
-input_mode: file
-timeout_s: 1

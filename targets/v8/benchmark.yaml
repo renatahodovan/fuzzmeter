@@ -1,4 +1,0 @@
-project: v8
-fuzz_target: d8
-input_mode: file
-timeout_s: 1

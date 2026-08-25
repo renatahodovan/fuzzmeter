@@ -56,7 +56,7 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
         fuzzmeter_resources_path = Path(__file__).resolve().parents[1]
         bake_hcl = generate_run_bake_hcl(
             fuzzer_dirs=campaign_config.fuzzer_dirs,
-            target_dirs=campaign_config.target_dirs,
+            benchmark_dirs=campaign_config.benchmark_dirs,
             entries=campaign_config.cases,
             memory_limit=campaign_config.settings.memory,
             fuzzer_build_sources=fuzzer_contexts.build_by_fuzzer,
@@ -78,7 +78,7 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
             f'--allow=fs.read={fuzzmeter_resources_path.resolve()}',
             *[f'--allow=fs.read={path.resolve()}' for path in fuzzer_contexts.paths()],
             *[f'--allow=fs.read={path}' for path in local_repo_paths.values()],
-            *[f'--allow=fs.read={path.resolve()}' for path in campaign_config.target_dirs.values()],
+            *[f'--allow=fs.read={path.resolve()}' for path in campaign_config.benchmark_dirs.values()],
         ]
 
         subprocess.run(

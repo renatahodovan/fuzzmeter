@@ -97,15 +97,15 @@ def get_benchmark_config() -> dict[str, Any]:
     return _load_yaml_file(Path(BENCHMARK_CONFIG_PATH))
 
 
-def get_active_target_name(env: dict[str, str] | None = None) -> str:
-    '''Return the active target name from the runtime environment.'''
+def get_active_fuzz_target_name(env: dict[str, str] | None = None) -> str:
+    '''Return the active fuzz target name from the runtime environment.'''
     if env is None:
         env = os.environ
     return (env.get('TARGET_NAME') or env.get('FM_TARGET_NAME') or '').strip()
 
 
-def get_active_target_config(env: dict[str, str] | None = None) -> dict[str, Any]:
-    '''Return the active target config from the benchmark YAML.'''
+def get_active_fuzz_target_config(env: dict[str, str] | None = None) -> dict[str, Any]:
+    '''Return the active fuzz target config from the benchmark YAML.'''
     if env is None:
         env = os.environ
 
@@ -126,24 +126,24 @@ def get_active_target_config(env: dict[str, str] | None = None) -> dict[str, Any
         if data.get('fuzzers') is not None:
             raise ValueError('benchmark.yaml with fuzz_targets must not define root-level fuzzers')
 
-        active_target = get_active_target_name(env)
-        if not active_target:
+        active_fuzz_target = get_active_fuzz_target_name(env)
+        if not active_fuzz_target:
             raise RuntimeError('TARGET_NAME must be set when benchmark.yaml uses fuzz_targets')
-        target_data = multi_target_data.get(active_target)
-        if target_data is None:
-            raise ValueError(f'benchmark.yaml does not define target {active_target!r}')
-        if not isinstance(target_data, dict):
-            raise TypeError(f'benchmark.yaml fuzz_targets.{active_target} must be a mapping')
-        return {'name': active_target, 'config': target_data}
+        fuzz_target_data = multi_target_data.get(active_fuzz_target)
+        if fuzz_target_data is None:
+            raise ValueError(f'benchmark.yaml does not define fuzz target {active_fuzz_target!r}')
+        if not isinstance(fuzz_target_data, dict):
+            raise TypeError(f'benchmark.yaml fuzz_targets.{active_fuzz_target} must be a mapping')
+        return {'name': active_fuzz_target, 'config': fuzz_target_data}
 
     return {'name': legacy_fuzz_target, 'config': data}
 
 
-def get_benchmark_fuzzer_config(base_fuzzer: str | None = None) -> dict[str, Any]:
-    '''Return benchmark-local overrides for the active fuzzer.'''
+def get_fuzz_target_fuzzer_config(base_fuzzer: str | None = None) -> dict[str, Any]:
+    '''Return active fuzz-target-local overrides for the selected fuzzer.'''
     base_fuzzer = _base_fuzzer_name(base_fuzzer)
-    target_config = get_active_target_config()['config']
-    fuzzers = target_config.get('fuzzers') or {}
+    fuzz_target_config = get_active_fuzz_target_config()['config']
+    fuzzers = fuzz_target_config.get('fuzzers') or {}
     if isinstance(fuzzers, dict):
         cfg = fuzzers.get(base_fuzzer) or {}
         if cfg:
@@ -190,7 +190,7 @@ def get_fuzzer_config(base_fuzzer: str | None = None) -> dict[str, Any]:
     if resolved:
         return resolved
     cfg = get_fuzzer_defaults(base_fuzzer)
-    return _deep_merge(cfg, get_benchmark_fuzzer_config(base_fuzzer))
+    return _deep_merge(cfg, get_fuzz_target_fuzzer_config(base_fuzzer))
 
 
 def get_fuzzer_config_value(*keys: str, default: Any = None, base_fuzzer: str | None = None) -> Any:

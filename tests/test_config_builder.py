@@ -39,7 +39,7 @@ run:
   source_info: true
 fuzzers:
   - libfuzzer
-targets:
+fuzz_targets:
   - zlib:zlib_uncompress_fuzzer
 ''',
         )
@@ -57,15 +57,15 @@ run:
   identity: true
 fuzzers:
   - libfuzzer
-targets:
+fuzz_targets:
   - zlib:zlib_uncompress_fuzzer
 ''',
         )
 
         self.assertTrue(config.settings.source_info)
 
-    def test_repository_curl_target_config_loads(self) -> None:
-        """Verify that the repository curl target config loads as-is."""
+    def test_repository_curl_fuzz_target_config_loads(self) -> None:
+        """Verify that the repository curl benchmark config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
         config = _load_campaign_config(
@@ -73,7 +73,7 @@ targets:
             '''
 fuzzers:
   - libfuzzer
-targets:
+fuzz_targets:
   - curl:curl_fuzzer
 ''',
         )
@@ -83,8 +83,8 @@ targets:
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
-    def test_repository_openssl_target_config_loads(self) -> None:
-        """Verify that the repository OpenSSL target config loads as-is."""
+    def test_repository_openssl_fuzz_target_config_loads(self) -> None:
+        """Verify that the repository OpenSSL benchmark config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
         config = _load_campaign_config(
@@ -92,7 +92,7 @@ targets:
             '''
 fuzzers:
   - libfuzzer
-targets:
+fuzz_targets:
   - openssl:x509
 ''',
         )
@@ -102,8 +102,8 @@ targets:
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
-    def test_repository_libxml2_target_config_loads(self) -> None:
-        """Verify that the repository libxml2 target config loads as-is."""
+    def test_repository_libxml2_fuzz_target_config_loads(self) -> None:
+        """Verify that the repository libxml2 benchmark config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
         config = _load_campaign_config(
@@ -111,7 +111,7 @@ targets:
             '''
 fuzzers:
   - libfuzzer
-targets:
+fuzz_targets:
   - libxml2:reader
 ''',
         )
@@ -121,8 +121,8 @@ targets:
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
-    def test_repository_re2_target_config_loads(self) -> None:
-        """Verify that the repository RE2 target config loads as-is."""
+    def test_repository_re2_fuzz_target_config_loads(self) -> None:
+        """Verify that the repository RE2 benchmark config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
         config = _load_campaign_config(
@@ -130,7 +130,7 @@ targets:
             '''
 fuzzers:
   - libfuzzer
-targets:
+fuzz_targets:
   - re2:re2_fuzzer
 ''',
         )
@@ -140,8 +140,8 @@ targets:
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
-    def test_repository_zlib_target_config_loads(self) -> None:
-        """Verify that the repository zlib target config loads as-is."""
+    def test_repository_zlib_fuzz_target_config_loads(self) -> None:
+        """Verify that the repository zlib benchmark config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
         config = _load_campaign_config(
@@ -149,7 +149,7 @@ targets:
             '''
 fuzzers:
   - libfuzzer
-targets:
+fuzz_targets:
   - zlib:zlib_uncompress_fuzzer
 ''',
         )
@@ -159,8 +159,8 @@ targets:
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
-    def test_repository_harfbuzz_target_config_loads(self) -> None:
-        """Verify that the repository HarfBuzz target config loads as-is."""
+    def test_repository_harfbuzz_fuzz_target_config_loads(self) -> None:
+        """Verify that the repository HarfBuzz benchmark config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
         config = _load_campaign_config(
@@ -168,7 +168,7 @@ targets:
             '''
 fuzzers:
   - libfuzzer
-targets:
+fuzz_targets:
   - harfbuzz:hb-shape-fuzzer
 ''',
         )
@@ -178,8 +178,8 @@ targets:
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
-    def test_repository_freetype2_target_config_loads(self) -> None:
-        """Verify that the repository FreeType2 target config loads as-is."""
+    def test_repository_freetype2_fuzz_target_config_loads(self) -> None:
+        """Verify that the repository FreeType2 benchmark config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
         config = _load_campaign_config(
@@ -187,7 +187,7 @@ targets:
             '''
 fuzzers:
   - libfuzzer
-targets:
+fuzz_targets:
   - freetype2:ftfuzzer
 ''',
         )
@@ -197,8 +197,8 @@ targets:
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
-    def test_repository_quickjs_target_config_loads(self) -> None:
-        """Verify that the repository QuickJS target config loads as-is."""
+    def test_repository_quickjs_fuzz_target_config_loads(self) -> None:
+        """Verify that the repository QuickJS benchmark config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
         config = _load_campaign_config(
@@ -206,7 +206,7 @@ targets:
             '''
 fuzzers:
   - libfuzzer
-targets:
+fuzz_targets:
   - quickjs:fuzz_eval
 ''',
         )
@@ -216,8 +216,8 @@ targets:
             [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
         )
 
-    def test_repository_jsc_target_config_loads(self) -> None:
-        """Verify that the repository JSC target config loads as-is."""
+    def test_repository_jsc_fuzz_target_config_loads(self) -> None:
+        """Verify that the repository JSC benchmark config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
         config = _load_campaign_config(
@@ -225,7 +225,7 @@ targets:
             '''
 fuzzers:
   - blackbox
-targets:
+fuzz_targets:
   - jsc:jsc
 ''',
         )
@@ -234,8 +234,8 @@ targets:
             [('jsc', 'jsc', 'file')], [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases]
         )
 
-    def test_repository_v8_target_config_loads(self) -> None:
-        """Verify that the repository V8 target config loads as-is."""
+    def test_repository_v8_fuzz_target_config_loads(self) -> None:
+        """Verify that the repository V8 benchmark config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
         config = _load_campaign_config(
@@ -243,7 +243,7 @@ targets:
             '''
 fuzzers:
   - blackbox
-targets:
+fuzz_targets:
   - v8:d8
 ''',
         )
@@ -252,8 +252,8 @@ targets:
             [('v8', 'd8', 'file')], [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases]
         )
 
-    def test_repository_spidermonkey_target_config_loads(self) -> None:
-        """Verify that the repository SpiderMonkey target config loads as-is."""
+    def test_repository_spidermonkey_fuzz_target_config_loads(self) -> None:
+        """Verify that the repository SpiderMonkey benchmark config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]
 
         config = _load_campaign_config(
@@ -261,7 +261,7 @@ targets:
             '''
 fuzzers:
   - blackbox
-targets:
+fuzz_targets:
   - spidermonkey:js
 ''',
         )
@@ -275,10 +275,10 @@ targets:
         """Verify that fuzzer-level benchmark allowlists filter campaign cases."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
-            _write_fuzzer(root, 'limited', 'allowed_benchmarks:\n  - jerryscript:jerry\n')
+            _write_fuzzer(root, 'limited', 'allowed_fuzz_targets:\n  - jerryscript:jerry\n')
             _write_fuzzer(root, 'plain', '')
-            _write_target(root, 'jerryscript', 'jerry')
-            _write_target(root, 'sqlite3', 'ossfuzz')
+            _write_benchmark(root, 'jerryscript', 'jerry')
+            _write_benchmark(root, 'sqlite3', 'ossfuzz')
 
             config = _load_campaign_config(
                 root,
@@ -286,7 +286,7 @@ targets:
 fuzzers:
   - limited
   - plain
-targets:
+fuzz_targets:
   - jerryscript:jerry
   - sqlite3:ossfuzz
 ''',
@@ -305,9 +305,9 @@ targets:
         """Verify that derived fuzzer entries keep parent benchmark allowlists."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
-            _write_fuzzer(root, 'limited_base', 'allowed_benchmarks:\n  - jerryscript:jerry\n')
-            _write_target(root, 'jerryscript', 'jerry')
-            _write_target(root, 'sqlite3', 'ossfuzz')
+            _write_fuzzer(root, 'limited_base', 'allowed_fuzz_targets:\n  - jerryscript:jerry\n')
+            _write_benchmark(root, 'jerryscript', 'jerry')
+            _write_benchmark(root, 'sqlite3', 'ossfuzz')
 
             config = _load_campaign_config(
                 root,
@@ -315,7 +315,7 @@ targets:
 fuzzers:
   - fuzzer: limited_child
     parent: limited_base
-targets:
+fuzz_targets:
   - jerryscript:jerry
   - sqlite3:ossfuzz
 ''',
@@ -331,14 +331,14 @@ targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
-            _write_target(root, 'jerryscript', 'jerry', timeout_s=10)
+            _write_benchmark(root, 'jerryscript', 'jerry', timeout_s=10)
 
             config = _load_campaign_config(
                 root,
                 '''
 fuzzers:
   - plain
-targets:
+fuzz_targets:
   - jerryscript:jerry
 ''',
             )
@@ -351,14 +351,14 @@ targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
-            _write_target(root, 'jerryscript', 'jerry')
+            _write_benchmark(root, 'jerryscript', 'jerry')
 
             config = _load_campaign_config(
                 root,
                 '''
 fuzzers:
   - plain
-targets:
+fuzz_targets:
   - jerryscript:jerry
 ''',
             )
@@ -371,7 +371,7 @@ targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
-            _write_target(root, 'jerryscript', 'jerry', timeout_s=10)
+            _write_benchmark(root, 'jerryscript', 'jerry', timeout_s=10)
 
             config = _load_campaign_config(
                 root,
@@ -381,7 +381,7 @@ fuzzers:
     runtime:
       target:
         timeout_s: 3
-targets:
+fuzz_targets:
   - jerryscript:jerry
 ''',
             )
@@ -394,7 +394,7 @@ targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
-            _write_target(root, 'jerryscript', 'jerry')
+            _write_benchmark(root, 'jerryscript', 'jerry')
 
             config = _load_campaign_config(
                 root,
@@ -405,7 +405,7 @@ run:
     every_seconds: 300
 fuzzers:
   - plain
-targets:
+fuzz_targets:
   - jerryscript:jerry
 ''',
             )
@@ -417,7 +417,7 @@ targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
-            _write_target(root, 'jerryscript', 'jerry')
+            _write_benchmark(root, 'jerryscript', 'jerry')
 
             config = _load_campaign_config(
                 root,
@@ -429,7 +429,7 @@ run:
     export_every_ticks: 7
 fuzzers:
   - plain
-targets:
+fuzz_targets:
   - jerryscript:jerry
 ''',
             )
@@ -441,7 +441,7 @@ targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
-            _write_multi_target(
+            _write_multi_benchmark(
                 root,
                 'jerryscript',
                 {
@@ -461,7 +461,7 @@ targets:
                 '''
 fuzzers:
   - plain
-targets:
+fuzz_targets:
   - jerryscript:jerry_file
 ''',
             )
@@ -476,7 +476,7 @@ targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
-            _write_multi_target(
+            _write_multi_benchmark(
                 root,
                 'jerryscript',
                 {
@@ -496,7 +496,7 @@ targets:
                 '''
 fuzzers:
   - plain
-targets:
+fuzz_targets:
   - jerryscript:jerry_file
 ''',
             )
@@ -508,11 +508,11 @@ targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
-            target_dir = root / 'targets' / 'jerryscript'
-            target_dir.mkdir(parents=True)
-            target_dir.joinpath('benchmark.yaml').write_text(
+            benchmark_dir = root / 'benchmarks' / 'jerryscript'
+            benchmark_dir.mkdir(parents=True)
+            benchmark_dir.joinpath('benchmark.yaml').write_text(
                 '''
-project: jerryscript
+benchmark: jerryscript
 fuzzers:
   plain:
     build:
@@ -531,7 +531,7 @@ fuzz_targets:
                     '''
 fuzzers:
   - plain
-targets:
+fuzz_targets:
   - jerryscript:jerry
 ''',
                 )
@@ -541,7 +541,7 @@ targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
-            _write_multi_target(root, 'jerryscript', {'jerry': {'input_mode': 'in_process'}})
+            _write_multi_benchmark(root, 'jerryscript', {'jerry': {'input_mode': 'in_process'}})
 
             with self.assertRaisesRegex(ValueError, "requested fuzz target 'missing'"):
                 _load_campaign_config(
@@ -549,7 +549,7 @@ targets:
                     '''
 fuzzers:
   - plain
-targets:
+fuzz_targets:
   - jerryscript:missing
 ''',
                 )
@@ -559,11 +559,11 @@ targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
-            target_dir = root / 'targets' / 'jerryscript'
-            target_dir.mkdir(parents=True)
-            target_dir.joinpath('benchmark.yaml').write_text(
+            benchmark_dir = root / 'benchmarks' / 'jerryscript'
+            benchmark_dir.mkdir(parents=True)
+            benchmark_dir.joinpath('benchmark.yaml').write_text(
                 '''
-project: jerryscript
+benchmark: jerryscript
 fuzz_target: legacy
 fuzz_targets:
   jerry:
@@ -578,7 +578,7 @@ fuzz_targets:
                     '''
 fuzzers:
   - plain
-targets:
+fuzz_targets:
   - jerryscript:jerry
 ''',
                 )
@@ -588,10 +588,10 @@ targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
-            target_dir = root / 'targets' / 'jerryscript'
-            target_dir.mkdir(parents=True)
-            target_dir.joinpath('benchmark.yaml').write_text(
-                'project: jerryscript\nfuzz_targets: {}\n',
+            benchmark_dir = root / 'benchmarks' / 'jerryscript'
+            benchmark_dir.mkdir(parents=True)
+            benchmark_dir.joinpath('benchmark.yaml').write_text(
+                'benchmark: jerryscript\nfuzz_targets: {}\n',
                 encoding='utf-8',
             )
 
@@ -601,7 +601,7 @@ targets:
                     '''
 fuzzers:
   - plain
-targets:
+fuzz_targets:
   - jerryscript:jerry
 ''',
                 )
@@ -616,30 +616,32 @@ def _write_fuzzer(root: Path, name: str, text: str) -> None:
 def _load_campaign_config(root: Path, text: str):
     return load_campaign_config(
         fuzzer_dirs={path.name: path for path in (root / 'fuzzers').iterdir() if path.is_dir()},
-        target_dirs={path.name: path for path in (root / 'targets').iterdir() if path.is_dir()},
+        benchmark_dirs={path.name: path for path in (root / 'benchmarks').iterdir() if path.is_dir()},
         text=text,
     )
 
 
-def _write_target(root: Path, project: str, fuzz_target: str, *, timeout_s: int | None = None) -> None:
-    target_dir = root / 'targets' / project
-    target_dir.mkdir(parents=True)
+def _write_benchmark(root: Path, benchmark: str, fuzz_target: str, *, timeout_s: int | None = None) -> None:
+    benchmark_dir = root / 'benchmarks' / benchmark
+    benchmark_dir.mkdir(parents=True)
     timeout_line = f'timeout_s: {timeout_s}\n' if timeout_s is not None else ''
-    target_dir.joinpath('benchmark.yaml').write_text(
-        f'project: {project}\nfuzz_target: {fuzz_target}\ninput_mode: file\n{timeout_line}',
+    benchmark_dir.joinpath('benchmark.yaml').write_text(
+        f'benchmark: {benchmark}\nfuzz_target: {fuzz_target}\ninput_mode: file\n{timeout_line}',
         encoding='utf-8',
     )
 
 
-def _write_multi_target(root: Path, project: str, targets: dict[str, dict[str, object]]) -> None:
-    target_dir = root / 'targets' / project
-    target_dir.mkdir(parents=True)
-    lines = [f'project: {project}', 'fuzz_targets:']
-    for fuzz_target, config in targets.items():
+def _write_multi_benchmark(
+    root: Path, benchmark: str, fuzz_targets: dict[str, dict[str, object]]
+) -> None:
+    benchmark_dir = root / 'benchmarks' / benchmark
+    benchmark_dir.mkdir(parents=True)
+    lines = [f'benchmark: {benchmark}', 'fuzz_targets:']
+    for fuzz_target, config in fuzz_targets.items():
         lines.append(f'  {fuzz_target}:')
         for key, value in config.items():
             _append_yaml_value(lines, 4, key, value)
-    target_dir.joinpath('benchmark.yaml').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    benchmark_dir.joinpath('benchmark.yaml').write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
 def _append_yaml_value(lines: list[str], indent: int, key: str, value: object) -> None:

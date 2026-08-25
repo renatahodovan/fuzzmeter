@@ -118,7 +118,7 @@ class DockerHelperTest(unittest.TestCase):
         with TemporaryDirectory() as root:
             root_path = Path(root)
             fuzzers_root = root_path / 'fuzzers'
-            targets_root = root_path / 'targets'
+            benchmarks_root = root_path / 'benchmarks'
             resources_root = root_path / 'docker'
             entrypoints_root = root_path / 'entrypoints'
             runtime_root = root_path / 'runtime'
@@ -131,7 +131,7 @@ class DockerHelperTest(unittest.TestCase):
 
             for path in (
                 fuzzers_root / 'libfuzzer' / 'build',
-                targets_root / 'bench',
+                benchmarks_root / 'bench',
                 resources_root,
                 entrypoints_root,
                 runtime_root,
@@ -141,13 +141,13 @@ class DockerHelperTest(unittest.TestCase):
             ):
                 path.mkdir(parents=True)
             (fuzzers_root / 'libfuzzer' / 'build' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
-            (targets_root / 'bench' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
+            (benchmarks_root / 'bench' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
             for name, root_dir in instrumentation_sources.items():
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             bake_hcl = generate_run_bake_hcl(
                 fuzzer_dirs=_resource_dirs(fuzzers_root),
-                target_dirs=_resource_dirs(targets_root),
+                benchmark_dirs=_resource_dirs(benchmarks_root),
                 entries=[
                     CampaignCase(
                         fuzzer_name='libfuzzer',
@@ -176,7 +176,7 @@ class DockerHelperTest(unittest.TestCase):
         with TemporaryDirectory() as root:
             root_path = Path(root)
             fuzzers_root = root_path / 'fuzzers'
-            targets_root = root_path / 'targets'
+            benchmarks_root = root_path / 'benchmarks'
             resources_root = root_path / 'docker'
             entrypoints_root = root_path / 'entrypoints'
             runtime_root = root_path / 'runtime'
@@ -189,7 +189,7 @@ class DockerHelperTest(unittest.TestCase):
 
             for path in (
                 fuzzers_root / 'libfuzzer' / 'build',
-                targets_root / 'bench',
+                benchmarks_root / 'bench',
                 resources_root,
                 entrypoints_root,
                 runtime_root,
@@ -199,13 +199,13 @@ class DockerHelperTest(unittest.TestCase):
             ):
                 path.mkdir(parents=True)
             (fuzzers_root / 'libfuzzer' / 'build' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
-            (targets_root / 'bench' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
+            (benchmarks_root / 'bench' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
             for name, root_dir in instrumentation_sources.items():
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             bake_hcl = generate_run_bake_hcl(
                 fuzzer_dirs=_resource_dirs(fuzzers_root),
-                target_dirs=_resource_dirs(targets_root),
+                benchmark_dirs=_resource_dirs(benchmarks_root),
                 entries=[
                     CampaignCase(
                         fuzzer_name='libfuzzer',
@@ -243,7 +243,7 @@ class DockerHelperTest(unittest.TestCase):
         with TemporaryDirectory() as root:
             root_path = Path(root)
             fuzzers_root = root_path / 'fuzzers'
-            targets_root = root_path / 'targets'
+            benchmarks_root = root_path / 'benchmarks'
             resources_root = root_path / 'docker'
             entrypoints_root = root_path / 'entrypoints'
             runtime_root = root_path / 'runtime'
@@ -263,7 +263,7 @@ class DockerHelperTest(unittest.TestCase):
             for path in (
                 fuzzers_root / 'afl' / 'build',
                 fuzzers_root / 'libfuzzer' / 'build',
-                targets_root / 'bench',
+                benchmarks_root / 'bench',
                 resources_root,
                 entrypoints_root,
                 runtime_root,
@@ -274,13 +274,13 @@ class DockerHelperTest(unittest.TestCase):
                 path.mkdir(parents=True)
             (fuzzers_root / 'afl' / 'build' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
             (fuzzers_root / 'libfuzzer' / 'build' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
-            (targets_root / 'bench' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
+            (benchmarks_root / 'bench' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
             for name, root_dir in instrumentation_sources.items():
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             bake_hcl = generate_run_bake_hcl(
                 fuzzer_dirs=_resource_dirs(fuzzers_root),
-                target_dirs=_resource_dirs(targets_root),
+                benchmark_dirs=_resource_dirs(benchmarks_root),
                 entries=[
                     CampaignCase(
                         fuzzer_name='afl',
@@ -338,7 +338,7 @@ class DockerHelperTest(unittest.TestCase):
         with TemporaryDirectory() as root:
             root_path = Path(root)
             fuzzers_root = root_path / 'fuzzers'
-            targets_root = root_path / 'targets'
+            benchmarks_root = root_path / 'benchmarks'
             resources_root = root_path / 'docker'
             entrypoints_root = root_path / 'entrypoints'
             runtime_root = root_path / 'runtime'
@@ -352,7 +352,7 @@ class DockerHelperTest(unittest.TestCase):
 
             for path in (
                 fuzzers_root / 'local' / 'build',
-                targets_root / 'bench',
+                benchmarks_root / 'bench',
                 resources_root,
                 entrypoints_root,
                 runtime_root,
@@ -370,14 +370,14 @@ class DockerHelperTest(unittest.TestCase):
                 'local_repo_env: FM_TEST_LOCAL_REPO\n',
                 encoding='utf-8',
             )
-            (targets_root / 'bench' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
+            (benchmarks_root / 'bench' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
             for name, root_dir in instrumentation_sources.items():
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             with patch.dict(os.environ, {'FM_TEST_LOCAL_REPO': str(local_repo)}, clear=True):
                 bake_hcl = generate_run_bake_hcl(
                     fuzzer_dirs=_resource_dirs(fuzzers_root),
-                    target_dirs=_resource_dirs(targets_root),
+                    benchmark_dirs=_resource_dirs(benchmarks_root),
                     entries=[
                         CampaignCase(
                             fuzzer_name='local',
@@ -408,7 +408,7 @@ class DockerHelperTest(unittest.TestCase):
         with TemporaryDirectory() as root:
             root_path = Path(root)
             fuzzers_root = root_path / 'fuzzers'
-            targets_root = root_path / 'targets'
+            benchmarks_root = root_path / 'benchmarks'
             resources_root = root_path / 'docker'
             entrypoints_root = root_path / 'entrypoints'
             runtime_root = root_path / 'runtime'
@@ -421,7 +421,7 @@ class DockerHelperTest(unittest.TestCase):
 
             for path in (
                 fuzzers_root / 'local' / 'build',
-                targets_root / 'bench',
+                benchmarks_root / 'bench',
                 resources_root,
                 entrypoints_root,
                 runtime_root,
@@ -438,14 +438,14 @@ class DockerHelperTest(unittest.TestCase):
                 'local_repo_env: FM_TEST_LOCAL_REPO\n',
                 encoding='utf-8',
             )
-            (targets_root / 'bench' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
+            (benchmarks_root / 'bench' / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
             for name, root_dir in instrumentation_sources.items():
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             with patch.dict(os.environ, {}, clear=True):
                 bake_hcl = generate_run_bake_hcl(
                     fuzzer_dirs=_resource_dirs(fuzzers_root),
-                    target_dirs=_resource_dirs(targets_root),
+                    benchmark_dirs=_resource_dirs(benchmarks_root),
                     entries=[
                         CampaignCase(
                             fuzzer_name='local',

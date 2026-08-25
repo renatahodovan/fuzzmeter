@@ -1,4 +1,4 @@
-allowed_benchmarks:
+allowed_fuzz_targets:
   - jerryscript:jerry
   - sqlite3:sqlite
   - jsoncpp:jsoncpp

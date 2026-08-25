@@ -1,4 +1,0 @@
-project: harfbuzz
-fuzz_target: hb-shape-fuzzer
-input_mode: in_process
-timeout_s: 1

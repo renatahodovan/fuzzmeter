@@ -6,7 +6,7 @@ runtime:
     AFL_CUSTOM_MUTATOR_ONLY: 1
     AFL_CUSTOM_MUTATOR_LIBRARY: /out/grammarinator.so
     AFL_POST_PROCESS_KEEP_ORIGINAL: 1
-allowed_benchmarks:
+allowed_fuzz_targets:
   - jerryscript:jerry
   - sqlite3:sqlite
   - jsoncpp:jsoncpp

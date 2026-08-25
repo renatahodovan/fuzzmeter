@@ -6,7 +6,7 @@ fuzzers:
     runtime:
       args:
         - -entropic=1
-targets:
+fuzz_targets:
   - jerryscript:jerry
 run:
   time_seconds: 300

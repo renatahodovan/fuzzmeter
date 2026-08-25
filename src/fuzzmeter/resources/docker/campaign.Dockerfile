@@ -40,7 +40,7 @@ ENV OUT=/out
 WORKDIR $SRC
 
 # Merge the full benchmark image filesystem into the fuzzer builder stage so
-# target-specific packages and tools installed by benchmark Dockerfiles are
+# benchmark-specific packages and tools installed by benchmark Dockerfiles are
 # available during campaign_build.
 # COPY --from=benchmark / /
 
@@ -79,7 +79,7 @@ RUN --mount=type=cache,target=/root/.cache \
       cp "${SRC}/benchmark.yaml" /benchmark.yaml; \
     fi; \
     if [ ! -s /benchmark.yaml ]; then \
-      printf "project: %s\n" "${BENCHMARK}" > /benchmark.yaml; \
+      printf "benchmark: %s\n" "${BENCHMARK}" > /benchmark.yaml; \
     fi; \
     PYTHONPATH=/opt/fuzzmeter python3 /opt/fuzzmeter/campaign_build.py; \
     test -f "/out/${TARGET_NAME}"; \

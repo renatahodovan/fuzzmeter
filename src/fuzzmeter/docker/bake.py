@@ -186,8 +186,8 @@ def fuzzer_local_repo_paths(fuzzer_dirs: Mapping[str, Path], fuzzers: list[str])
     return paths
 
 
-def _benchmark_workdir(target_dirs: Mapping[str, Path], benchmark: str) -> str:
-    path = target_dirs[benchmark] / 'Dockerfile'
+def _benchmark_workdir(benchmark_dirs: Mapping[str, Path], benchmark: str) -> str:
+    path = benchmark_dirs[benchmark] / 'Dockerfile'
     env = {'OUT': '/out', 'SRC': '/src', 'WORK': '/work'}
     workdir = env['SRC']
     if not path.is_file():
@@ -274,7 +274,7 @@ def _entry_args(
 def generate_run_bake_hcl(
     *,
     fuzzer_dirs: Mapping[str, Path],
-    target_dirs: Mapping[str, Path],
+    benchmark_dirs: Mapping[str, Path],
     entries: list[CampaignCase],
     fuzzer_build_sources: Mapping[str, Path],
     fuzzer_run_sources: Mapping[str, Path],
@@ -290,7 +290,7 @@ def generate_run_bake_hcl(
     docker_output_line = 'output = ["type=docker"]'
 
     fuzzer_dirs = {name: Path(path).resolve() for name, path in fuzzer_dirs.items()}
-    target_dirs = {name: Path(path).resolve() for name, path in target_dirs.items()}
+    benchmark_dirs = {name: Path(path).resolve() for name, path in benchmark_dirs.items()}
     docker_resources_arg = _escape(str(Path(docker_resources).resolve()))
     entrypoint_resources_arg = _escape(str(Path(entrypoint_resources).resolve()))
     fuzzmeter_resources_arg = _escape(str(Path(fuzzmeter_resources).resolve()))
@@ -301,7 +301,7 @@ def generate_run_bake_hcl(
     local_repo_paths = fuzzer_local_repo_paths(fuzzer_dirs, entry_fuzzers)
     build_fuzzers = list(campaign_fuzzers)
     benchmark_workdirs = {
-        benchmark: _escape(_benchmark_workdir(target_dirs, benchmark))
+        benchmark: _escape(_benchmark_workdir(benchmark_dirs, benchmark))
         for benchmark in sorted({entry.benchmark for entry in entries})
     }
 
@@ -447,7 +447,7 @@ def generate_run_bake_hcl(
             _hcl_block(
                 benchmark_name,
                 [
-                    f'context    = "{_escape(str(target_dirs[entry.benchmark]))}"',
+                    f'context    = "{_escape(str(benchmark_dirs[entry.benchmark]))}"',
                     'dockerfile = "Dockerfile"',
                     f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
                     'contexts = {',

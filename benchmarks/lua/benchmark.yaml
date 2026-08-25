@@ -1,0 +1,58 @@
+benchmark: lua
+fuzz_target: fuzz_lua
+input_mode: in_process
+timeout_s: 1
+fuzzers:
+  grammarinator:
+    rule: start_
+    grammars:
+      - grammarinator/LuaLexer.g4
+      - grammarinator/LuaParser.g4
+      - grammarinator/LuaLexerBase.py
+      - grammarinator/LuaParserBase.py
+    serializer: grammarinator/JavaScriptSerializer.hpp
+    config: grammarinator/LuaConfig.hpp
+  
+fuzzers:
+  afl_grammarinator:
+    build:
+      env:
+        GRAMMARINATOR_RULE: start_
+        GRAMMARINATOR_PARSER_GRAMMARS:
+          - grammarinator/LuaLexer.g4
+          - grammarinator/LuaParser.g4
+          - grammarinator/LuaLexerBase.py
+          - grammarinator/LuaParserBase.py
+        GRAMMARINATOR_GENERATOR_GRAMMARS:
+          - grammarinator/LuaLexer.g4
+          - grammarinator/LuaParser.g4
+        GRAMMARINATOR_SERIALIZER: grammarinator::runtime::SimpleSpaceSerializer
+        GRAMMARINATOR_CONFIG: grammarinator/LuaConfig.hpp
+  libfuzzer_grammarinator:
+    build:
+      env:
+        GRAMMARINATOR_RULE: start_
+        GRAMMARINATOR_PARSER_GRAMMARS:
+          - grammarinator/LuaLexer.g4
+          - grammarinator/LuaParser.g4
+          - grammarinator/LuaLexerBase.py
+          - grammarinator/LuaParserBase.py
+        GRAMMARINATOR_GENERATOR_GRAMMARS:
+          - grammarinator/LuaLexer.g4
+          - grammarinator/LuaParser.g4
+        GRAMMARINATOR_SERIALIZER: grammarinator::runtime::SimpleSpaceSerializer
+        GRAMMARINATOR_CONFIG: grammarinator/LuaConfig.hpp
+  grammarinator:
+    build:
+      env:
+        GRAMMARINATOR_RULE: start_
+        GRAMMARINATOR_PARSER_GRAMMARS:
+          - grammarinator/LuaLexer.g4
+          - grammarinator/LuaParser.g4
+          - grammarinator/LuaLexerBase.py
+          - grammarinator/LuaParserBase.py
+        GRAMMARINATOR_GENERATOR_GRAMMARS:
+          - grammarinator/LuaLexer.g4
+          - grammarinator/LuaParser.g4
+        GRAMMARINATOR_SERIALIZER: grammarinator::runtime::SimpleSpaceSerializer
+        GRAMMARINATOR_CONFIG: grammarinator/LuaConfig.hpp

@@ -14,7 +14,7 @@ from typing import Any
 from .models import COMPATIBLE, INCOMPATIBLE, RISKY, CompatibilityIssue, CompatibilityResult, MetadataTriplet
 
 TARGET_CONFIG_KEYS = {'benchmark', 'fuzz_target', 'input_mode', 'timeout'}
-TARGET_SOURCE_SCOPE = 'target_source'
+BENCHMARK_SOURCE_SCOPE = 'benchmark_source'
 
 
 def compare_metadata(reference: MetadataTriplet, candidate: MetadataTriplet) -> CompatibilityResult:
@@ -30,7 +30,7 @@ def compare_metadata(reference: MetadataTriplet, candidate: MetadataTriplet) -> 
             CompatibilityIssue(
                 domain='config',
                 severity='error',
-                message='Target measurement configuration differs.',
+                message='Measurement identity differs.',
                 details=target_diff,
             )
         )
@@ -57,7 +57,7 @@ def compare_metadata(reference: MetadataTriplet, candidate: MetadataTriplet) -> 
             CompatibilityIssue(
                 domain='config',
                 severity='warning',
-                message='Target configuration differs.',
+                message='Measurement configuration differs.',
                 details=risky_config,
             )
         )
@@ -110,9 +110,9 @@ def split_config_diff(config_diff: dict[str, Any]) -> tuple[dict[str, Any], dict
 
 
 def diff_source(reference: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
-    '''Return a field-level target source metadata diff.'''
-    target_diff = _diff_source_scope(reference, candidate, TARGET_SOURCE_SCOPE)
-    return {TARGET_SOURCE_SCOPE: target_diff} if target_diff else {}
+    '''Return a field-level benchmark source metadata diff.'''
+    target_diff = _diff_source_scope(reference, candidate, BENCHMARK_SOURCE_SCOPE)
+    return {BENCHMARK_SOURCE_SCOPE: target_diff} if target_diff else {}
 
 
 def level_from_diffs(issues: list[CompatibilityIssue]) -> str:

@@ -1,4 +1,0 @@
-project: spidermonkey
-fuzz_target: js
-input_mode: file
-timeout_s: 1

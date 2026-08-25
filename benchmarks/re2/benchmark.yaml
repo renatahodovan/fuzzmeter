@@ -1,0 +1,4 @@
+benchmark: re2
+fuzz_target: re2_fuzzer
+input_mode: in_process
+timeout_s: 1

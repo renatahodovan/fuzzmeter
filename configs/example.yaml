@@ -16,7 +16,7 @@ fuzzers:
         GRAFL_MAX_TOKENS: 500
         GRAFL_MAX_TRIM_STEPS: 200
         GRAFL_RANDOM_MUTATORS: 1
-targets:
+fuzz_targets:
   - jerryscript:jerry
   - sqlite3:sqlite
   - jsoncpp:jsoncpp

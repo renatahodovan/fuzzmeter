@@ -45,7 +45,7 @@ class ArtifactBuilderTest(unittest.TestCase):
                             ),
                         ],
                         fuzzer_dirs={'plain': repo_root / 'fuzzers' / 'plain'},
-                        target_dirs={'bench': repo_root / 'targets' / 'bench'},
+                        benchmark_dirs={'bench': repo_root / 'benchmarks' / 'bench'},
                     ),
                     run_dir=run_dir,
                 )
@@ -55,7 +55,7 @@ class ArtifactBuilderTest(unittest.TestCase):
             bake_hcl = (run_dir / 'bake.hcl').read_text(encoding='utf-8')
             resolved_root = repo_root.resolve()
             self.assertIn(f'context    = "{resolved_root / "fuzzers" / "plain" / "build"}"', bake_hcl)
-            self.assertIn(f'context    = "{resolved_root / "targets" / "bench"}"', bake_hcl)
+            self.assertIn(f'context    = "{resolved_root / "benchmarks" / "bench"}"', bake_hcl)
 
             campaign_dockerfile = Path('src/fuzzmeter/resources/docker/campaign.Dockerfile').read_text(
                 encoding='utf-8'
@@ -102,7 +102,7 @@ class ArtifactBuilderTest(unittest.TestCase):
                             'other': repo_root / 'fuzzers' / 'other',
                             'plain': repo_root / 'fuzzers' / 'plain',
                         },
-                        target_dirs={'bench': repo_root / 'targets' / 'bench'},
+                        benchmark_dirs={'bench': repo_root / 'benchmarks' / 'bench'},
                     ),
                     run_dir=run_dir,
                 )
@@ -143,7 +143,7 @@ class ArtifactBuilderTest(unittest.TestCase):
                             ),
                         ],
                         fuzzer_dirs={'plain': repo_root / 'fuzzers' / 'plain'},
-                        target_dirs={'bench': repo_root / 'targets' / 'bench'},
+                        benchmark_dirs={'bench': repo_root / 'benchmarks' / 'bench'},
                     ),
                     run_dir=run_dir,
                 )
@@ -169,9 +169,9 @@ def _write_repo_sources(
                 encoding='utf-8',
             )
 
-    target_dir = repo_root / 'targets' / 'bench'
-    target_dir.mkdir(parents=True)
-    (target_dir / 'Dockerfile').write_text('FROM scratch\n', encoding='utf-8')
+    benchmark_dir = repo_root / 'benchmarks' / 'bench'
+    benchmark_dir.mkdir(parents=True)
+    (benchmark_dir / 'Dockerfile').write_text('FROM scratch\n', encoding='utf-8')
 
 
 if __name__ == '__main__':

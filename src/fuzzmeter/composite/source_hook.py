@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 SOURCE_HOOK_TIMEOUT = 10
-SOURCE_HOOK_SCOPES = ('target_source', 'fuzzer_version')
+SOURCE_HOOK_SCOPES = ('benchmark_source', 'fuzzer_version')
 SECRET_KEY_PARTS = ('secret', 'token', 'password', 'passwd', 'credential', 'apikey', 'api_key')
 HOME_PATH_PATTERNS = (
     re.compile(r'(?P<root>/(?:Users|home)/)(?P<name>[^/\s:;,"\']+)'),

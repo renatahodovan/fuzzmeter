@@ -52,7 +52,7 @@ class CompositeSourceHookTest(unittest.TestCase):
 
     def test_missing_hook_returns_missing_status(self) -> None:
         '''Absent source hooks are represented explicitly.'''
-        result = run_source_hook(Path('/no/such/source-info.py'), {}, 'target_source')
+        result = run_source_hook(Path('/no/such/source-info.py'), {}, 'benchmark_source')
 
         self.assertEqual('missing', result.status)
         self.assertIsNone(result.data)
@@ -74,7 +74,7 @@ class CompositeSourceHookTest(unittest.TestCase):
                 encoding='utf-8',
             )
 
-            result = run_source_hook(hook, {}, 'target_source')
+            result = run_source_hook(hook, {}, 'benchmark_source')
 
         self.assertEqual('error', result.status)
         self.assertEqual('<private>/project/source_info.py failed', result.error)

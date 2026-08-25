@@ -41,11 +41,11 @@ def _merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _validate_benchmark_and_target(benchmark: str, fuzz_target: str) -> None:
+def _validate_benchmark_and_fuzz_target(benchmark: str, fuzz_target: str) -> None:
     if not IDENTIFIER_RE.fullmatch(benchmark):
-        raise ValueError(f'Target spec benchmark must match [a-zA-Z0-9_.-]+: {benchmark!r}')
+        raise ValueError(f'Benchmark name must match [a-zA-Z0-9_.-]+: {benchmark!r}')
     if not IDENTIFIER_RE.fullmatch(fuzz_target):
-        raise ValueError(f'Target spec target must match [a-zA-Z0-9_.-]+: {fuzz_target!r}')
+        raise ValueError(f'Fuzz target name must match [a-zA-Z0-9_.-]+: {fuzz_target!r}')
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -58,10 +58,10 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
-def _load_target_config(path: Path, requested_fuzz_target: str) -> dict[str, Any]:
+def _load_fuzz_target_config(path: Path, requested_fuzz_target: str) -> dict[str, Any]:
     data = _load_yaml(path)
 
-    benchmark = str(data.get('project') or '').strip()
+    benchmark = str(data.get('benchmark') or '').strip()
     legacy_fuzz_target = str(data.get('fuzz_target') or '').strip()
     multi_target_data = data.get('fuzz_targets')
 
@@ -77,38 +77,39 @@ def _load_target_config(path: Path, requested_fuzz_target: str) -> dict[str, Any
             raise ValueError(f'Benchmark config fuzz_targets must be a non-empty mapping: {path}')
         if data.get('fuzzers') is not None:
             raise ValueError(f'Benchmark config with fuzz_targets must not define root-level fuzzers: {path}')
-        target_data = multi_target_data.get(requested_fuzz_target)
-        if target_data is None:
+        fuzz_target_data = multi_target_data.get(requested_fuzz_target)
+        if fuzz_target_data is None:
             raise ValueError(
                 f'The requested fuzz target {requested_fuzz_target!r} is not defined in the {benchmark!r} benchmark.'
             )
-        if not isinstance(target_data, dict):
+        if not isinstance(fuzz_target_data, dict):
             raise ValueError(f'Benchmark config fuzz_targets.{requested_fuzz_target} must be a mapping: {path}')
         fuzz_target = requested_fuzz_target
     else:
         fuzz_target = legacy_fuzz_target
-        _validate_benchmark_and_target(benchmark, fuzz_target)
+        _validate_benchmark_and_fuzz_target(benchmark, fuzz_target)
         if fuzz_target != requested_fuzz_target:
             raise ValueError(
                 f'The requested fuzz target {requested_fuzz_target!r} is not defined in the {benchmark!r} benchmark.'
             )
-        target_data = data
+        fuzz_target_data = data
 
-    _validate_benchmark_and_target(benchmark, fuzz_target)
+    _validate_benchmark_and_fuzz_target(benchmark, fuzz_target)
 
-    input_mode = str(target_data.get('input_mode') or '')
+    input_mode = str(fuzz_target_data.get('input_mode') or '')
     if input_mode not in INPUT_MODE_OPTIONS:
-        raise ValueError(f"Target config' input_mode must be one of {INPUT_MODE_OPTIONS} but got {input_mode}.")
+        raise ValueError(f'Fuzz target config input_mode must be one of {INPUT_MODE_OPTIONS} but got {input_mode}.')
 
-    timeout_s = target_data.get('timeout_s')
+    timeout_s = fuzz_target_data.get('timeout_s')
     if timeout_s is None:
         LOG.debug(
-            f'No target timeout was specified for {benchmark}:{fuzz_target}; using {CampaignCase.target_timeout_s} as default.'
+            f'No fuzz target timeout was specified for {benchmark}:{fuzz_target}; '
+            f'using {CampaignCase.target_timeout_s} as default.'
         )
         timeout_s = CampaignCase.target_timeout_s
     timeout_s = float(timeout_s)
     if timeout_s <= 0:
-        raise ValueError(f'Target timeout must be greater than 0, but {benchmark}:{fuzz_target} has {timeout_s}.')
+        raise ValueError(f'Fuzz target timeout must be greater than 0, but {benchmark}:{fuzz_target} has {timeout_s}.')
 
     return {
         'benchmark': benchmark,
@@ -116,7 +117,7 @@ def _load_target_config(path: Path, requested_fuzz_target: str) -> dict[str, Any
         'input_mode': input_mode,
         'timeout_s': timeout_s,
         'config_path': str(path),
-        'fuzzers': target_data.get('fuzzers'),
+        'fuzzers': fuzz_target_data.get('fuzzers'),
     }
 
 
@@ -159,9 +160,9 @@ def _load_campaign_settings(data: dict[str, Any]) -> CampaignSettings:
 
 
 def _build_fuzzer_config(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[str, Any]:
-    allowed_benchmarks = fuzzer_data.get('allowed_benchmarks') or []
-    if not isinstance(allowed_benchmarks, list):
-        raise ValueError('allowed_benchmarks must be defined as a list.')
+    allowed_fuzz_targets = fuzzer_data.get('allowed_fuzz_targets') or []
+    if not isinstance(allowed_fuzz_targets, list):
+        raise ValueError('allowed_fuzz_targets must be defined as a list.')
 
     replay_trials = []
     for replay_path in fuzzer_data.get('replay_trials') or []:
@@ -171,7 +172,7 @@ def _build_fuzzer_config(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[
         replay_trials.append(path)
     return {
         'fuzzer_name': fuzzer_name,
-        'allowed_benchmarks': allowed_benchmarks,
+        'allowed_fuzz_targets': allowed_fuzz_targets,
         'build': dict(fuzzer_data.get('build') or {}),
         'runtime': dict(fuzzer_data.get('runtime') or {}),
         'replay_trials': tuple(replay_trials),
@@ -229,46 +230,46 @@ def _load_fuzzer_configs(data: dict[str, Any], fuzzer_dirs: dict[str, Path]) -> 
     return fuzzers
 
 
-def _load_target_configs(data: dict[str, Any], target_dirs: dict[str, Path]) -> dict[str, dict[str, Any]]:
-    targets: dict[str, dict[str, Any]] = {}
-    for target_spec in data.get('targets', []):
-        if ':' not in target_spec:
-            raise ValueError(f"Unexpected target spec format: {target_spec!r} (missing ':')")
-        benchmark, fuzz_target = target_spec.split(':', 1)
+def _load_fuzz_target_configs(data: dict[str, Any], benchmark_dirs: dict[str, Path]) -> dict[str, dict[str, Any]]:
+    fuzz_target_configs: dict[str, dict[str, Any]] = {}
+    for fuzz_target_spec in data.get('fuzz_targets', []):
+        if ':' not in fuzz_target_spec:
+            raise ValueError(f"Unexpected fuzz target spec format: {fuzz_target_spec!r} (missing ':')")
+        benchmark, fuzz_target = fuzz_target_spec.split(':', 1)
         benchmark, fuzz_target = benchmark.strip(), fuzz_target.strip()
-        _validate_benchmark_and_target(benchmark, fuzz_target)
+        _validate_benchmark_and_fuzz_target(benchmark, fuzz_target)
 
         try:
-            path = target_dirs[benchmark] / 'benchmark.yaml'
+            path = benchmark_dirs[benchmark] / 'benchmark.yaml'
         except KeyError as exc:
-            raise ValueError(f'Target {benchmark!r} is not configured; include it with --targets.') from exc
+            raise ValueError(f'Benchmark {benchmark!r} is not configured; include it with --benchmarks.') from exc
         try:
-            target_config = _load_target_config(path, fuzz_target)
+            fuzz_target_config = _load_fuzz_target_config(path, fuzz_target)
 
-            fuzzer_overrides = target_config.get('fuzzers') or {}
+            fuzzer_overrides = fuzz_target_config.get('fuzzers') or {}
             if fuzzer_overrides:
                 if not isinstance(fuzzer_overrides, dict):
-                    raise TypeError(f'Target fuzzers overrides must be a mapping: {path}')
+                    raise TypeError(f'Fuzz target fuzzer overrides must be a mapping: {path}')
 
                 if not all(isinstance(override, dict) for override in fuzzer_overrides.values()):
                     raise ValueError('Fuzzer overrides in benchmark configs must be mappings.')
 
-            targets[target_key(target_config['benchmark'], target_config['fuzz_target'])] = {
-                'target_config': target_config,
+            fuzz_target_configs[target_key(fuzz_target_config['benchmark'], fuzz_target_config['fuzz_target'])] = {
+                'fuzz_target_config': fuzz_target_config,
                 'fuzzer_configs': fuzzer_overrides,
             }
         except Exception as exc:
             LOG.error('Error loading benchmark config: %s: %s', path, exc)
             raise exc
-    return targets
+    return fuzz_target_configs
 
 
 def _build_campaign_case(
     *,
     fuzzer_name: str,
     fuzzer_configs: list[dict[str, Any]],
-    target_config: dict[str, Any],
-    target_fuzzer_configs: dict[str, dict[str, Any]],
+    fuzz_target_config: dict[str, Any],
+    fuzz_target_fuzzer_configs: dict[str, dict[str, Any]],
 ) -> CampaignCase:
     build_config: dict[str, Any] = {}
     runtime_config: dict[str, Any] = {}
@@ -277,9 +278,9 @@ def _build_campaign_case(
 
     for fuzzer_config in reversed(fuzzer_configs):
         cur_fuzz_id = str(fuzzer_config['fuzzer_name'])
-        target_override = target_fuzzer_configs.get(cur_fuzz_id) or {}
-        cur_fuzz_build = _merge(fuzzer_config.get('build') or {}, target_override.get('build') or {})
-        curr_fuzz_runtime = _merge(fuzzer_config.get('runtime') or {}, target_override.get('runtime') or {})
+        fuzz_target_override = fuzz_target_fuzzer_configs.get(cur_fuzz_id) or {}
+        cur_fuzz_build = _merge(fuzzer_config.get('build') or {}, fuzz_target_override.get('build') or {})
+        curr_fuzz_runtime = _merge(fuzzer_config.get('runtime') or {}, fuzz_target_override.get('runtime') or {})
         build_config = _merge(build_config, cur_fuzz_build)
         runtime_config = _merge(runtime_config, curr_fuzz_runtime)
         replay_trials = (*replay_trials, *tuple(fuzzer_config.get('replay_trials') or ()))
@@ -287,51 +288,54 @@ def _build_campaign_case(
     return CampaignCase(
         fuzzer_name=fuzzer_name,
         fuzzer_chain=fuzzer_chain,
-        benchmark=target_config['benchmark'],
-        fuzz_target=target_config['fuzz_target'],
-        input_mode=target_config['input_mode'],
-        target_timeout_s=target_config['timeout_s'],
+        benchmark=fuzz_target_config['benchmark'],
+        fuzz_target=fuzz_target_config['fuzz_target'],
+        input_mode=fuzz_target_config['input_mode'],
+        target_timeout_s=fuzz_target_config['timeout_s'],
         build_config=build_config,
         runtime_config=runtime_config,
         replay_trials=replay_trials,
     )
 
 
-def _fuzzer_allows_target(fuzzer_configs: list[dict[str, Any]], target_config: dict) -> bool:
+def _fuzzer_allows_fuzz_target(fuzzer_configs: list[dict[str, Any]], fuzz_target_config: dict) -> bool:
     allowed_sets = [
-        fuzzer_config['allowed_benchmarks']
+        fuzzer_config['allowed_fuzz_targets']
         for fuzzer_config in fuzzer_configs
-        if fuzzer_config.get('allowed_benchmarks')
+        if fuzzer_config.get('allowed_fuzz_targets')
     ]
     if not allowed_sets:
         return True
 
-    return all(f'{target_config["benchmark"]}:{target_config["fuzz_target"]}' in allowed for allowed in allowed_sets)
+    return all(
+        f'{fuzz_target_config["benchmark"]}:{fuzz_target_config["fuzz_target"]}' in allowed
+        for allowed in allowed_sets
+    )
 
 
-def load_campaign_config(*, fuzzer_dirs: dict[str, Path], target_dirs: dict[str, Path], text: str) -> CampaignConfig:
+def load_campaign_config(*, fuzzer_dirs: dict[str, Path], benchmark_dirs: dict[str, Path], text: str) -> CampaignConfig:
     """Load a campaign configuration from YAML text."""
     data = yaml.safe_load(text) or {}
     if not isinstance(data, dict):
         raise TypeError('Top-level config must be a mapping')
 
     fuzzer_configs = _load_fuzzer_configs(data, fuzzer_dirs)
-    target_configs = _load_target_configs(data, target_dirs)
+    fuzz_target_configs = _load_fuzz_target_configs(data, benchmark_dirs)
     cases = [
         _build_campaign_case(
             fuzzer_name=fuzzer_name,
             fuzzer_configs=fuzzer_config,
-            target_config=target_data['target_config'],
-            target_fuzzer_configs=target_data['fuzzer_configs'],
+            fuzz_target_config=fuzz_target_data['fuzz_target_config'],
+            fuzz_target_fuzzer_configs=fuzz_target_data['fuzzer_configs'],
         )
         for fuzzer_name, fuzzer_config in fuzzer_configs.items()
-        for target_data in target_configs.values()
-        if _fuzzer_allows_target(fuzzer_config, target_data['target_config'])
+        for fuzz_target_data in fuzz_target_configs.values()
+        if _fuzzer_allows_fuzz_target(fuzzer_config, fuzz_target_data['fuzz_target_config'])
     ]
 
     return CampaignConfig(
         settings=_load_campaign_settings(data),
         cases=cases,
         fuzzer_dirs=fuzzer_dirs,
-        target_dirs=target_dirs,
+        benchmark_dirs=benchmark_dirs,
     )

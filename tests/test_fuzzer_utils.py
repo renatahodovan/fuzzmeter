@@ -5,7 +5,7 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-"""Regression tests for benchmark target resolution in fuzzer utils."""
+"""Regression tests for benchmark fuzz target resolution in fuzzer utils."""
 
 from __future__ import annotations
 
@@ -23,30 +23,30 @@ from fuzzmeter.resources.instrumentation.coverage import build as coverage_build
 
 
 class FuzzerUtilsTest(unittest.TestCase):
-    """Verify benchmark target resolution helpers."""
+    """Verify benchmark fuzz target resolution helpers."""
 
-    def test_get_active_target_config_supports_legacy_benchmark_yaml(self) -> None:
+    def test_get_active_fuzz_target_config_supports_legacy_benchmark_yaml(self) -> None:
         """Verify that legacy single-target benchmark configs still load."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             benchmark_path = Path(tmp_dir) / 'benchmark.yaml'
             benchmark_path.write_text(
-                'project: demo\nfuzz_target: legacy\ninput_mode: file\n',
+                'benchmark: demo\nfuzz_target: legacy\ninput_mode: file\n',
                 encoding='utf-8',
             )
 
             with patch.object(utils, 'BENCHMARK_CONFIG_PATH', str(benchmark_path)):
-                resolved = utils.get_active_target_config()
+                resolved = utils.get_active_fuzz_target_config()
 
         self.assertEqual('legacy', resolved['name'])
         self.assertEqual('file', resolved['config']['input_mode'])
 
-    def test_get_active_target_config_uses_target_name_for_multi_target_yaml(self) -> None:
+    def test_get_active_fuzz_target_config_uses_target_name_for_multi_target_yaml(self) -> None:
         """Verify that multi-target benchmark configs resolve the active target from TARGET_NAME."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             benchmark_path = Path(tmp_dir) / 'benchmark.yaml'
             benchmark_path.write_text(
                 '''
-project: demo
+benchmark: demo
 fuzz_targets:
   one:
     input_mode: in_process
@@ -67,19 +67,19 @@ fuzz_targets:
             )
 
             with patch.object(utils, 'BENCHMARK_CONFIG_PATH', str(benchmark_path)):
-                resolved = utils.get_active_target_config({'TARGET_NAME': 'two'})
+                resolved = utils.get_active_fuzz_target_config({'TARGET_NAME': 'two'})
 
         self.assertEqual('two', resolved['name'])
         self.assertEqual('file', resolved['config']['input_mode'])
         self.assertEqual('two', resolved['config']['fuzzers']['afl']['build']['env']['MODE'])
 
-    def test_get_benchmark_fuzzer_config_reads_selected_target_override(self) -> None:
+    def test_get_fuzz_target_fuzzer_config_reads_selected_target_override(self) -> None:
         """Verify that fuzzer overrides are read from the selected multi-target entry."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             benchmark_path = Path(tmp_dir) / 'benchmark.yaml'
             benchmark_path.write_text(
                 '''
-project: demo
+benchmark: demo
 fuzz_targets:
   first:
     input_mode: in_process
@@ -101,7 +101,7 @@ fuzz_targets:
 
             with patch.object(utils, 'BENCHMARK_CONFIG_PATH', str(benchmark_path)):
                 with patch.dict('os.environ', {'TARGET_NAME': 'second'}, clear=True):
-                    config = utils.get_benchmark_fuzzer_config('afl')
+                    config = utils.get_fuzz_target_fuzzer_config('afl')
 
         self.assertEqual({'build': {'env': {'MODE': 'second'}}}, config)
 
@@ -147,13 +147,13 @@ fuzz_targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             benchmark_path = Path(tmp_dir) / 'benchmark.yaml'
             benchmark_path.write_text(
-                'project: demo\nfuzz_targets:\n  one:\n    input_mode: file\n',
+                'benchmark: demo\nfuzz_targets:\n  one:\n    input_mode: file\n',
                 encoding='utf-8',
             )
 
             with patch.object(utils, 'BENCHMARK_CONFIG_PATH', str(benchmark_path)):
                 with self.assertRaisesRegex(RuntimeError, 'TARGET_NAME must be set'):
-                    utils.get_active_target_config({})
+                    utils.get_active_fuzz_target_config({})
 
     def test_multi_target_yaml_rejects_root_level_fuzzers(self) -> None:
         """Verify that multi-target benchmark configs reject root-level fuzzer overrides."""
@@ -161,7 +161,7 @@ fuzz_targets:
             benchmark_path = Path(tmp_dir) / 'benchmark.yaml'
             benchmark_path.write_text(
                 '''
-project: demo
+benchmark: demo
 fuzzers:
   afl:
     build:
@@ -176,7 +176,7 @@ fuzz_targets:
 
             with patch.object(utils, 'BENCHMARK_CONFIG_PATH', str(benchmark_path)):
                 with self.assertRaisesRegex(ValueError, 'root-level fuzzers'):
-                    utils.get_active_target_config({'TARGET_NAME': 'one'})
+                    utils.get_active_fuzz_target_config({'TARGET_NAME': 'one'})
 
 
 if __name__ == '__main__':

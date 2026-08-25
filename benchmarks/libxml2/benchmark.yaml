@@ -1,0 +1,4 @@
+benchmark: libxml2
+fuzz_target: reader
+input_mode: in_process
+timeout_s: 1

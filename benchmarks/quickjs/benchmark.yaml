@@ -1,0 +1,4 @@
+benchmark: quickjs
+fuzz_target: fuzz_eval
+input_mode: in_process
+timeout_s: 1

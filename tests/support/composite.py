@@ -27,7 +27,7 @@ def make_measurement(**overrides: Any) -> CompositeMeasurement:
             source=overrides.pop(
                 'source',
                 {
-                    'target_source': {'status': 'ok', 'data': {'revision': 'target'}},
+                    'benchmark_source': {'status': 'ok', 'data': {'revision': 'target'}},
                     'fuzzer_version': {'status': 'ok', 'data': {'revision': 'fuzzer'}},
                 },
             ),

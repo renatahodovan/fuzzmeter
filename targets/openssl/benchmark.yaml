@@ -1,4 +1,0 @@
-project: openssl
-fuzz_target: x509
-input_mode: in_process
-timeout_s: 1
