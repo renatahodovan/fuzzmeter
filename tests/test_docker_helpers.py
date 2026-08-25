@@ -54,7 +54,7 @@ class DockerHelperTest(unittest.TestCase):
         self.assertIn('  FM_LOG_LEVEL  = "INFO\\"quoted"', escaped_lines)
 
     def test_hook_env_requires_fm_log_level_and_does_not_set_legacy_fallback(self) -> None:
-        runtime = DockerRuntime(fuzzers_root=Path('/repo/fuzzers'), out_src='/out', run_user=None)
+        runtime = DockerRuntime(fuzzer_dirs={'fuzzer': Path('/repo/fuzzers/fuzzer')}, out_src='/out', run_user=None)
 
         with patch.dict('os.environ', {}, clear=True):
             with self.assertRaises(KeyError):
@@ -65,13 +65,12 @@ class DockerHelperTest(unittest.TestCase):
 
         self.assertEqual('WARNING', env['FM_LOG_LEVEL'])
         self.assertNotIn('FUZZMETER_LOG_LEVEL', env)
-        self.assertEqual(f'/repo{os.pathsep}/existing', env['PYTHONPATH'])
-        self.assertEqual('/repo/fuzzers', env['FM_FUZZERS_ROOT'])
+        self.assertEqual(f'/repo/fuzzers{os.pathsep}/existing', env['PYTHONPATH'])
         self.assertEqual('3', env['COUNT'])
 
     def test_run_labels_and_sweep_use_the_runtime_run_id(self) -> None:
         runtime = DockerRuntime(
-            fuzzers_root=Path('/repo/fuzzers'),
+            fuzzer_dirs={'fuzzer': Path('/repo/fuzzers/fuzzer')},
             out_src='/out',
             run_user=None,
             run_id='run-7',
@@ -147,8 +146,8 @@ class DockerHelperTest(unittest.TestCase):
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             bake_hcl = generate_run_bake_hcl(
-                fuzzers_root=fuzzers_root,
-                targets_root=targets_root,
+                fuzzer_dirs=_resource_dirs(fuzzers_root),
+                target_dirs=_resource_dirs(targets_root),
                 entries=[
                     CampaignCase(
                         fuzzer_name='libfuzzer',
@@ -205,8 +204,8 @@ class DockerHelperTest(unittest.TestCase):
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             bake_hcl = generate_run_bake_hcl(
-                fuzzers_root=fuzzers_root,
-                targets_root=targets_root,
+                fuzzer_dirs=_resource_dirs(fuzzers_root),
+                target_dirs=_resource_dirs(targets_root),
                 entries=[
                     CampaignCase(
                         fuzzer_name='libfuzzer',
@@ -280,8 +279,8 @@ class DockerHelperTest(unittest.TestCase):
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             bake_hcl = generate_run_bake_hcl(
-                fuzzers_root=fuzzers_root,
-                targets_root=targets_root,
+                fuzzer_dirs=_resource_dirs(fuzzers_root),
+                target_dirs=_resource_dirs(targets_root),
                 entries=[
                     CampaignCase(
                         fuzzer_name='afl',
@@ -330,7 +329,7 @@ class DockerHelperTest(unittest.TestCase):
                 encoding='utf-8',
             )
 
-            source_dirs = fuzzer_source_dirs(fuzzers_root, 'grammarinator')
+            source_dirs = fuzzer_source_dirs(_resource_dirs(fuzzers_root), 'grammarinator')
 
         self.assertEqual(['grammarinator', 'blackbox', 'libfuzzer'], source_dirs)
 
@@ -377,8 +376,8 @@ class DockerHelperTest(unittest.TestCase):
 
             with patch.dict(os.environ, {'FM_TEST_LOCAL_REPO': str(local_repo)}, clear=True):
                 bake_hcl = generate_run_bake_hcl(
-                    fuzzers_root=fuzzers_root,
-                    targets_root=targets_root,
+                    fuzzer_dirs=_resource_dirs(fuzzers_root),
+                    target_dirs=_resource_dirs(targets_root),
                     entries=[
                         CampaignCase(
                             fuzzer_name='local',
@@ -445,8 +444,8 @@ class DockerHelperTest(unittest.TestCase):
 
             with patch.dict(os.environ, {}, clear=True):
                 bake_hcl = generate_run_bake_hcl(
-                    fuzzers_root=fuzzers_root,
-                    targets_root=targets_root,
+                    fuzzer_dirs=_resource_dirs(fuzzers_root),
+                    target_dirs=_resource_dirs(targets_root),
                     entries=[
                         CampaignCase(
                             fuzzer_name='local',
@@ -473,7 +472,7 @@ class DockerHelperTest(unittest.TestCase):
     def test_worker_containers_stay_unbounded_while_control_plane_is_capped(self) -> None:
         """Verify measuring containers get no deadline and cleanup completes."""
         runtime = DockerRuntime(
-            fuzzers_root=Path('/repo/fuzzers'),
+            fuzzer_dirs={'fuzzer': Path('/repo/fuzzers/fuzzer')},
             out_src='/out',
             run_user=None,
             run_id='run-1',
@@ -521,6 +520,10 @@ class DockerHelperTest(unittest.TestCase):
             ['docker', 'image', 'inspect', '--format', '{{.Id}}', 'coverage:dev'],
             run.call_args.args[0],
         )
+
+def _resource_dirs(root: Path) -> dict[str, Path]:
+    return {path.name: path for path in root.iterdir() if path.is_dir()}
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -179,7 +179,7 @@ def _build_fuzzer_config(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[
 
 
 def _build_fuzzer_hierarchy(
-    fuzzers_root: Path,
+    fuzzer_dirs: dict[str, Path],
     fuzzer_name: str,
     seen: set[str] | None = None,
 ) -> list[dict[str, Any]]:
@@ -191,18 +191,19 @@ def _build_fuzzer_hierarchy(
         raise ValueError(f'Cyclic fuzzer parent chain detected at {fuzzer_name}')
     seen.add(fuzzer_name)
 
-    fuzzer_data = _load_fuzzer_config(fuzzers_root, fuzzer_name)
+    fuzzer_data = _load_fuzzer_config(fuzzer_dirs, fuzzer_name)
     fuzzer_hierarchy = [_build_fuzzer_config(fuzzer_name, fuzzer_data)]
     parent_name = fuzzer_data.get('parent')
     if parent_name:
-        fuzzer_hierarchy.extend(_build_fuzzer_hierarchy(fuzzers_root, parent_name, seen))
+        fuzzer_hierarchy.extend(_build_fuzzer_hierarchy(fuzzer_dirs, parent_name, seen))
     return fuzzer_hierarchy
 
 
-def _load_fuzzer_config(fuzzers_root: Path, fuzzer_name: str) -> dict[str, Any]:
-    fuzzer_root = (fuzzers_root / fuzzer_name).resolve()
-    if not fuzzer_root.is_dir():
-        raise NotADirectoryError(f'Fuzzer directory is not a directory: {fuzzer_root}')
+def _load_fuzzer_config(fuzzer_dirs: dict[str, Path], fuzzer_name: str) -> dict[str, Any]:
+    try:
+        fuzzer_root = fuzzer_dirs[fuzzer_name]
+    except KeyError as exc:
+        raise ValueError(f'Fuzzer {fuzzer_name!r} is not configured; include it with --fuzzers.') from exc
 
     yaml_data = []
     for path in (fuzzer_root / 'build' / 'build.yaml', fuzzer_root / 'run' / 'run.yaml'):
@@ -214,7 +215,7 @@ def _load_fuzzer_config(fuzzers_root: Path, fuzzer_name: str) -> dict[str, Any]:
     return yaml_data[0] if len(yaml_data) == 1 else _merge(*yaml_data)
 
 
-def _load_fuzzer_configs(data: dict[str, Any], fuzzers_root: Path) -> dict[str, list[dict[str, Any]]]:
+def _load_fuzzer_configs(data: dict[str, Any], fuzzer_dirs: dict[str, Path]) -> dict[str, list[dict[str, Any]]]:
     fuzzers: dict[str, list[dict[str, Any]]] = {}
     for fuzzer_data in data.get('fuzzers', []):
         if isinstance(fuzzer_data, str):
@@ -236,11 +237,11 @@ def _load_fuzzer_configs(data: dict[str, Any], fuzzers_root: Path) -> dict[str, 
         if not IDENTIFIER_RE.fullmatch(fuzzer_name):
             raise ValueError(f'Fuzzer name must match [a-zA-Z0-9_.-]+: {fuzzer_name!r}')
 
-        fuzzers[fuzzer_name] = fuzzer_hierarchy + _build_fuzzer_hierarchy(fuzzers_root, parent_name)
+        fuzzers[fuzzer_name] = fuzzer_hierarchy + _build_fuzzer_hierarchy(fuzzer_dirs, parent_name)
     return fuzzers
 
 
-def _load_target_configs(data: dict[str, Any], targets_root: Path) -> dict[str, dict[str, Any]]:
+def _load_target_configs(data: dict[str, Any], target_dirs: dict[str, Path]) -> dict[str, dict[str, Any]]:
     targets: dict[str, dict[str, Any]] = {}
     for target_spec in data.get('targets', []):
         if ':' not in target_spec:
@@ -249,7 +250,10 @@ def _load_target_configs(data: dict[str, Any], targets_root: Path) -> dict[str, 
         benchmark, fuzz_target = benchmark.strip(), fuzz_target.strip()
         _validate_benchmark_and_target(benchmark, fuzz_target)
 
-        path = targets_root / benchmark / 'benchmark.yaml'
+        try:
+            path = target_dirs[benchmark] / 'benchmark.yaml'
+        except KeyError as exc:
+            raise ValueError(f'Target {benchmark!r} is not configured; include it with --targets.') from exc
         try:
             target_config = _load_target_config(path, fuzz_target)
 
@@ -317,14 +321,14 @@ def _fuzzer_allows_target(fuzzer_configs: list[dict[str, Any]], target_config: d
     return all(f'{target_config["benchmark"]}:{target_config["fuzz_target"]}' in allowed for allowed in allowed_sets)
 
 
-def load_campaign_config(*, fuzzers_root: Path, targets_root: Path, text: str) -> CampaignConfig:
+def load_campaign_config(*, fuzzer_dirs: dict[str, Path], target_dirs: dict[str, Path], text: str) -> CampaignConfig:
     """Load a campaign configuration from YAML text."""
     data = yaml.safe_load(text) or {}
     if not isinstance(data, dict):
         raise TypeError('Top-level config must be a mapping')
 
-    fuzzer_configs = _load_fuzzer_configs(data, fuzzers_root)
-    target_configs = _load_target_configs(data, targets_root)
+    fuzzer_configs = _load_fuzzer_configs(data, fuzzer_dirs)
+    target_configs = _load_target_configs(data, target_dirs)
     cases = [
         _build_campaign_case(
             fuzzer_name=fuzzer_name,
@@ -340,4 +344,6 @@ def load_campaign_config(*, fuzzers_root: Path, targets_root: Path, text: str) -
     return CampaignConfig(
         settings=_load_campaign_settings(data),
         cases=cases,
+        fuzzer_dirs=fuzzer_dirs,
+        target_dirs=target_dirs,
     )

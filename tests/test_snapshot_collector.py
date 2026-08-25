@@ -64,7 +64,7 @@ def _active_trial(
         config=config,
         layout=layout,
         container_name=f'container-{db_id}',
-        fuzzers_root=root,
+        fuzzer_dirs={'aflplusplus': root / 'aflplusplus'},
         start_ts=0 if started_ts is None else started_ts,
     )
 
@@ -76,7 +76,7 @@ def _replay_trial(root: Path, *, start_ts: int, end_ts: int, db_id: int = 1, rep
         config=trial.config,
         layout=trial.layout,
         container_name=trial.container_name,
-        fuzzers_root=trial.fuzzers_root,
+        fuzzer_dirs=trial.fuzzer_dirs,
         start_ts=trial.start_ts,
         end_ts=end_ts,
     )

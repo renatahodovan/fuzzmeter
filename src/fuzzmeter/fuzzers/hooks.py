@@ -41,7 +41,7 @@ class HookRunner:
         if spec.script is None:
             return
 
-        script = self._resolve_script(spec.script)
+        script = spec.script
         if not script.exists():
             raise FileNotFoundError(f'{spec.name} hook does not exist: {script}')
 
@@ -62,7 +62,3 @@ class HookRunner:
         if result.stdout:
             LOG.error('%s hook failed with output:\n%s', spec.name, result.stdout.rstrip())
         raise subprocess.CalledProcessError(result.returncode, cmd, output=result.stdout)
-
-    def _resolve_script(self, script: Path) -> Path:
-        '''Resolve a hook script path relative to the fuzzer resource root.'''
-        return script if script.is_absolute() else (self.docker_runtime.fuzzers_root / script)

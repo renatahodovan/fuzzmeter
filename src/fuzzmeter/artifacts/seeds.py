@@ -64,11 +64,11 @@ def measure_seed_baselines(
     db_path: Path,
     run_dir: Path,
     run_id: str,
-    fuzzers_root: Path,
+    fuzzer_dirs: dict[str, Path],
     docker_runtime: DockerRuntime,
 ) -> None:
     '''Measure coverage for all prepared seed corpora.'''
-    fuzzer_loader = FuzzerLoader(Path(fuzzers_root))
+    fuzzer_loader = FuzzerLoader(fuzzer_dirs)
     baseline_jobs = _collect_seed_baseline_jobs(
         campaign_config=campaign_config,
         run_dir=run_dir,

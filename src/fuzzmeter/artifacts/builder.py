@@ -43,12 +43,11 @@ class _FuzzerContexts:
         return sorted(set(paths))
 
 
-def _build_images(*, campaign_config: CampaignConfig, run_dir: Path, fuzzers_root: Path, targets_root: Path) -> None:
+def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
     '''Build all docker images needed by a run.'''
     fuzzer_contexts = _prepare_fuzzer_contexts(
         campaign_config=campaign_config,
         run_dir=run_dir,
-        fuzzers_root=fuzzers_root,
     )
     with (
         resources.as_file(docker_resources()) as docker_resources_path,
@@ -56,8 +55,8 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path, fuzzers_roo
     ):
         fuzzmeter_resources_path = Path(__file__).resolve().parents[1]
         bake_hcl = generate_run_bake_hcl(
-            fuzzers_root=fuzzers_root,
-            targets_root=targets_root,
+            fuzzer_dirs=campaign_config.fuzzer_dirs,
+            target_dirs=campaign_config.target_dirs,
             entries=campaign_config.cases,
             memory_limit=campaign_config.settings.memory,
             fuzzer_build_sources=fuzzer_contexts.build_by_fuzzer,
@@ -72,14 +71,14 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path, fuzzers_roo
         info_enabled = logger.isEnabledFor(logging.INFO)
         progress = 'auto' if info_enabled else 'plain'
         entry_fuzzers = sorted({implementation_fuzzer(entry.fuzzer_chain) for entry in campaign_config.cases})
-        local_repo_paths = fuzzer_local_repo_paths(fuzzers_root, entry_fuzzers)
+        local_repo_paths = fuzzer_local_repo_paths(campaign_config.fuzzer_dirs, entry_fuzzers)
         allow_args = [
             f'--allow=fs.read={Path(docker_resources_path).resolve()}',
             f'--allow=fs.read={Path(entrypoint_resources_path).resolve()}',
             f'--allow=fs.read={fuzzmeter_resources_path.resolve()}',
             *[f'--allow=fs.read={path.resolve()}' for path in fuzzer_contexts.paths()],
             *[f'--allow=fs.read={path}' for path in local_repo_paths.values()],
-            f'--allow=fs.read={targets_root.resolve()}',
+            *[f'--allow=fs.read={path.resolve()}' for path in campaign_config.target_dirs.values()],
         ]
 
         subprocess.run(
@@ -93,7 +92,6 @@ def _prepare_fuzzer_contexts(
     *,
     campaign_config: CampaignConfig,
     run_dir: Path,
-    fuzzers_root: Path,
 ) -> _FuzzerContexts:
     resources_root = Path(run_dir) / 'fuzzer_resources'
     build_root = resources_root / 'build'
@@ -115,16 +113,16 @@ def _prepare_fuzzer_contexts(
     build_by_fuzzer: dict[str, Path] = {}
     run_by_fuzzer: dict[str, Path] = {}
     for fuzzer in fuzzer_impls:
-        source_dirs = fuzzer_source_dirs(Path(fuzzers_root), fuzzer)
+        source_dirs = fuzzer_source_dirs(campaign_config.fuzzer_dirs, fuzzer)
         build_by_fuzzer[fuzzer] = _copy_fuzzer_context(
-            fuzzers_root=fuzzers_root,
+            fuzzer_dirs=campaign_config.fuzzer_dirs,
             root=build_root,
             context_name=fuzzer,
             fuzzers=source_dirs,
             phase='build',
         )
         run_by_fuzzer[fuzzer] = _copy_fuzzer_context(
-            fuzzers_root=fuzzers_root,
+            fuzzer_dirs=campaign_config.fuzzer_dirs,
             root=run_root,
             context_name=fuzzer,
             fuzzers=source_dirs,
@@ -140,7 +138,7 @@ def _prepare_fuzzer_contexts(
 
 def _copy_fuzzer_context(
     *,
-    fuzzers_root: Path,
+    fuzzer_dirs: dict[str, Path],
     root: Path,
     context_name: str,
     fuzzers: list[str],
@@ -150,7 +148,7 @@ def _copy_fuzzer_context(
     out_root.mkdir(parents=True, exist_ok=True)
     _write_fuzzer_namespace(out_root=out_root)
     for fuzzer in fuzzers:
-        _copy_fuzzer_phase(fuzzers_root=fuzzers_root, out_root=out_root, fuzzer=fuzzer, phase=phase)
+        _copy_fuzzer_phase(fuzzer_dirs=fuzzer_dirs, out_root=out_root, fuzzer=fuzzer, phase=phase)
     return out_root
 
 
@@ -158,8 +156,8 @@ def _write_fuzzer_namespace(*, out_root: Path) -> None:
     (out_root / '__init__.py').write_text('', encoding='utf-8')
 
 
-def _copy_fuzzer_phase(*, fuzzers_root: Path, out_root: Path, fuzzer: str, phase: str) -> None:
-    src_dir = fuzzers_root / fuzzer
+def _copy_fuzzer_phase(*, fuzzer_dirs: dict[str, Path], out_root: Path, fuzzer: str, phase: str) -> None:
+    src_dir = fuzzer_dirs[fuzzer]
     if not src_dir.is_dir():
         return
 
@@ -202,16 +200,12 @@ def prepare_artifacts(
     db_path: Path,
     run_dir: Path,
     run_id: str,
-    fuzzers_root: Path,
-    targets_root: Path,
     docker_runtime: DockerRuntime,
 ) -> dict[tuple[str, str], Path]:
     '''Build images, extract binaries, prepare seeds, and measure seed baselines.'''
     _build_images(
         campaign_config=campaign_config,
         run_dir=run_dir,
-        fuzzers_root=fuzzers_root,
-        targets_root=targets_root,
     )
     fuzz_binaries = extract_fuzz_binaries(
         campaign_config=campaign_config,
@@ -223,8 +217,6 @@ def prepare_artifacts(
         collect_records(
             run_id=run_id,
             campaign_config=campaign_config,
-            fuzzers_root=fuzzers_root,
-            targets_root=targets_root,
         ),
     )
     prepare_seed_corpora(
@@ -237,7 +229,7 @@ def prepare_artifacts(
         db_path=db_path,
         run_dir=run_dir,
         run_id=run_id,
-        fuzzers_root=fuzzers_root,
+        fuzzer_dirs=campaign_config.fuzzer_dirs,
         docker_runtime=docker_runtime,
     )
     return fuzz_binaries

@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from fuzzers.grammarinator.run import snapshot_preprocess as grammarinator_preprocess
+from grammarinator.run import snapshot_preprocess as grammarinator_preprocess
 
 if __name__ == '__main__':
     grammarinator_preprocess.main()

@@ -64,3 +64,5 @@ class CampaignConfig:
 
     settings: CampaignSettings
     cases: list[CampaignCase]
+    fuzzer_dirs: dict[str, Path] = field(default_factory=dict)
+    target_dirs: dict[str, Path] = field(default_factory=dict)

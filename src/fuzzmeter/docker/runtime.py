@@ -20,7 +20,7 @@ from typing import Mapping
 class DockerRuntime:
     '''Hold docker-related host settings for a fuzzmeter run.'''
 
-    fuzzers_root: Path
+    fuzzer_dirs: dict[str, Path]
     out_src: str
     run_user: str | None
     run_id: str | None = None
@@ -28,10 +28,10 @@ class DockerRuntime:
     memory_swap: str | None = None
 
     @classmethod
-    def from_paths(cls, *, fuzzers_root: Path, out_root: Path, run_id: str | None = None) -> 'DockerRuntime':
+    def from_paths(cls, *, fuzzer_dirs: dict[str, Path], out_root: Path, run_id: str | None = None) -> 'DockerRuntime':
         '''Create Docker runtime settings from explicit host paths.'''
         return cls(
-            fuzzers_root=Path(fuzzers_root).expanduser().resolve(),
+            fuzzer_dirs={name: Path(path).expanduser().resolve() for name, path in fuzzer_dirs.items()},
             out_src=str(out_root.expanduser().resolve()),
             run_user=_host_user(),
             run_id=run_id,
@@ -40,7 +40,7 @@ class DockerRuntime:
     def with_docker_limits(self, *, memory: str | None = None, memory_swap: str | None = None) -> 'DockerRuntime':
         '''Return a copy with docker memory limits applied.'''
         return DockerRuntime(
-            fuzzers_root=self.fuzzers_root,
+            fuzzer_dirs=self.fuzzer_dirs,
             out_src=self.out_src,
             run_user=self.run_user,
             run_id=self.run_id,
@@ -78,11 +78,11 @@ class DockerRuntime:
     def hook_env(self, extra: Mapping[str, object] | None = None) -> dict[str, str]:
         '''Return environment variables for host-side hook execution.'''
         env = os.environ.copy()
-        env['FM_FUZZERS_ROOT'] = str(self.fuzzers_root)
         env['FM_OUT_SRC'] = self.out_src
         env['FM_LOG_LEVEL'] = os.environ['FM_LOG_LEVEL']
-        repo_root = str(self.fuzzers_root.parent)
-        env['PYTHONPATH'] = repo_root if not env.get('PYTHONPATH') else f'{repo_root}{os.pathsep}{env["PYTHONPATH"]}'
+        roots = os.pathsep.join(sorted({str(path.parent) for path in self.fuzzer_dirs.values()}))
+        if roots:
+            env['PYTHONPATH'] = roots if not env.get('PYTHONPATH') else f'{roots}{os.pathsep}{env["PYTHONPATH"]}'
         if extra:
             env.update({key: str(value) for key, value in extra.items()})
         return env

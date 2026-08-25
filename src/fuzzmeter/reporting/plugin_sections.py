@@ -29,7 +29,7 @@ LOG = logging.getLogger(__name__)
 
 def attach_extra_sections(
     *,
-    fuzzers_root: Path,
+    fuzzer_dirs: dict[str, Path],
     run_dir: Path,
     run_id: str,
     targets: list[dict[str, Any]],
@@ -39,9 +39,8 @@ def attach_extra_sections(
 ) -> None:
     '''Attach plugin-provided extra report sections to target and fuzzer entries.'''
 
-    fuzzers_root = Path(fuzzers_root)
-    loader = ReportingPluginLoader(fuzzers_root)
-    fuzzer_candidates_by_name, fuzzer_base_by_name = load_fuzzer_plugin_candidates(run_dir, fuzzers_root)
+    loader = ReportingPluginLoader(fuzzer_dirs)
+    fuzzer_candidates_by_name, fuzzer_base_by_name = load_fuzzer_plugin_candidates(run_dir, fuzzer_dirs)
     trial_snapshot_index = _build_trial_snapshot_index(run_dir)
     trials_by_target_fuzzer = _group_by_target_fuzzer(trials)
     bugs_by_target_fuzzer = _group_by_target_fuzzer(bugs)
@@ -55,7 +54,7 @@ def attach_extra_sections(
             fuzzer = str(fuzzer_entry.get('fuzzer') or '')
             if not fuzzer:
                 continue
-            plugin_candidates = plugin_candidates_for(fuzzer, fuzzers_root, fuzzer_candidates_by_name)
+            plugin_candidates = plugin_candidates_for(fuzzer, fuzzer_dirs, fuzzer_candidates_by_name)
             plugin, matched_plugin_name = loader.load_first(plugin_candidates)
             reps = trials_by_target_fuzzer.get((benchmark, fuzz_target, fuzzer), [])
             ctx = _build_reporting_context(

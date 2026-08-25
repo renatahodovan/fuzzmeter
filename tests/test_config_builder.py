@@ -615,8 +615,8 @@ def _write_fuzzer(root: Path, name: str, text: str) -> None:
 
 def _load_campaign_config(root: Path, text: str):
     return load_campaign_config(
-        fuzzers_root=root / 'fuzzers',
-        targets_root=root / 'targets',
+        fuzzer_dirs={path.name: path for path in (root / 'fuzzers').iterdir() if path.is_dir()},
+        target_dirs={path.name: path for path in (root / 'targets').iterdir() if path.is_dir()},
         text=text,
     )
 

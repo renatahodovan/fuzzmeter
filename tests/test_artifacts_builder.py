@@ -44,10 +44,10 @@ class ArtifactBuilderTest(unittest.TestCase):
                                 input_mode='file',
                             ),
                         ],
+                        fuzzer_dirs={'plain': repo_root / 'fuzzers' / 'plain'},
+                        target_dirs={'bench': repo_root / 'targets' / 'bench'},
                     ),
                     run_dir=run_dir,
-                    fuzzers_root=repo_root / 'fuzzers',
-                    targets_root=repo_root / 'targets',
                 )
 
             self.assertEqual(run_dir, run.call_args.kwargs['cwd'])
@@ -98,10 +98,13 @@ class ArtifactBuilderTest(unittest.TestCase):
                                 input_mode='file',
                             ),
                         ],
+                        fuzzer_dirs={
+                            'other': repo_root / 'fuzzers' / 'other',
+                            'plain': repo_root / 'fuzzers' / 'plain',
+                        },
+                        target_dirs={'bench': repo_root / 'targets' / 'bench'},
                     ),
                     run_dir=run_dir,
-                    fuzzers_root=repo_root / 'fuzzers',
-                    targets_root=repo_root / 'targets',
                 )
 
             plain_build_context = run_dir / 'fuzzer_resources' / 'build' / 'plain'
@@ -139,10 +142,10 @@ class ArtifactBuilderTest(unittest.TestCase):
                                 input_mode='file',
                             ),
                         ],
+                        fuzzer_dirs={'plain': repo_root / 'fuzzers' / 'plain'},
+                        target_dirs={'bench': repo_root / 'targets' / 'bench'},
                     ),
                     run_dir=run_dir,
-                    fuzzers_root=repo_root / 'fuzzers',
-                    targets_root=repo_root / 'targets',
                 )
 
             self.assertIn(f'--allow=fs.read={local_repo.resolve()}', run.call_args.args[0])

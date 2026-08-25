@@ -95,7 +95,7 @@ class TrialInstance:
     config: TrialConfig
     layout: TrialLayout
     container_name: str
-    fuzzers_root: Path
+    fuzzer_dirs: dict[str, Path]
     start_ts: int
 
 

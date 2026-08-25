@@ -44,7 +44,7 @@ def get_stats(trial_root):
                 encoding='utf-8',
             )
 
-            stats = FuzzerLoader(fuzzers_root).load('base').stats(Path('/trial'))
+            stats = FuzzerLoader({'base': fuzzers_root / 'base'}).load('base').stats(Path('/trial'))
 
         self.assertEqual({'trial_root': '/trial'}, stats)
 

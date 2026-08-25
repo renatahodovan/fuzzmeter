@@ -28,8 +28,8 @@ class _FuzzerModuleStub:
 
 
 class _FuzzerLoaderStub:
-    def __init__(self, fuzzers_root: Path) -> None:
-        self.fuzzers_root = Path(fuzzers_root)
+    def __init__(self, fuzzer_dirs: dict[str, Path]) -> None:
+        self.fuzzer_dirs = fuzzer_dirs
 
     def load(self, _fuzzer_name: str) -> _FuzzerModuleStub:
         return _FuzzerModuleStub()
@@ -44,12 +44,15 @@ class _TrialBuilderTest(unittest.TestCase):
             _campaign_case(fuzzer='fuzzer_a', fuzz_target='target_a'),
             _campaign_case(fuzzer='fuzzer_b', fuzz_target='target_b'),
         ]
-        config = CampaignConfig(settings=CampaignSettings(repetitions=3), cases=cases)
+        config = CampaignConfig(
+            settings=CampaignSettings(repetitions=3),
+            cases=cases,
+            fuzzer_dirs={'fuzzer_a': Path('/fuzzers/fuzzer_a'), 'fuzzer_b': Path('/fuzzers/fuzzer_b')},
+        )
 
         with patch('fuzzmeter.trial.builder.FuzzerLoader', _FuzzerLoaderStub):
             plans = plan_trials(
                 campaign_config=config,
-                fuzzers_root=Path('/fuzzers'),
                 fuzz_binaries={
                     ('fuzzer_a', 'bench-target_a'): Path('/tmp/fuzzer_a'),
                     ('fuzzer_b', 'bench-target_b'): Path('/tmp/fuzzer_b'),

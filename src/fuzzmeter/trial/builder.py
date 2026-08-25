@@ -19,11 +19,10 @@ from .models import TrialConfig, TrialImages
 def plan_trials(
     *,
     campaign_config: CampaignConfig,
-    fuzzers_root: Path,
     fuzz_binaries: dict[tuple[str, str], Path],
 ) -> list[TrialConfig]:
     '''Create trial configs from campaign configuration and prepared artifacts.'''
-    fuzzer_loader = FuzzerLoader(Path(fuzzers_root))
+    fuzzer_loader = FuzzerLoader(campaign_config.fuzzer_dirs)
     trial_configs: list[TrialConfig] = []
     seen_trial_keys: set[str] = set()
     rep_count = int(campaign_config.settings.repetitions)

@@ -75,7 +75,7 @@ class _PayloadBuilder:
         *,
         run_id: str | None = None,
         file_url_prefix: str | None = None,
-        fuzzers_root: Path | None = None,
+        fuzzer_dirs: dict[str, Path] | None = None,
     ):
         self.run_dir = Path(run_dir).resolve()
         self.db_path = self.run_dir / 'fuzzmeter.db'
@@ -105,7 +105,7 @@ class _PayloadBuilder:
             trial_version_fields=TRIAL_METADATA_FIELDS,
         )
         self._bug_analysis = BugAnalysis()
-        self._fuzzers_root = Path(fuzzers_root).expanduser().resolve() if fuzzers_root is not None else None
+        self._fuzzer_dirs = fuzzer_dirs
 
     def build(self) -> dict[str, Any]:
         '''Build the complete report payload.'''
@@ -129,10 +129,10 @@ class _PayloadBuilder:
             agg_snapshots=self._latest_agg_snapshots,
         )
 
-        if self._fuzzers_root is not None and not has_custom_metric_sections(targets):
+        if self._fuzzer_dirs is not None and not has_custom_metric_sections(targets):
             LOG.info('Collect extra sections')
             attach_extra_sections(
-                fuzzers_root=self._fuzzers_root,
+                fuzzer_dirs=self._fuzzer_dirs,
                 run_dir=self.run_dir,
                 run_id=self.run_id,
                 targets=targets,
@@ -535,7 +535,7 @@ def build_payload(
     *,
     run_id: str | None = None,
     file_url_prefix: str | None = None,
-    fuzzers_root: Path | None = None,
+    fuzzer_dirs: dict[str, Path] | None = None,
 ) -> dict[str, Any]:
     '''Build the JSON payload consumed by the web report.'''
 
@@ -543,5 +543,5 @@ def build_payload(
         run_dir,
         run_id=run_id,
         file_url_prefix=file_url_prefix,
-        fuzzers_root=fuzzers_root,
+        fuzzer_dirs=fuzzer_dirs,
     ).build()

@@ -17,7 +17,7 @@ class RunShutdownTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.runtime = DockerRuntime(
-            fuzzers_root=Path('/repo/fuzzers'),
+            fuzzer_dirs={'fuzzer': Path('/repo/fuzzers/fuzzer')},
             out_src='/out',
             run_user=None,
             run_id='run-1',

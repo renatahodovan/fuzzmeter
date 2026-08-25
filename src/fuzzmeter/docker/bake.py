@@ -53,17 +53,17 @@ def _hcl_block(name: str, lines: list[str]) -> str:
     return f'target "{name}" {{\n{body}\n}}'
 
 
-def _fuzzer_parent(fuzzers_root: Path, fuzzer: str) -> str | None:
-    data = _fuzzer_config(fuzzers_root, fuzzer)
+def _fuzzer_parent(fuzzer_dirs: Mapping[str, Path], fuzzer: str) -> str | None:
+    data = _fuzzer_config(fuzzer_dirs, fuzzer)
     if not isinstance(data, dict):
         return None
     parent = data.get('parent')
     return str(parent).strip() if parent else None
 
 
-def _fuzzer_config(fuzzers_root: Path, fuzzer: str) -> dict[str, object]:
+def _fuzzer_config(fuzzer_dirs: Mapping[str, Path], fuzzer: str) -> dict[str, object]:
     data: dict[str, object] = {}
-    root = fuzzers_root / fuzzer
+    root = fuzzer_dirs[fuzzer]
     for path in (root / 'build' / 'build.yaml', root / 'run' / 'run.yaml'):
         if not path.is_file():
             continue
@@ -82,13 +82,13 @@ def _fuzzer_config(fuzzers_root: Path, fuzzer: str) -> dict[str, object]:
     return data
 
 
-def _fuzzers_with_parents(fuzzers_root: Path, fuzzers: list[str]) -> list[str]:
+def _fuzzers_with_parents(fuzzer_dirs: Mapping[str, Path], fuzzers: list[str]) -> list[str]:
     seen: list[str] = []
 
     def add(name: str) -> None:
         if name in seen:
             return
-        parent = _fuzzer_parent(fuzzers_root, name)
+        parent = _fuzzer_parent(fuzzer_dirs, name)
         if parent:
             add(parent)
         seen.append(name)
@@ -98,27 +98,27 @@ def _fuzzers_with_parents(fuzzers_root: Path, fuzzers: list[str]) -> list[str]:
     return seen
 
 
-def _has_fuzzer_runner_dockerfile(fuzzers_root: Path, fuzzer: str) -> bool:
-    return (fuzzers_root / fuzzer / 'run' / 'Dockerfile').is_file()
+def _has_fuzzer_runner_dockerfile(fuzzer_dirs: Mapping[str, Path], fuzzer: str) -> bool:
+    return (fuzzer_dirs[fuzzer] / 'run' / 'Dockerfile').is_file()
 
 
-def _runner_parent_target(fuzzers_root: Path, fuzzer: str) -> str:
-    current = _fuzzer_parent(fuzzers_root, fuzzer)
+def _runner_parent_target(fuzzer_dirs: Mapping[str, Path], fuzzer: str) -> str:
+    current = _fuzzer_parent(fuzzer_dirs, fuzzer)
     while current:
-        if _has_fuzzer_runner_dockerfile(fuzzers_root, current):
+        if _has_fuzzer_runner_dockerfile(fuzzer_dirs, current):
             return f'fuzzer_runner_{current}'
-        current = _fuzzer_parent(fuzzers_root, current)
+        current = _fuzzer_parent(fuzzer_dirs, current)
     return 'runtime_base'
 
 
-def _runner_base_target(fuzzers_root: Path, fuzzer: str) -> str:
-    if _has_fuzzer_runner_dockerfile(fuzzers_root, fuzzer):
+def _runner_base_target(fuzzer_dirs: Mapping[str, Path], fuzzer: str) -> str:
+    if _has_fuzzer_runner_dockerfile(fuzzer_dirs, fuzzer):
         return f'fuzzer_runner_{fuzzer}'
-    return _runner_parent_target(fuzzers_root, fuzzer)
+    return _runner_parent_target(fuzzer_dirs, fuzzer)
 
 
-def _fuzzer_source_dependencies(fuzzers_root: Path, fuzzer: str) -> list[str]:
-    config = _fuzzer_config(fuzzers_root, fuzzer)
+def _fuzzer_source_dependencies(fuzzer_dirs: Mapping[str, Path], fuzzer: str) -> list[str]:
+    config = _fuzzer_config(fuzzer_dirs, fuzzer)
     dependencies = config.get('source_dependencies') or []
     if isinstance(dependencies, str):
         dependencies = [dependencies]
@@ -128,35 +128,35 @@ def _fuzzer_source_dependencies(fuzzers_root: Path, fuzzer: str) -> list[str]:
         {
             str(dependency).strip()
             for dependency in dependencies
-            if str(dependency).strip() and (fuzzers_root / str(dependency).strip()).is_dir()
+            if str(dependency).strip() in fuzzer_dirs
         }
     )
 
 
-def _fuzzer_source_dirs(fuzzers_root: Path, fuzzer: str) -> list[str]:
+def _fuzzer_source_dirs(fuzzer_dirs: Mapping[str, Path], fuzzer: str) -> list[str]:
     seen: list[str] = []
 
     def add(name: str) -> None:
         if name in seen:
             return
-        parent = _fuzzer_parent(fuzzers_root, name)
+        parent = _fuzzer_parent(fuzzer_dirs, name)
         if parent:
             add(parent)
         seen.append(name)
-        for dependency in _fuzzer_source_dependencies(fuzzers_root, name):
+        for dependency in _fuzzer_source_dependencies(fuzzer_dirs, name):
             add(dependency)
 
     add(fuzzer)
     return seen
 
 
-def fuzzer_source_dirs(fuzzers_root: Path, fuzzer: str) -> list[str]:
+def fuzzer_source_dirs(fuzzer_dirs: Mapping[str, Path], fuzzer: str) -> list[str]:
     """Return fuzzer source directories needed by a fuzzer implementation."""
-    return _fuzzer_source_dirs(fuzzers_root, fuzzer)
+    return _fuzzer_source_dirs(fuzzer_dirs, fuzzer)
 
 
-def _fuzzer_local_repo_env(fuzzers_root: Path, fuzzer: str) -> str | None:
-    value = _fuzzer_config(fuzzers_root, fuzzer).get(LOCAL_REPO_ENV_KEY)
+def _fuzzer_local_repo_env(fuzzer_dirs: Mapping[str, Path], fuzzer: str) -> str | None:
+    value = _fuzzer_config(fuzzer_dirs, fuzzer).get(LOCAL_REPO_ENV_KEY)
     if not value:
         return None
     env_var = str(value).strip()
@@ -173,12 +173,11 @@ def _local_repo_path(env_var: str) -> Path | None:
     return path
 
 
-def fuzzer_local_repo_paths(fuzzers_root: Path, fuzzers: list[str]) -> dict[str, Path]:
+def fuzzer_local_repo_paths(fuzzer_dirs: Mapping[str, Path], fuzzers: list[str]) -> dict[str, Path]:
     """Return configured host-side fuzzer source checkouts by fuzzer."""
-    resolved_root = Path(fuzzers_root).resolve()
     paths: dict[str, Path] = {}
-    for fuzzer in _fuzzers_with_parents(resolved_root, fuzzers):
-        env_var = _fuzzer_local_repo_env(resolved_root, fuzzer)
+    for fuzzer in _fuzzers_with_parents(fuzzer_dirs, fuzzers):
+        env_var = _fuzzer_local_repo_env(fuzzer_dirs, fuzzer)
         if not env_var:
             continue
         local_repo = _local_repo_path(env_var)
@@ -187,8 +186,8 @@ def fuzzer_local_repo_paths(fuzzers_root: Path, fuzzers: list[str]) -> dict[str,
     return paths
 
 
-def _benchmark_workdir(targets_root: Path, benchmark: str) -> str:
-    path = targets_root / benchmark / 'Dockerfile'
+def _benchmark_workdir(target_dirs: Mapping[str, Path], benchmark: str) -> str:
+    path = target_dirs[benchmark] / 'Dockerfile'
     env = {'OUT': '/out', 'SRC': '/src', 'WORK': '/work'}
     workdir = env['SRC']
     if not path.is_file():
@@ -274,8 +273,8 @@ def _entry_args(
 
 def generate_run_bake_hcl(
     *,
-    fuzzers_root: Path,
-    targets_root: Path,
+    fuzzer_dirs: Mapping[str, Path],
+    target_dirs: Mapping[str, Path],
     entries: list[CampaignCase],
     fuzzer_build_sources: Mapping[str, Path],
     fuzzer_run_sources: Mapping[str, Path],
@@ -290,19 +289,19 @@ def generate_run_bake_hcl(
     group_targets: list[str] = []
     docker_output_line = 'output = ["type=docker"]'
 
-    fuzzers_root = Path(fuzzers_root).resolve()
-    targets_root = Path(targets_root).resolve()
+    fuzzer_dirs = {name: Path(path).resolve() for name, path in fuzzer_dirs.items()}
+    target_dirs = {name: Path(path).resolve() for name, path in target_dirs.items()}
     docker_resources_arg = _escape(str(Path(docker_resources).resolve()))
     entrypoint_resources_arg = _escape(str(Path(entrypoint_resources).resolve()))
     fuzzmeter_resources_arg = _escape(str(Path(fuzzmeter_resources).resolve()))
     campaign_dockerfile = f'{docker_resources_arg}/campaign.Dockerfile'
 
     entry_fuzzers = sorted({implementation_fuzzer(entry.fuzzer_chain) for entry in entries})
-    campaign_fuzzers = _fuzzers_with_parents(fuzzers_root, entry_fuzzers)
-    local_repo_paths = fuzzer_local_repo_paths(fuzzers_root, entry_fuzzers)
+    campaign_fuzzers = _fuzzers_with_parents(fuzzer_dirs, entry_fuzzers)
+    local_repo_paths = fuzzer_local_repo_paths(fuzzer_dirs, entry_fuzzers)
     build_fuzzers = list(campaign_fuzzers)
     benchmark_workdirs = {
-        benchmark: _escape(_benchmark_workdir(targets_root, benchmark))
+        benchmark: _escape(_benchmark_workdir(target_dirs, benchmark))
         for benchmark in sorted({entry.benchmark for entry in entries})
     }
 
@@ -366,16 +365,16 @@ def generate_run_bake_hcl(
         hcl_parts.append(_hcl_block(name, lines))
 
     for fuzzer in build_fuzzers:
-        parent = _fuzzer_parent(fuzzers_root, fuzzer)
+        parent = _fuzzer_parent(fuzzer_dirs, fuzzer)
         builder_parent = f'fuzzer_builder_{parent}' if parent else 'clang_base'
         builder_depends = [f'depends_on = ["{builder_parent}"]']
-        builder_context = _escape(str(fuzzers_root / fuzzer / 'build'))
+        builder_context = _escape(str(fuzzer_dirs[fuzzer] / 'build'))
         dockerfile = 'Dockerfile'
         extra_args: list[str] = []
         local_repo = local_repo_paths.get(fuzzer)
         if local_repo:
             builder_context = _escape(str(local_repo))
-            dockerfile = _escape(str(fuzzers_root / fuzzer / 'build' / 'Dockerfile'))
+            dockerfile = _escape(str(fuzzer_dirs[fuzzer] / 'build' / 'Dockerfile'))
             extra_args = [
                 'args = {',
                 f'  {LOCAL_REPO_BUILD_ARG} = "1"',
@@ -420,14 +419,14 @@ def generate_run_bake_hcl(
         )
 
     for fuzzer in campaign_fuzzers:
-        if not _has_fuzzer_runner_dockerfile(fuzzers_root, fuzzer):
+        if not _has_fuzzer_runner_dockerfile(fuzzer_dirs, fuzzer):
             continue
-        runner_parent = _runner_parent_target(fuzzers_root, fuzzer)
+        runner_parent = _runner_parent_target(fuzzer_dirs, fuzzer)
         hcl_parts.append(
             _hcl_block(
                 f'fuzzer_runner_{fuzzer}',
                 [
-                    f'context    = "{_escape(str(fuzzers_root / fuzzer / "run"))}"',
+                    f'context    = "{_escape(str(fuzzer_dirs[fuzzer] / "run"))}"',
                     'dockerfile = "Dockerfile"',
                     f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
                     'contexts = {',
@@ -448,7 +447,7 @@ def generate_run_bake_hcl(
             _hcl_block(
                 benchmark_name,
                 [
-                    f'context    = "{_escape(str(targets_root / entry.benchmark))}"',
+                    f'context    = "{_escape(str(target_dirs[entry.benchmark]))}"',
                     'dockerfile = "Dockerfile"',
                     f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
                     'contexts = {',
@@ -463,8 +462,8 @@ def generate_run_bake_hcl(
         fuzzer_impl = implementation_fuzzer(entry.fuzzer_chain)
         target = target_key(entry.benchmark, entry.fuzz_target)
         benchmark_workdir = benchmark_workdirs[entry.benchmark]
-        fuzzer_source_dirs = _fuzzer_source_dirs(fuzzers_root, fuzzer_impl)
-        runner_base = _runner_base_target(fuzzers_root, fuzzer_impl)
+        fuzzer_source_dirs = _fuzzer_source_dirs(fuzzer_dirs, fuzzer_impl)
+        runner_base = _runner_base_target(fuzzer_dirs, fuzzer_impl)
         build_config_json = json.dumps(entry.build_config, sort_keys=True)
         fuzzer_build_sources_arg = _context_path(fuzzer_build_sources, fuzzer_impl, 'fuzzer build')
         fuzzer_run_sources_arg = _context_path(fuzzer_run_sources, fuzzer_impl, 'fuzzer run')

@@ -22,11 +22,26 @@ logging.basicConfig(format='%(asctime)s - %(levelname)-7s - %(name)s - %(message
 logger = logging.getLogger('fuzzmeter')
 
 
-def _resolve_required_dir(value: Path | str, *, label: str) -> Path:
-    path = Path(value).expanduser().resolve()
-    if not path.is_dir():
-        raise NotADirectoryError(f'{label} is not a directory: {path}')
-    return path
+def _resolve_resource_dirs(
+    values: list[list[Path]] | None,
+    *,
+    checkout_subdir: str,
+    label: str,
+) -> dict[str, Path]:
+    checkout_dir = Path.cwd().resolve() / checkout_subdir
+    paths = [path for group in values for path in group] if values else list(checkout_dir.iterdir())
+    dirs: dict[str, Path] = {}
+    for value in paths:
+        path = value.expanduser().resolve()
+        if not path.exists():
+            raise FileNotFoundError(f'{label} directory does not exist: {path}')
+        if not path.is_dir():
+            continue
+        previous = dirs.get(path.name)
+        if previous is not None and previous != path:
+            raise ValueError(f'Duplicate {label.lower()} name {path.name!r}: {previous} and {path}')
+        dirs[path.name] = path
+    return dirs
 
 
 def _docker_available() -> bool:
@@ -88,18 +103,18 @@ def main(argv: list[str] | None = None) -> int:
                         help='Host output directory')
     ap_run.add_argument('--label', type=str,
                         help='Human-readable label for this run')
-    ap_run.add_argument('--fuzzers', type=Path, default=None,
-                        help='Directory containing fuzzer definitions')
-    ap_run.add_argument('--targets', type=Path, default=None,
-                        help='Directory containing target definitions')
+    ap_run.add_argument('--fuzzers', type=Path, action='append', nargs='+',
+                        metavar='FUZZER_DIR', help='Fuzzer definition directories')
+    ap_run.add_argument('--targets', type=Path, action='append', nargs='+',
+                        metavar='TARGET_DIR', help='Target definition directories')
 
     ap_report = sub.add_parser('report', help='Generate a static report for an existing run')
     ap_report.add_argument('run_dir', type=Path,
                            help='Run directory containing fuzzmeter.db')
     ap_report.add_argument('--out', dest='out_dir', type=Path, default=None,
                            help='Report output directory')
-    ap_report.add_argument('--fuzzers', type=Path, default=None,
-                           help='Directory containing reporting plugins for fuzzers')
+    ap_report.add_argument('--fuzzers', type=Path, action='append', nargs='+',
+                           metavar='FUZZER_DIR', help='Fuzzer definition directories for reporting plugins')
 
     ap_srv = sub.add_parser('serve', help='Run the dynamic DB-backed web UI')
     ap_srv.add_argument('--root', type=Path, action='append', nargs='+', required=True,
@@ -134,23 +149,18 @@ def main(argv: list[str] | None = None) -> int:
         fm_out.mkdir(parents=True, exist_ok=True)
 
         try:
-            fuzzers_root = args.fuzzers or os.environ.get('FM_FUZZERS_PATH')
-            targets_root = args.targets or os.environ.get('FM_TARGETS_PATH')
-            checkout_root = Path.cwd().resolve()
-            if fuzzers_root is None:
-                candidate = checkout_root / 'fuzzers'
-                fuzzers_root = candidate if candidate.is_dir() else None
-            if targets_root is None:
-                candidate = checkout_root / 'targets'
-                targets_root = candidate if candidate.is_dir() else None
-            if fuzzers_root is None:
-                raise NotADirectoryError('Fuzzer root is not configured; use --fuzzers or FM_FUZZERS_PATH')
-            if targets_root is None:
-                raise NotADirectoryError('Target root is not configured; use --targets or FM_TARGETS_PATH')
-            fuzzers_root = _resolve_required_dir(fuzzers_root, label='Fuzzer root')
-            targets_root = _resolve_required_dir(targets_root, label='Target root')
             config_src = config_path.read_text(encoding='utf-8')
-            campaign_config = load_campaign_config(fuzzers_root=fuzzers_root, targets_root=targets_root, text=config_src)
+            fuzzer_dirs = _resolve_resource_dirs(args.fuzzers, checkout_subdir='fuzzers', label='Fuzzer')
+            target_dirs = _resolve_resource_dirs(args.targets, checkout_subdir='targets', label='Target')
+            if not fuzzer_dirs:
+                raise NotADirectoryError('No fuzzer directories were configured.')
+            if not target_dirs:
+                raise NotADirectoryError('No target directories were configured.')
+            campaign_config = load_campaign_config(
+                fuzzer_dirs=fuzzer_dirs,
+                target_dirs=target_dirs,
+                text=config_src,
+            )
         except (OSError, UnicodeDecodeError, TypeError, ValueError, RuntimeError) as exc:
             ap.error(str(exc))
 
@@ -163,8 +173,6 @@ def main(argv: list[str] | None = None) -> int:
             run_dir = run_experiment(
                 campaign_config,
                 out_root=fm_out,
-                fuzzers_root=fuzzers_root,
-                targets_root=targets_root,
                 config_src=config_src,
                 label=args.label,
             )
@@ -173,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
             return 130
 
         logger.info('Experiment completed: %s', run_dir)
-        report_dir = write_report(Path(run_dir), fuzzers_root=fuzzers_root)
+        report_dir = write_report(Path(run_dir), fuzzer_dirs=campaign_config.fuzzer_dirs)
         logger.info('Static report generated to: %s', report_dir)
         return 0
 
@@ -183,16 +191,11 @@ def main(argv: list[str] | None = None) -> int:
         run_dir = args.run_dir.expanduser().resolve()
         out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
         try:
-            fuzzers_root = args.fuzzers or os.environ.get('FM_FUZZERS_PATH')
-            if fuzzers_root is None:
-                candidate = Path.cwd().resolve() / 'fuzzers'
-                fuzzers_root = candidate if candidate.is_dir() else None
-            if fuzzers_root is not None:
-                fuzzers_root = _resolve_required_dir(fuzzers_root, label='Fuzzer root')
-        except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
-            logger.error('Invalid fuzzer root: %s', exc)
+            fuzzer_dirs = _resolve_resource_dirs(args.fuzzers, checkout_subdir='fuzzers', label='Fuzzer')
+        except (FileNotFoundError, NotADirectoryError, PermissionError, OSError, ValueError) as exc:
+            logger.error('Invalid fuzzer directories: %s', exc)
             return 1
-        report_dir = write_report(run_dir, out_dir=out_dir, fuzzers_root=fuzzers_root)
+        report_dir = write_report(run_dir, out_dir=out_dir, fuzzer_dirs=fuzzer_dirs or None)
         logger.info('Static report generated to: %s', report_dir)
         return 0
 

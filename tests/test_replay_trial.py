@@ -26,7 +26,7 @@ from tests.support.trials import make_trial_config
 
 @dataclass(frozen=True)
 class _DockerRuntimeStub:
-    fuzzers_root: Path
+    fuzzer_dirs: dict[str, Path]
 
 
 def _trial_config(root: Path, *, replay_dir: Path) -> TrialConfig:
@@ -80,7 +80,7 @@ class ReplayTrialRunnerTest(unittest.TestCase):
 
             prepared = prepare_replay_trial(
                 db_path=db_path,
-                docker_runtime=_DockerRuntimeStub(fuzzers_root=root),
+                docker_runtime=_DockerRuntimeStub(fuzzer_dirs={'aflplusplus': root / 'aflplusplus'}),
                 run_dir=root / 'out',
                 run_id='run-1',
                 cfg=cfg,
@@ -127,7 +127,7 @@ class ReplayTrialRunnerTest(unittest.TestCase):
 
             prepared = prepare_replay_trial(
                 db_path=db_path,
-                docker_runtime=_DockerRuntimeStub(fuzzers_root=root),
+                docker_runtime=_DockerRuntimeStub(fuzzer_dirs={'aflplusplus': root / 'aflplusplus'}),
                 run_dir=root / 'out',
                 run_id='run-1',
                 cfg=cfg,

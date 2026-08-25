@@ -75,7 +75,7 @@ def _bare_trial_instance(
         config=config,
         layout=layout,
         container_name=f'container-{db_id}',
-        fuzzers_root=root,
+        fuzzer_dirs={'aflplusplus': root / 'aflplusplus'},
         start_ts=start_ts,
     )
     if end_ts is None:
@@ -85,7 +85,7 @@ def _bare_trial_instance(
         config=trial.config,
         layout=trial.layout,
         container_name=trial.container_name,
-        fuzzers_root=trial.fuzzers_root,
+        fuzzer_dirs=trial.fuzzer_dirs,
         start_ts=trial.start_ts,
         end_ts=end_ts,
     )
@@ -226,8 +226,6 @@ class RunnerLoopTest(unittest.TestCase):
                     run_experiment(
                         campaign_config=config,
                         out_root=root / 'out',
-                        fuzzers_root=root / 'fuzzers',
-                        targets_root=root / 'targets',
                         config_src='config',
                     )
             self.assertGreaterEqual(sweep.call_count, 1)

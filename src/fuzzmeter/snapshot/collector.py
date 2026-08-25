@@ -342,7 +342,7 @@ def _replay_timeline_entries(*, trial: TrialInstance, kind: str) -> list[tuple[i
 def _read_stats(trial: TrialInstance, *, tick_ts: int) -> dict[str, Any]:
     try:
         stats = (
-            FuzzerLoader(trial.fuzzers_root)
+            FuzzerLoader(trial.fuzzer_dirs)
             .load(trial.config.fuzzer_impl)
             .stats(trial.layout.trial_dir, cutoff_elapsed_s=tick_ts - trial.start_ts)
             or {}
@@ -361,7 +361,7 @@ def _read_stats(trial: TrialInstance, *, tick_ts: int) -> dict[str, Any]:
 def _read_custom_metrics(trial: TrialInstance, *, snapshot_dir: Path, tick_ts: int) -> list[dict[str, Any]]:
     try:
         metrics = (
-            FuzzerLoader(trial.fuzzers_root)
+            FuzzerLoader(trial.fuzzer_dirs)
             .load(trial.config.fuzzer_impl)
             .custom_metrics(
                 trial.layout.trial_dir,

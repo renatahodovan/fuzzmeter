@@ -198,7 +198,7 @@ def _trial_instance(root: Path) -> TrialInstance:
         config=config,
         layout=layout,
         container_name='container',
-        fuzzers_root=root,
+        fuzzer_dirs={'fuzzer': root / 'fuzzer'},
         start_ts=0,
     )
 

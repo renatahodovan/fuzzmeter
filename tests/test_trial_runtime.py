@@ -77,7 +77,7 @@ class _StubbornLogProcess:
 
 @dataclass(frozen=True)
 class _DockerRuntimeStub:
-    fuzzers_root: Path
+    fuzzer_dirs: dict[str, Path]
     out_root: Path
 
     def map_out_path(self, host_path: Path, *, container_root: str = '/tmp/fuzzmeter/out') -> str:
@@ -119,7 +119,9 @@ class TrialRuntimeTest(unittest.TestCase):
             target_bin.write_text('', encoding='utf-8')
 
             container = TrialContainer(
-                docker_runtime=_DockerRuntimeStub(fuzzers_root=run_dir, out_root=out_root),
+                docker_runtime=_DockerRuntimeStub(
+                    fuzzer_dirs={'aflplusplus': run_dir / 'aflplusplus'}, out_root=out_root
+                ),
                 container_name='fm_01234567-89ab-cdef-0123-456789abcdef_7_aflplusplus__sqlite3-sqlite__rep0',
                 config=_trial_config(run_dir),
                 run_dir=run_dir,
@@ -145,7 +147,7 @@ class TrialRuntimeTest(unittest.TestCase):
             target_bin = root / 'target'
             target_bin.write_text('', encoding='utf-8')
             runtime = TrialContainer(
-                docker_runtime=_DockerRuntimeStub(fuzzers_root=root, out_root=root),
+                docker_runtime=_DockerRuntimeStub(fuzzer_dirs={'aflplusplus': root / 'aflplusplus'}, out_root=root),
                 container_name='container',
                 config=_trial_config(root),
                 run_dir=root,
@@ -168,7 +170,7 @@ class TrialRuntimeTest(unittest.TestCase):
             target_bin = root / 'target'
             target_bin.write_text('', encoding='utf-8')
             runtime = TrialContainer(
-                docker_runtime=_DockerRuntimeStub(fuzzers_root=root, out_root=root),
+                docker_runtime=_DockerRuntimeStub(fuzzer_dirs={'aflplusplus': root / 'aflplusplus'}, out_root=root),
                 container_name='container',
                 config=_trial_config(root),
                 run_dir=root,
@@ -192,7 +194,7 @@ class TrialRuntimeTest(unittest.TestCase):
             target_bin = root / 'target'
             target_bin.write_text('', encoding='utf-8')
             runtime = TrialContainer(
-                docker_runtime=_DockerRuntimeStub(fuzzers_root=root, out_root=root),
+                docker_runtime=_DockerRuntimeStub(fuzzer_dirs={'aflplusplus': root / 'aflplusplus'}, out_root=root),
                 container_name='ordered-container',
                 config=_trial_config(root),
                 run_dir=root,

@@ -328,8 +328,7 @@ class ReportingPluginLoaderTest(unittest.TestCase):
     '''Verify fuzzer reporting plugin discovery and adaptation.'''
 
     def test_missing_plugin_returns_null_plugin(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            plugin, matched = ReportingPluginLoader(Path(tmp)).load_first(['missing'])
+        plugin, matched = ReportingPluginLoader({}).load_first(['missing'])
 
         self.assertIsInstance(plugin, NullReportingPlugin)
         self.assertIsNone(matched)
@@ -340,7 +339,7 @@ class ReportingPluginLoaderTest(unittest.TestCase):
             path.parent.mkdir(parents=True)
             path.write_text('VALUE = 1\n', encoding='utf-8')
 
-            plugin, matched = ReportingPluginLoader(Path(tmp) / 'fuzzers').load_first(['fz'])
+            plugin, matched = ReportingPluginLoader({'fz': Path(tmp) / 'fuzzers' / 'fz'}).load_first(['fz'])
 
         self.assertIsInstance(plugin, NullReportingPlugin)
         self.assertIsNone(matched)
@@ -351,7 +350,7 @@ class ReportingPluginLoaderTest(unittest.TestCase):
             path.parent.mkdir(parents=True)
             path.write_text('def build_extra_sections(ctx):\n    return []\n', encoding='utf-8')
 
-            plugin, matched = ReportingPluginLoader(Path(tmp) / 'fuzzers').load_first(['fz'])
+            plugin, matched = ReportingPluginLoader({'fz': Path(tmp) / 'fuzzers' / 'fz'}).load_first(['fz'])
 
         self.assertIsInstance(plugin, FunctionReportingPlugin)
         self.assertEqual('fz', matched)
@@ -371,7 +370,7 @@ class ReportingPluginLoaderTest(unittest.TestCase):
                 encoding='utf-8',
             )
 
-            plugin, matched = ReportingPluginLoader(Path(tmp) / 'fuzzers').load_first(['fz'])
+            plugin, matched = ReportingPluginLoader({'fz': Path(tmp) / 'fuzzers' / 'fz'}).load_first(['fz'])
 
         self.assertEqual('fz', matched)
         self.assertEqual([], plugin.build_extra_sections(_context()))
@@ -383,7 +382,7 @@ class ReportingPluginLoaderTest(unittest.TestCase):
             path.write_text('raise RuntimeError("boom")\n', encoding='utf-8')
 
             with self.assertRaisesRegex(RuntimeError, 'boom'):
-                ReportingPluginLoader(Path(tmp) / 'fuzzers').load_first(['fz'])
+                ReportingPluginLoader({'fz': Path(tmp) / 'fuzzers' / 'fz'}).load_first(['fz'])
 
     def test_invalid_candidate_names_do_not_escape_fuzzers_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -391,7 +390,7 @@ class ReportingPluginLoaderTest(unittest.TestCase):
             escaped.parent.mkdir(parents=True)
             escaped.write_text('def build_extra_sections(ctx):\n    return []\n', encoding='utf-8')
 
-            plugin, matched = ReportingPluginLoader(Path(tmp)).load_first(['../escape'])
+            plugin, matched = ReportingPluginLoader({}).load_first(['../escape'])
 
         self.assertIsInstance(plugin, NullReportingPlugin)
         self.assertIsNone(matched)
@@ -412,7 +411,7 @@ class ReportingPluginSectionsTest(unittest.TestCase):
 
             self.assertEqual(
                 ['child', 'parent', 'grand'],
-                expand_reporting_candidates(fuzzers_root, ['child', 'parent']),
+                expand_reporting_candidates({'child': fuzzers_root / 'child', 'parent': fuzzers_root / 'parent', 'grand': fuzzers_root / 'grand'}, ['child', 'parent']),
             )
 
     def test_expand_reporting_candidates_ignores_unreadable_yaml(self) -> None:
@@ -423,7 +422,7 @@ class ReportingPluginSectionsTest(unittest.TestCase):
             child_build.write_text('reporting_parent: parent\n', encoding='utf-8')
 
             with patch('pathlib.Path.read_text', side_effect=OSError('blocked')):
-                self.assertEqual(['child'], expand_reporting_candidates(fuzzers_root, ['child']))
+                self.assertEqual(['child'], expand_reporting_candidates({'child': fuzzers_root / 'child'}, ['child']))
 
     def test_load_fuzzer_plugin_candidates_ignores_invalid_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

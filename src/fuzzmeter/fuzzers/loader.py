@@ -17,15 +17,14 @@ import threading
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import ModuleType
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Mapping
 
 from .models import OutputPaths
 
 
 class FuzzerModule:
-    def __init__(self, *, fuzzers_root: Path, fuzzer_name: str, module: ModuleType) -> None:
-        self.fuzzers_root = Path(fuzzers_root)
-        self.fuzzer_name = str(fuzzer_name)
+    def __init__(self, *, fuzzer_dir: Path, module: ModuleType) -> None:
+        self.fuzzer_dir = Path(fuzzer_dir)
         self._module = module
 
     def output_paths(self, live_out: Path) -> OutputPaths:
@@ -88,9 +87,10 @@ class FuzzerModule:
             configured = getter()
             if configured is None:
                 return None
-            return Path(configured)
+            path = Path(configured)
+            return path if path.is_absolute() else self.fuzzer_dir / path
 
-        script = self.fuzzers_root / self.fuzzer_name / 'run' / 'snapshot_preprocess.py'
+        script = self.fuzzer_dir / 'run' / 'snapshot_preprocess.py'
         return script if script.is_file() else None
 
     @staticmethod
@@ -140,15 +140,19 @@ class FuzzerLoader:
     _module_cache: ClassVar[dict[str, ModuleType]] = {}
     _module_lock: ClassVar[threading.RLock] = threading.RLock()
 
-    def __init__(self, fuzzers_root: Path) -> None:
-        self.fuzzers_root = Path(fuzzers_root)
+    def __init__(self, fuzzer_dirs: Mapping[str, Path]) -> None:
+        self.fuzzer_dirs = {name: Path(path) for name, path in fuzzer_dirs.items()}
 
     def load(self, fuzzer_name: str) -> FuzzerModule:
-        path = self.fuzzers_root / fuzzer_name / 'run' / 'fuzz.py'
+        try:
+            fuzzer_dir = self.fuzzer_dirs[fuzzer_name]
+        except KeyError as exc:
+            raise RuntimeError(f'Fuzzer is not configured: {fuzzer_name}') from exc
+        path = fuzzer_dir / 'run' / 'fuzz.py'
         if not path.exists():
             raise RuntimeError(f'fuzzer run entrypoint not found: {path}')
         module = self._load_module(path=path, module_name=f'fuzzmeter_user_fuzzers.{fuzzer_name}.run.fuzz')
-        return FuzzerModule(fuzzers_root=self.fuzzers_root, fuzzer_name=fuzzer_name, module=module)
+        return FuzzerModule(fuzzer_dir=fuzzer_dir, module=module)
 
     def _load_module(self, *, path: Path, module_name: str) -> ModuleType:
         with self._module_lock:
@@ -172,15 +176,16 @@ class FuzzerLoader:
             return module
 
     def _install_fuzzer_namespace(self) -> None:
-        root = str(self.fuzzers_root)
+        roots = [str(path.parent) for path in self.fuzzer_dirs.values()]
         package = sys.modules.get('fuzzers')
         if package is None:
             package = ModuleType('fuzzers')
-            package.__path__ = [root]  # type: ignore[attr-defined]
+            package.__path__ = roots  # type: ignore[attr-defined]
             sys.modules['fuzzers'] = package
             return
 
         paths = list(getattr(package, '__path__', []))
-        if root not in paths:
-            paths.insert(0, root)
-            package.__path__ = paths  # type: ignore[attr-defined]
+        for root in reversed(roots):
+            if root not in paths:
+                paths.insert(0, root)
+        package.__path__ = paths  # type: ignore[attr-defined]
