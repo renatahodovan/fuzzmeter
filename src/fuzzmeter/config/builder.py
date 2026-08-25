@@ -62,37 +62,20 @@ def _load_fuzz_target_config(path: Path, requested_fuzz_target: str) -> dict[str
     data = _load_yaml(path)
 
     benchmark = str(data.get('benchmark') or '').strip()
-    legacy_fuzz_target = str(data.get('fuzz_target') or '').strip()
-    multi_target_data = data.get('fuzz_targets')
+    if 'fuzz_target' in data:
+        raise ValueError(f'Benchmark config must use a fuzz_targets mapping instead of fuzz_target: {path}')
+    fuzz_targets_data = data.get('fuzz_targets')
+    if not isinstance(fuzz_targets_data, dict) or not fuzz_targets_data:
+        raise ValueError(f'Benchmark config fuzz_targets must be a non-empty mapping: {path}')
 
-    has_legacy_target = bool(legacy_fuzz_target)
-    has_multi_target = multi_target_data is not None
-    if has_legacy_target and has_multi_target:
-        raise ValueError(f'Benchmark config must define exactly one of fuzz_target or fuzz_targets: {path}')
-    if not has_legacy_target and not has_multi_target:
-        raise ValueError(f'Benchmark config must define fuzz_target or fuzz_targets: {path}')
-
-    if has_multi_target:
-        if not isinstance(multi_target_data, dict) or not multi_target_data:
-            raise ValueError(f'Benchmark config fuzz_targets must be a non-empty mapping: {path}')
-        if data.get('fuzzers') is not None:
-            raise ValueError(f'Benchmark config with fuzz_targets must not define root-level fuzzers: {path}')
-        fuzz_target_data = multi_target_data.get(requested_fuzz_target)
-        if fuzz_target_data is None:
-            raise ValueError(
-                f'The requested fuzz target {requested_fuzz_target!r} is not defined in the {benchmark!r} benchmark.'
-            )
-        if not isinstance(fuzz_target_data, dict):
-            raise ValueError(f'Benchmark config fuzz_targets.{requested_fuzz_target} must be a mapping: {path}')
-        fuzz_target = requested_fuzz_target
-    else:
-        fuzz_target = legacy_fuzz_target
-        _validate_benchmark_and_fuzz_target(benchmark, fuzz_target)
-        if fuzz_target != requested_fuzz_target:
-            raise ValueError(
-                f'The requested fuzz target {requested_fuzz_target!r} is not defined in the {benchmark!r} benchmark.'
-            )
-        fuzz_target_data = data
+    fuzz_target_data = fuzz_targets_data.get(requested_fuzz_target)
+    if fuzz_target_data is None:
+        raise ValueError(
+            f'The requested fuzz target {requested_fuzz_target!r} is not defined in the {benchmark!r} benchmark.'
+        )
+    if not isinstance(fuzz_target_data, dict):
+        raise ValueError(f'Benchmark config fuzz_targets.{requested_fuzz_target} must be a mapping: {path}')
+    fuzz_target = requested_fuzz_target
 
     _validate_benchmark_and_fuzz_target(benchmark, fuzz_target)
 

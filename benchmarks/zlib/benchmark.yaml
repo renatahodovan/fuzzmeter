@@ -1,4 +1,5 @@
 benchmark: zlib
-fuzz_target: zlib_uncompress_fuzzer
-input_mode: in_process
-timeout_s: 1
+fuzz_targets:
+  zlib_uncompress_fuzzer:
+    input_mode: in_process
+    timeout_s: 1

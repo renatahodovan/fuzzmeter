@@ -25,8 +25,8 @@ from fuzzmeter.resources.instrumentation.coverage import build as coverage_build
 class FuzzerUtilsTest(unittest.TestCase):
     """Verify benchmark fuzz target resolution helpers."""
 
-    def test_get_active_fuzz_target_config_supports_legacy_benchmark_yaml(self) -> None:
-        """Verify that legacy single-target benchmark configs still load."""
+    def test_get_active_fuzz_target_config_rejects_legacy_benchmark_yaml(self) -> None:
+        """Verify that legacy single-target benchmark configs are rejected."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             benchmark_path = Path(tmp_dir) / 'benchmark.yaml'
             benchmark_path.write_text(
@@ -35,10 +35,8 @@ class FuzzerUtilsTest(unittest.TestCase):
             )
 
             with patch.object(utils, 'BENCHMARK_CONFIG_PATH', str(benchmark_path)):
-                resolved = utils.get_active_fuzz_target_config()
-
-        self.assertEqual('legacy', resolved['name'])
-        self.assertEqual('file', resolved['config']['input_mode'])
+                with self.assertRaisesRegex(ValueError, 'fuzz_targets mapping instead of fuzz_target'):
+                    utils.get_active_fuzz_target_config()
 
     def test_get_active_fuzz_target_config_uses_target_name_for_multi_target_yaml(self) -> None:
         """Verify that multi-target benchmark configs resolve the active target from TARGET_NAME."""

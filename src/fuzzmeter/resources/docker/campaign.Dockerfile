@@ -79,7 +79,7 @@ RUN --mount=type=cache,target=/root/.cache \
       cp "${SRC}/benchmark.yaml" /benchmark.yaml; \
     fi; \
     if [ ! -s /benchmark.yaml ]; then \
-      printf "benchmark: %s\n" "${BENCHMARK}" > /benchmark.yaml; \
+      printf "benchmark: %s\nfuzz_targets:\n  %s: {}\n" "${BENCHMARK}" "${TARGET_NAME}" > /benchmark.yaml; \
     fi; \
     PYTHONPATH=/opt/fuzzmeter python3 /opt/fuzzmeter/campaign_build.py; \
     test -f "/out/${TARGET_NAME}"; \

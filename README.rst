@@ -195,8 +195,8 @@ Benchmark Configuration
 Benchmark configuration defines one or more fuzz targets that are available.
 Fuzz target configuration can also influence fuzzer configuration. For example,
 a fuzz target can tell a grammar-based fuzzer which grammar rule or grammar file
-should be used for that target. Benchmark files can use either the legacy single-target
-schema or the newer multi-target schema::
+should be used for that target. Benchmark files define their fuzz targets in a
+``fuzz_targets`` mapping::
 
     benchmark: jerryscript
     fuzz_targets:
@@ -209,9 +209,7 @@ schema or the newer multi-target schema::
               env:
                 GRAMMARINATOR_RULE: program
 
-Campaign files refer to fuzz targets as ``benchmark:fuzz_target``. Legacy
-benchmark files with root-level ``fuzz_target`` remain supported as an
-interim compatibility format.
+Campaign files refer to fuzz targets as ``benchmark:fuzz_target``.
 
 
 Basic Workflow

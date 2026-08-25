@@ -503,39 +503,6 @@ fuzz_targets:
 
         self.assertEqual({'env': {'MODE': 'file'}}, config.cases[0].build_config)
 
-    def test_multi_target_benchmark_rejects_root_level_fuzzers(self) -> None:
-        """Verify that multi-target benchmark configs do not accept root-level fuzzer overrides."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            _write_fuzzer(root, 'plain', '')
-            benchmark_dir = root / 'benchmarks' / 'jerryscript'
-            benchmark_dir.mkdir(parents=True)
-            benchmark_dir.joinpath('benchmark.yaml').write_text(
-                '''
-benchmark: jerryscript
-fuzzers:
-  plain:
-    build:
-      env:
-        MODE: bad
-fuzz_targets:
-  jerry:
-    input_mode: in_process
-'''.lstrip(),
-                encoding='utf-8',
-            )
-
-            with self.assertRaisesRegex(ValueError, 'root-level fuzzers'):
-                _load_campaign_config(
-                    root,
-                    '''
-fuzzers:
-  - plain
-fuzz_targets:
-  - jerryscript:jerry
-''',
-                )
-
     def test_multi_target_benchmark_rejects_missing_requested_target(self) -> None:
         """Verify that missing multi-target entries produce a clear error."""
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -554,8 +521,8 @@ fuzz_targets:
 ''',
                 )
 
-    def test_benchmark_config_rejects_mixed_legacy_and_multi_target_forms(self) -> None:
-        """Verify that benchmark configs cannot define both legacy and multi-target schemas."""
+    def test_benchmark_config_rejects_legacy_single_target_schema(self) -> None:
+        """Verify that benchmark configs reject the root-level fuzz_target field."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'plain', '')
@@ -565,14 +532,12 @@ fuzz_targets:
                 '''
 benchmark: jerryscript
 fuzz_target: legacy
-fuzz_targets:
-  jerry:
-    input_mode: in_process
+input_mode: in_process
 '''.lstrip(),
                 encoding='utf-8',
             )
 
-            with self.assertRaisesRegex(ValueError, 'exactly one of fuzz_target or fuzz_targets'):
+            with self.assertRaisesRegex(ValueError, 'fuzz_targets mapping instead of fuzz_target'):
                 _load_campaign_config(
                     root,
                     '''
@@ -624,9 +589,9 @@ def _load_campaign_config(root: Path, text: str):
 def _write_benchmark(root: Path, benchmark: str, fuzz_target: str, *, timeout_s: int | None = None) -> None:
     benchmark_dir = root / 'benchmarks' / benchmark
     benchmark_dir.mkdir(parents=True)
-    timeout_line = f'timeout_s: {timeout_s}\n' if timeout_s is not None else ''
+    timeout_line = f'    timeout_s: {timeout_s}\n' if timeout_s is not None else ''
     benchmark_dir.joinpath('benchmark.yaml').write_text(
-        f'benchmark: {benchmark}\nfuzz_target: {fuzz_target}\ninput_mode: file\n{timeout_line}',
+        f'benchmark: {benchmark}\nfuzz_targets:\n  {fuzz_target}:\n    input_mode: file\n{timeout_line}',
         encoding='utf-8',
     )
 
