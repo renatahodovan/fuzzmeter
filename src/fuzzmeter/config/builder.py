@@ -178,7 +178,7 @@ def _build_fuzzer_config(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[
     }
 
 
-def _build_fuzzer_hierarchy(
+def _load_fuzzer_chain(
     fuzzer_dirs: dict[str, Path],
     fuzzer_name: str,
     seen: set[str] | None = None,
@@ -187,32 +187,22 @@ def _build_fuzzer_hierarchy(
 
     if not IDENTIFIER_RE.fullmatch(fuzzer_name):
         raise ValueError(f'Fuzzer name must match [a-zA-Z0-9_.-]+: {fuzzer_name!r}')
+    if fuzzer_name not in fuzzer_dirs:
+        raise ValueError(f'Fuzzer {fuzzer_name!r} is not configured; include it with --fuzzers.')
     if fuzzer_name in seen:
         raise ValueError(f'Cyclic fuzzer parent chain detected at {fuzzer_name}')
     seen.add(fuzzer_name)
 
-    fuzzer_data = _load_fuzzer_config(fuzzer_dirs, fuzzer_name)
-    fuzzer_hierarchy = [_build_fuzzer_config(fuzzer_name, fuzzer_data)]
+    fuzzer_dir = fuzzer_dirs[fuzzer_name]
+    fuzzer_data: dict[str, Any] = {}
+    for path in (fuzzer_dir / 'build' / 'build.yaml', fuzzer_dir / 'run' / 'run.yaml'):
+        if path.is_file():
+            fuzzer_data = _merge(fuzzer_data, _load_yaml(path))
+    fuzzer_chain = [_build_fuzzer_config(fuzzer_name, fuzzer_data)]
     parent_name = fuzzer_data.get('parent')
     if parent_name:
-        fuzzer_hierarchy.extend(_build_fuzzer_hierarchy(fuzzer_dirs, parent_name, seen))
-    return fuzzer_hierarchy
-
-
-def _load_fuzzer_config(fuzzer_dirs: dict[str, Path], fuzzer_name: str) -> dict[str, Any]:
-    try:
-        fuzzer_root = fuzzer_dirs[fuzzer_name]
-    except KeyError as exc:
-        raise ValueError(f'Fuzzer {fuzzer_name!r} is not configured; include it with --fuzzers.') from exc
-
-    yaml_data = []
-    for path in (fuzzer_root / 'build' / 'build.yaml', fuzzer_root / 'run' / 'run.yaml'):
-        if path.is_file():
-            yaml_data.append(_load_yaml(path))
-
-    if not yaml_data:
-        return {}
-    return yaml_data[0] if len(yaml_data) == 1 else _merge(*yaml_data)
+        fuzzer_chain.extend(_load_fuzzer_chain(fuzzer_dirs, parent_name, seen))
+    return fuzzer_chain
 
 
 def _load_fuzzer_configs(data: dict[str, Any], fuzzer_dirs: dict[str, Path]) -> dict[str, list[dict[str, Any]]]:
@@ -220,24 +210,22 @@ def _load_fuzzer_configs(data: dict[str, Any], fuzzer_dirs: dict[str, Path]) -> 
     for fuzzer_data in data.get('fuzzers', []):
         if isinstance(fuzzer_data, str):
             fuzzer_name, parent_name = fuzzer_data, fuzzer_data
-            fuzzer_hierarchy: list[dict[str, Any]] = []
+            fuzzer_config: list[dict[str, Any]] = []
         elif isinstance(fuzzer_data, dict):
             fuzzer_name = fuzzer_data.get('fuzzer')
-            if not fuzzer_name:
-                raise ValueError('Missing value field from fuzzer defintion.')
-            if not isinstance(fuzzer_name, str):
-                raise ValueError('Fuzzer name must be defined as string.')
+            if not fuzzer_name or not isinstance(fuzzer_name, str):
+                raise ValueError(f'Fuzzer description must contain a "fuzzer" field of string value: {fuzzer_data!r}')
             parent_name = fuzzer_data.get('parent') or fuzzer_name
             if not isinstance(parent_name, str):
                 raise ValueError('Parent fuzzer must be defined as string.')
-            fuzzer_hierarchy = [_build_fuzzer_config(fuzzer_name, fuzzer_data)]
+            fuzzer_config = [_build_fuzzer_config(fuzzer_name, fuzzer_data)]
         else:
             raise TypeError(f'Unsupported fuzzer entry: {fuzzer_data!r}')
 
         if not IDENTIFIER_RE.fullmatch(fuzzer_name):
             raise ValueError(f'Fuzzer name must match [a-zA-Z0-9_.-]+: {fuzzer_name!r}')
 
-        fuzzers[fuzzer_name] = fuzzer_hierarchy + _build_fuzzer_hierarchy(fuzzer_dirs, parent_name)
+        fuzzers[fuzzer_name] = fuzzer_config + _load_fuzzer_chain(fuzzer_dirs, parent_name)
     return fuzzers
 
 
