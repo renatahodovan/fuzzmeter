@@ -17,14 +17,13 @@ from unittest.mock import patch
 
 from fuzzmeter.artifacts.builder import _build_images
 from fuzzmeter.config import CampaignCase, CampaignConfig, CampaignSettings
-from fuzzmeter.paths import ExternalRoots
 from tests.support.bake import target_block
 
 
 class ArtifactBuilderTest(unittest.TestCase):
     '''Verify campaign image build orchestration.'''
 
-    def test_buildx_bake_uses_external_roots_and_absolute_contexts(self) -> None:
+    def test_buildx_bake_uses_configured_roots_and_absolute_contexts(self) -> None:
         '''Verify that generated bake contexts do not rely on a repository cwd.'''
         with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as out_dir:
             repo_root = Path(repo_dir)
@@ -47,7 +46,8 @@ class ArtifactBuilderTest(unittest.TestCase):
                         ],
                     ),
                     run_dir=run_dir,
-                    external_roots=ExternalRoots.from_checkout(repo_root),
+                    fuzzers_root=repo_root / 'fuzzers',
+                    targets_root=repo_root / 'targets',
                 )
 
             self.assertEqual(run_dir, run.call_args.kwargs['cwd'])
@@ -100,7 +100,8 @@ class ArtifactBuilderTest(unittest.TestCase):
                         ],
                     ),
                     run_dir=run_dir,
-                    external_roots=ExternalRoots.from_checkout(repo_root),
+                    fuzzers_root=repo_root / 'fuzzers',
+                    targets_root=repo_root / 'targets',
                 )
 
             plain_build_context = run_dir / 'fuzzer_resources' / 'build' / 'plain'
@@ -140,7 +141,8 @@ class ArtifactBuilderTest(unittest.TestCase):
                         ],
                     ),
                     run_dir=run_dir,
-                    external_roots=ExternalRoots.from_checkout(repo_root),
+                    fuzzers_root=repo_root / 'fuzzers',
+                    targets_root=repo_root / 'targets',
                 )
 
             self.assertIn(f'--allow=fs.read={local_repo.resolve()}', run.call_args.args[0])

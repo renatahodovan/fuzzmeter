@@ -16,7 +16,6 @@ from dataclasses import fields
 from pathlib import Path
 
 from fuzzmeter.config import CampaignCase, load_campaign_config
-from fuzzmeter.paths import ExternalRoots
 
 
 class ConfigBuilderTest(unittest.TestCase):
@@ -615,7 +614,11 @@ def _write_fuzzer(root: Path, name: str, text: str) -> None:
 
 
 def _load_campaign_config(root: Path, text: str):
-    return load_campaign_config(ExternalRoots.from_checkout(root), text)
+    return load_campaign_config(
+        fuzzers_root=root / 'fuzzers',
+        targets_root=root / 'targets',
+        text=text,
+    )
 
 
 def _write_target(root: Path, project: str, fuzz_target: str, *, timeout_s: int | None = None) -> None:

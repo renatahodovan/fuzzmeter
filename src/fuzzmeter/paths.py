@@ -5,38 +5,12 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-'''Resolve user-provided resource roots and packaged engine resources.'''
+'''Access packaged engine resources.'''
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from importlib import resources
-from pathlib import Path
 from typing import Any
-
-
-@dataclass(frozen=True)
-class ExternalRoots:
-    '''Hold validated user-provided fuzzer and target resource roots.'''
-
-    fuzzers_root: Path
-    targets_root: Path
-
-    @classmethod
-    def from_paths(cls, *, fuzzers_root: Path, targets_root: Path) -> 'ExternalRoots':
-        '''Create roots from explicit paths without checking their contents.'''
-
-        return cls(
-            fuzzers_root=Path(fuzzers_root).expanduser().resolve(),
-            targets_root=Path(targets_root).expanduser().resolve(),
-        )
-
-    @classmethod
-    def from_checkout(cls, checkout_root: Path) -> 'ExternalRoots':
-        '''Create roots from a development checkout layout.'''
-
-        root = Path(checkout_root).expanduser().resolve()
-        return cls.from_paths(fuzzers_root=root / 'fuzzers', targets_root=root / 'targets')
 
 
 def docker_resources() -> Any:

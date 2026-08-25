@@ -17,7 +17,6 @@ from typing import Any
 
 import yaml
 
-from ..paths import ExternalRoots
 from .models import CampaignCase, CampaignConfig, CampaignSettings, target_key
 
 IDENTIFIER_RE = re.compile(r'^[a-zA-Z0-9_.-]+$')
@@ -318,14 +317,14 @@ def _fuzzer_allows_target(fuzzer_configs: list[dict[str, Any]], target_config: d
     return all(f'{target_config["benchmark"]}:{target_config["fuzz_target"]}' in allowed for allowed in allowed_sets)
 
 
-def load_campaign_config(external_roots: ExternalRoots, text: str) -> CampaignConfig:
+def load_campaign_config(*, fuzzers_root: Path, targets_root: Path, text: str) -> CampaignConfig:
     """Load a campaign configuration from YAML text."""
     data = yaml.safe_load(text) or {}
     if not isinstance(data, dict):
         raise TypeError('Top-level config must be a mapping')
 
-    fuzzer_configs = _load_fuzzer_configs(data, external_roots.fuzzers_root)
-    target_configs = _load_target_configs(data, external_roots.targets_root)
+    fuzzer_configs = _load_fuzzer_configs(data, fuzzers_root)
+    target_configs = _load_target_configs(data, targets_root)
     cases = [
         _build_campaign_case(
             fuzzer_name=fuzzer_name,

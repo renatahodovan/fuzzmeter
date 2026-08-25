@@ -21,7 +21,6 @@ from pathlib import Path
 from ..config import CampaignCase, CampaignConfig
 from ..db import metadata as db_metadata
 from ..db.base import open_db
-from ..paths import ExternalRoots
 from .canonical import canonical_digest
 from .models import MetadataTriplet
 from .source_hook import run_source_hook, source_hook_context
@@ -31,7 +30,8 @@ def collect_records(
     *,
     run_id: str,
     campaign_config: CampaignConfig,
-    external_roots: ExternalRoots | None = None,
+    fuzzers_root: Path | None = None,
+    targets_root: Path | None = None,
 ) -> list[db_metadata.MetadataRecord]:
     '''Collect composite descriptor records for all campaign cases.'''
     environment = collect_environment()
@@ -42,7 +42,8 @@ def collect_records(
             campaign_config=campaign_config,
             case=case,
             environment=environment,
-            external_roots=external_roots,
+            fuzzers_root=fuzzers_root,
+            targets_root=targets_root,
             created_at=created_at,
         )
         for case in campaign_config.cases
@@ -89,15 +90,20 @@ def collect_config(case: CampaignCase) -> dict[str, object]:
     }
 
 
-def collect_source(case: CampaignCase, external_roots: ExternalRoots | None, enabled: bool) -> dict[str, object]:
+def collect_source(
+    case: CampaignCase,
+    fuzzers_root: Path | None,
+    targets_root: Path | None,
+    enabled: bool,
+) -> dict[str, object]:
     '''Collect user-defined target and fuzzer source metadata hook results.'''
-    if external_roots is None or not enabled:
+    if fuzzers_root is None or targets_root is None or not enabled:
         return {
             'target_source': {'status': 'missing', 'data': None, 'error': None},
             'fuzzer_version': {'status': 'missing', 'data': None, 'error': None},
         }
-    target_hook = Path(external_roots.targets_root) / case.benchmark / 'source_info.py'
-    fuzzer_hook = Path(external_roots.fuzzers_root) / case.fuzzer_name / 'source_info.py'
+    target_hook = Path(targets_root) / case.benchmark / 'source_info.py'
+    fuzzer_hook = Path(fuzzers_root) / case.fuzzer_name / 'source_info.py'
     return {
         'target_source': run_source_hook(
             target_hook,
@@ -116,12 +122,13 @@ def metadata_for_case(
     *,
     case: CampaignCase,
     environment: dict[str, object],
-    external_roots: ExternalRoots | None,
+    fuzzers_root: Path | None,
+    targets_root: Path | None,
     source_info_enabled: bool,
 ) -> MetadataTriplet:
     '''Build comparable metadata for one campaign case.'''
     config = collect_config(case)
-    source = collect_source(case, external_roots, source_info_enabled)
+    source = collect_source(case, fuzzers_root, targets_root, source_info_enabled)
     return MetadataTriplet(
         environment=environment,
         config=config,
@@ -138,13 +145,15 @@ def _record_for_case(
     campaign_config: CampaignConfig,
     case: CampaignCase,
     environment: dict[str, object],
-    external_roots: ExternalRoots | None,
+    fuzzers_root: Path | None,
+    targets_root: Path | None,
     created_at: int,
 ) -> db_metadata.MetadataRecord:
     metadata = metadata_for_case(
         case=case,
         environment=environment,
-        external_roots=external_roots,
+        fuzzers_root=fuzzers_root,
+        targets_root=targets_root,
         source_info_enabled=campaign_config.settings.source_info,
     )
     return db_metadata.MetadataRecord(

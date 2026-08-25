@@ -40,7 +40,8 @@ class CompositeCollectorTest(unittest.TestCase):
         metadata = metadata_for_case(
             case=_case(),
             environment={'host': {'system': 'Darwin'}},
-            external_roots=None,
+            fuzzers_root=None,
+            targets_root=None,
             source_info_enabled=False,
         )
 

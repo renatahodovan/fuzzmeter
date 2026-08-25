@@ -23,7 +23,6 @@ from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.db import snapshot as db_snapshot
 from fuzzmeter.db import trials as db_trials
 from fuzzmeter.fuzzers.models import OutputPaths
-from fuzzmeter.paths import ExternalRoots
 from fuzzmeter.repro.ingest import DetectedFile
 from fuzzmeter.run.runner import (
     _live_resource_plan,
@@ -227,7 +226,8 @@ class RunnerLoopTest(unittest.TestCase):
                     run_experiment(
                         campaign_config=config,
                         out_root=root / 'out',
-                        external_roots=ExternalRoots.from_checkout(root),
+                        fuzzers_root=root / 'fuzzers',
+                        targets_root=root / 'targets',
                         config_src='config',
                     )
             self.assertGreaterEqual(sweep.call_count, 1)

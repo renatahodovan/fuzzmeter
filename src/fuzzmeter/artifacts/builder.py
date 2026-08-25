@@ -21,7 +21,7 @@ from ..composite.collect import collect_records, save_records
 from ..config import CampaignConfig, implementation_fuzzer
 from ..docker import DockerRuntime, fuzzer_source_dirs, generate_run_bake_hcl
 from ..docker.bake import INSTRUMENTATION_PROFILES, fuzzer_local_repo_paths
-from ..paths import ExternalRoots, docker_resources, entrypoint_resources, instrumentation_resources
+from ..paths import docker_resources, entrypoint_resources, instrumentation_resources
 from .extract import extract_fuzz_binaries
 from .seeds import measure_seed_baselines, prepare_seed_corpora
 
@@ -43,12 +43,12 @@ class _FuzzerContexts:
         return sorted(set(paths))
 
 
-def _build_images(*, campaign_config: CampaignConfig, run_dir: Path, external_roots: ExternalRoots) -> None:
+def _build_images(*, campaign_config: CampaignConfig, run_dir: Path, fuzzers_root: Path, targets_root: Path) -> None:
     '''Build all docker images needed by a run.'''
     fuzzer_contexts = _prepare_fuzzer_contexts(
         campaign_config=campaign_config,
         run_dir=run_dir,
-        fuzzers_root=external_roots.fuzzers_root,
+        fuzzers_root=fuzzers_root,
     )
     with (
         resources.as_file(docker_resources()) as docker_resources_path,
@@ -56,8 +56,8 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path, external_ro
     ):
         fuzzmeter_resources_path = Path(__file__).resolve().parents[1]
         bake_hcl = generate_run_bake_hcl(
-            fuzzers_root=external_roots.fuzzers_root,
-            targets_root=external_roots.targets_root,
+            fuzzers_root=fuzzers_root,
+            targets_root=targets_root,
             entries=campaign_config.cases,
             memory_limit=campaign_config.settings.memory,
             fuzzer_build_sources=fuzzer_contexts.build_by_fuzzer,
@@ -72,14 +72,14 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path, external_ro
         info_enabled = logger.isEnabledFor(logging.INFO)
         progress = 'auto' if info_enabled else 'plain'
         entry_fuzzers = sorted({implementation_fuzzer(entry.fuzzer_chain) for entry in campaign_config.cases})
-        local_repo_paths = fuzzer_local_repo_paths(external_roots.fuzzers_root, entry_fuzzers)
+        local_repo_paths = fuzzer_local_repo_paths(fuzzers_root, entry_fuzzers)
         allow_args = [
             f'--allow=fs.read={Path(docker_resources_path).resolve()}',
             f'--allow=fs.read={Path(entrypoint_resources_path).resolve()}',
             f'--allow=fs.read={fuzzmeter_resources_path.resolve()}',
             *[f'--allow=fs.read={path.resolve()}' for path in fuzzer_contexts.paths()],
             *[f'--allow=fs.read={path}' for path in local_repo_paths.values()],
-            f'--allow=fs.read={external_roots.targets_root.resolve()}',
+            f'--allow=fs.read={targets_root.resolve()}',
         ]
 
         subprocess.run(
@@ -202,11 +202,17 @@ def prepare_artifacts(
     db_path: Path,
     run_dir: Path,
     run_id: str,
-    external_roots: ExternalRoots,
+    fuzzers_root: Path,
+    targets_root: Path,
     docker_runtime: DockerRuntime,
 ) -> dict[tuple[str, str], Path]:
     '''Build images, extract binaries, prepare seeds, and measure seed baselines.'''
-    _build_images(campaign_config=campaign_config, run_dir=run_dir, external_roots=external_roots)
+    _build_images(
+        campaign_config=campaign_config,
+        run_dir=run_dir,
+        fuzzers_root=fuzzers_root,
+        targets_root=targets_root,
+    )
     fuzz_binaries = extract_fuzz_binaries(
         campaign_config=campaign_config,
         run_dir=run_dir,
@@ -214,7 +220,12 @@ def prepare_artifacts(
     )
     save_records(
         db_path,
-        collect_records(run_id=run_id, campaign_config=campaign_config, external_roots=external_roots),
+        collect_records(
+            run_id=run_id,
+            campaign_config=campaign_config,
+            fuzzers_root=fuzzers_root,
+            targets_root=targets_root,
+        ),
     )
     prepare_seed_corpora(
         campaign_config=campaign_config,
@@ -226,7 +237,7 @@ def prepare_artifacts(
         db_path=db_path,
         run_dir=run_dir,
         run_id=run_id,
-        fuzzers_root=external_roots.fuzzers_root,
+        fuzzers_root=fuzzers_root,
         docker_runtime=docker_runtime,
     )
     return fuzz_binaries

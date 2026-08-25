@@ -21,21 +21,6 @@ from fuzzmeter import cli
 class HostCliTest(unittest.TestCase):
     '''Verify host-side CLI helpers.'''
 
-    def test_checkout_roots_use_cwd_when_it_has_resource_layout(self) -> None:
-        '''Verify that running from a checkout discovers fuzzer and target roots.'''
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            (root / 'fuzzers').mkdir()
-            (root / 'targets').mkdir()
-
-            with patch('pathlib.Path.cwd', return_value=root):
-                roots = cli._checkout_roots()
-
-            self.assertIsNotNone(roots)
-            assert roots is not None
-            self.assertEqual(root.resolve() / 'fuzzers', roots.fuzzers_root)
-            self.assertEqual(root.resolve() / 'targets', roots.targets_root)
-
     def test_serve_accepts_direct_run_directories(self) -> None:
         '''Verify repeated and multi-value roots configure direct run directories.'''
         try:
