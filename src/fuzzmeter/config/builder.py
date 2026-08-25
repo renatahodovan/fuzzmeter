@@ -52,47 +52,53 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     path = path.expanduser().resolve()
     if not path.is_file():
         raise FileNotFoundError(f'YAML file is not a file: {path}')
-    data = yaml.safe_load(path.read_text(encoding='utf-8')) or {}
+
+    try:
+        data = yaml.safe_load(path.read_text(encoding='utf-8')) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f'{path}: invalid YAML: {exc}') from exc
+
     if not isinstance(data, dict):
         raise TypeError(f'Expected mapping in {path}')
     return data
 
 
-def _load_fuzz_target_config(path: Path, requested_fuzz_target: str) -> dict[str, Any]:
+def _load_fuzz_target_config(path: Path, fuzz_target: str) -> dict[str, Any]:
     data = _load_yaml(path)
 
-    benchmark = str(data.get('benchmark') or '').strip()
-    if 'fuzz_target' in data:
-        raise ValueError(f'Benchmark config must use a fuzz_targets mapping instead of fuzz_target: {path}')
+    benchmark = data.get('benchmark')
+    if not benchmark or not isinstance(benchmark, str):
+        raise ValueError(f'{path}: benchmark must be a non-empty string.')
+
     fuzz_targets_data = data.get('fuzz_targets')
-    if not isinstance(fuzz_targets_data, dict) or not fuzz_targets_data:
-        raise ValueError(f'Benchmark config fuzz_targets must be a non-empty mapping: {path}')
+    if not fuzz_targets_data or not isinstance(fuzz_targets_data, dict):
+        raise ValueError(f'{path}: fuzz_targets must be a non-empty mapping.')
 
-    fuzz_target_data = fuzz_targets_data.get(requested_fuzz_target)
-    if fuzz_target_data is None:
-        raise ValueError(
-            f'The requested fuzz target {requested_fuzz_target!r} is not defined in the {benchmark!r} benchmark.'
-        )
-    if not isinstance(fuzz_target_data, dict):
-        raise ValueError(f'Benchmark config fuzz_targets.{requested_fuzz_target} must be a mapping: {path}')
-    fuzz_target = requested_fuzz_target
-
-    _validate_benchmark_and_fuzz_target(benchmark, fuzz_target)
+    fuzz_target_data = fuzz_targets_data.get(fuzz_target)
+    if fuzz_target_data is None or not isinstance(fuzz_target_data, dict):
+        raise ValueError(f'{path}: fuzz_targets[{fuzz_target!r}] must be a mapping.')
 
     input_mode = str(fuzz_target_data.get('input_mode') or '')
     if input_mode not in INPUT_MODE_OPTIONS:
-        raise ValueError(f'Fuzz target config input_mode must be one of {INPUT_MODE_OPTIONS} but got {input_mode}.')
+        raise ValueError(f'{path}: fuzz_targets[{fuzz_target!r}].input_mode must be one of {INPUT_MODE_OPTIONS}; got {input_mode!r}.')
 
-    timeout_s = fuzz_target_data.get('timeout_s')
-    if timeout_s is None:
+    timeout_value = fuzz_target_data.get('timeout_s')
+    if timeout_value is None:
         LOG.debug(
             f'No fuzz target timeout was specified for {benchmark}:{fuzz_target}; '
             f'using {CampaignCase.target_timeout_s} as default.'
         )
-        timeout_s = CampaignCase.target_timeout_s
-    timeout_s = float(timeout_s)
-    if timeout_s <= 0:
-        raise ValueError(f'Fuzz target timeout must be greater than 0, but {benchmark}:{fuzz_target} has {timeout_s}.')
+        timeout_value = CampaignCase.target_timeout_s
+
+    try:
+        timeout_s = float(timeout_value)
+        if timeout_s <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        raise ValueError(
+            f'{path}: fuzz_targets[{fuzz_target!r}].timeout_s '
+            f'must be a positive number; got {timeout_value!r}.'
+        ) from None
 
     return {
         'benchmark': benchmark,
@@ -222,28 +228,24 @@ def _load_fuzz_target_configs(data: dict[str, Any], benchmark_dirs: dict[str, Pa
         benchmark, fuzz_target = benchmark.strip(), fuzz_target.strip()
         _validate_benchmark_and_fuzz_target(benchmark, fuzz_target)
 
-        try:
-            path = benchmark_dirs[benchmark] / 'benchmark.yaml'
-        except KeyError as exc:
-            raise ValueError(f'Benchmark {benchmark!r} is not configured; include it with --benchmarks.') from exc
-        try:
-            fuzz_target_config = _load_fuzz_target_config(path, fuzz_target)
+        if benchmark not in benchmark_dirs:
+            raise ValueError(f'Benchmark {benchmark!r} is not configured; include it with --benchmarks.')
 
-            fuzzer_overrides = fuzz_target_config.get('fuzzers') or {}
-            if fuzzer_overrides:
-                if not isinstance(fuzzer_overrides, dict):
-                    raise TypeError(f'Fuzz target fuzzer overrides must be a mapping: {path}')
+        path = benchmark_dirs[benchmark] / 'benchmark.yaml'
+        fuzz_target_config = _load_fuzz_target_config(path, fuzz_target)
+        fuzzer_overrides = fuzz_target_config.get('fuzzers') or {}
+        if fuzzer_overrides:
+            if not isinstance(fuzzer_overrides, dict):
+                raise TypeError(f'Fuzz target fuzzer overrides must be a mapping: {path}')
 
-                if not all(isinstance(override, dict) for override in fuzzer_overrides.values()):
-                    raise ValueError('Fuzzer overrides in benchmark configs must be mappings.')
+            if not all(isinstance(override, dict) for override in fuzzer_overrides.values()):
+                raise ValueError('Fuzzer overrides in benchmark configs must be mappings.')
 
-            fuzz_target_configs[target_key(fuzz_target_config['benchmark'], fuzz_target_config['fuzz_target'])] = {
-                'fuzz_target_config': fuzz_target_config,
-                'fuzzer_configs': fuzzer_overrides,
-            }
-        except Exception as exc:
-            LOG.error('Error loading benchmark config: %s: %s', path, exc)
-            raise exc
+        fuzz_target_configs[target_key(fuzz_target_config['benchmark'], fuzz_target_config['fuzz_target'])] = {
+            'fuzz_target_config': fuzz_target_config,
+            'fuzzer_configs': fuzzer_overrides,
+        }
+
     return fuzz_target_configs
 
 
@@ -298,9 +300,13 @@ def _fuzzer_allows_fuzz_target(fuzzer_configs: list[dict[str, Any]], fuzz_target
 
 def load_campaign_config(*, fuzzer_dirs: dict[str, Path], benchmark_dirs: dict[str, Path], text: str) -> CampaignConfig:
     """Load a campaign configuration from YAML text."""
-    data = yaml.safe_load(text) or {}
-    if not isinstance(data, dict):
-        raise TypeError('Top-level config must be a mapping')
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f'Invalid campaign YAML: {exc}') from exc
+
+    if not data or not isinstance(data, dict):
+        raise TypeError('Campaign config is empty or not a mapping.')
 
     fuzzer_configs = _load_fuzzer_configs(data, fuzzer_dirs)
     fuzz_target_configs = _load_fuzz_target_configs(data, benchmark_dirs)

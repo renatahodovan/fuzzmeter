@@ -93,7 +93,7 @@ def _execute_run(parser, args):
             benchmark_dirs=benchmark_dirs,
             text=config_src,
         )
-    except (OSError, UnicodeDecodeError, TypeError, ValueError, RuntimeError) as exc:
+    except (OSError, TypeError, ValueError) as exc:
         parser.error(str(exc))
 
     os.environ['FM_OUT_SRC'] = str(out_root)

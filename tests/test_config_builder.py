@@ -510,7 +510,7 @@ fuzz_targets:
             _write_fuzzer(root, 'plain', '')
             _write_multi_benchmark(root, 'jerryscript', {'jerry': {'input_mode': 'in_process'}})
 
-            with self.assertRaisesRegex(ValueError, "requested fuzz target 'missing'"):
+            with self.assertRaisesRegex(ValueError, r"fuzz_targets\['missing'\] must be a mapping"):
                 _load_campaign_config(
                     root,
                     '''
@@ -537,7 +537,7 @@ input_mode: in_process
                 encoding='utf-8',
             )
 
-            with self.assertRaisesRegex(ValueError, 'fuzz_targets mapping instead of fuzz_target'):
+            with self.assertRaisesRegex(ValueError, 'fuzz_targets must be a non-empty mapping'):
                 _load_campaign_config(
                     root,
                     '''
