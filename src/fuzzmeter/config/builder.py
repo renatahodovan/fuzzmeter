@@ -100,13 +100,19 @@ def _load_fuzz_target_config(path: Path, fuzz_target: str) -> dict[str, Any]:
             f'must be a positive number; got {timeout_value!r}.'
         ) from None
 
+    fuzzer_overrides = fuzz_target_data.get('fuzzers') or {}
+    if not isinstance(fuzzer_overrides, dict):
+        raise TypeError(f'Fuzz target fuzzer overrides must be a mapping: {path}')
+    if not all(isinstance(override, dict) for override in fuzzer_overrides.values()):
+        raise ValueError('Fuzzer overrides in benchmark configs must be mappings.')
+
     return {
         'benchmark': benchmark,
         'fuzz_target': fuzz_target,
         'input_mode': input_mode,
         'timeout_s': timeout_s,
         'config_path': str(path),
-        'fuzzers': fuzz_target_data.get('fuzzers'),
+        'fuzzers': fuzzer_overrides,
     }
 
 
@@ -233,37 +239,26 @@ def _load_fuzz_target_configs(data: dict[str, Any], benchmark_dirs: dict[str, Pa
 
         path = benchmark_dirs[benchmark] / 'benchmark.yaml'
         fuzz_target_config = _load_fuzz_target_config(path, fuzz_target)
-        fuzzer_overrides = fuzz_target_config.get('fuzzers') or {}
-        if fuzzer_overrides:
-            if not isinstance(fuzzer_overrides, dict):
-                raise TypeError(f'Fuzz target fuzzer overrides must be a mapping: {path}')
-
-            if not all(isinstance(override, dict) for override in fuzzer_overrides.values()):
-                raise ValueError('Fuzzer overrides in benchmark configs must be mappings.')
-
-        fuzz_target_configs[target_key(fuzz_target_config['benchmark'], fuzz_target_config['fuzz_target'])] = {
-            'fuzz_target_config': fuzz_target_config,
-            'fuzzer_configs': fuzzer_overrides,
-        }
+        fuzz_target_configs[target_key(fuzz_target_config['benchmark'], fuzz_target_config['fuzz_target'])] = fuzz_target_config
 
     return fuzz_target_configs
 
 
 def _build_campaign_case(
     *,
-    fuzzer_name: str,
-    fuzzer_configs: list[dict[str, Any]],
+    fuzzer_config_chain: list[dict[str, Any]],
     fuzz_target_config: dict[str, Any],
-    fuzz_target_fuzzer_configs: dict[str, dict[str, Any]],
 ) -> CampaignCase:
     build_config: dict[str, Any] = {}
     runtime_config: dict[str, Any] = {}
     replay_trials: tuple[Path, ...] = ()
-    fuzzer_chain: tuple[str, ...] = tuple(str(fuzzer_config['fuzzer_name']) for fuzzer_config in fuzzer_configs)
+    fuzzer_name = str(fuzzer_config_chain[0]['fuzzer_name'])
+    fuzzer_chain = tuple(str(fuzzer_config['fuzzer_name']) for fuzzer_config in fuzzer_config_chain)
+    fuzzer_overrides = fuzz_target_config['fuzzers']
 
-    for fuzzer_config in reversed(fuzzer_configs):
+    for fuzzer_config in reversed(fuzzer_config_chain):
         cur_fuzz_id = str(fuzzer_config['fuzzer_name'])
-        fuzz_target_override = fuzz_target_fuzzer_configs.get(cur_fuzz_id) or {}
+        fuzz_target_override = fuzzer_overrides.get(cur_fuzz_id) or {}
         cur_fuzz_build = _merge(fuzzer_config.get('build') or {}, fuzz_target_override.get('build') or {})
         curr_fuzz_runtime = _merge(fuzzer_config.get('runtime') or {}, fuzz_target_override.get('runtime') or {})
         build_config = _merge(build_config, cur_fuzz_build)
@@ -283,10 +278,10 @@ def _build_campaign_case(
     )
 
 
-def _fuzzer_allows_fuzz_target(fuzzer_configs: list[dict[str, Any]], fuzz_target_config: dict) -> bool:
+def _fuzzer_allows_fuzz_target(fuzzer_config_chain: list[dict[str, Any]], fuzz_target_config: dict) -> bool:
     allowed_sets = [
         fuzzer_config['allowed_fuzz_targets']
-        for fuzzer_config in fuzzer_configs
+        for fuzzer_config in fuzzer_config_chain
         if fuzzer_config.get('allowed_fuzz_targets')
     ]
     if not allowed_sets:
@@ -308,18 +303,16 @@ def load_campaign_config(*, fuzzer_dirs: dict[str, Path], benchmark_dirs: dict[s
     if not data or not isinstance(data, dict):
         raise TypeError('Campaign config is empty or not a mapping.')
 
-    fuzzer_configs = _load_fuzzer_configs(data, fuzzer_dirs)
+    fuzzer_config_chains = _load_fuzzer_configs(data, fuzzer_dirs)
     fuzz_target_configs = _load_fuzz_target_configs(data, benchmark_dirs)
     cases = [
         _build_campaign_case(
-            fuzzer_name=fuzzer_name,
-            fuzzer_configs=fuzzer_config,
-            fuzz_target_config=fuzz_target_data['fuzz_target_config'],
-            fuzz_target_fuzzer_configs=fuzz_target_data['fuzzer_configs'],
+            fuzzer_config_chain=fuzzer_config_chain,
+            fuzz_target_config=fuzz_target_config,
         )
-        for fuzzer_name, fuzzer_config in fuzzer_configs.items()
-        for fuzz_target_data in fuzz_target_configs.values()
-        if _fuzzer_allows_fuzz_target(fuzzer_config, fuzz_target_data['fuzz_target_config'])
+        for fuzzer_config_chain in fuzzer_config_chains.values()
+        for fuzz_target_config in fuzz_target_configs.values()
+        if _fuzzer_allows_fuzz_target(fuzzer_config_chain, fuzz_target_config)
     ]
 
     return CampaignConfig(
