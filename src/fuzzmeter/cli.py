@@ -44,10 +44,10 @@ def _resolve_resource_dirs(
     return dirs
 
 
-def _docker_available() -> bool:
+def _docker_command_available(*args: str) -> bool:
     try:
         result = subprocess.run(
-            ['docker', 'version'],
+            ['docker', *args],
             check=False,
             capture_output=True,
             text=True,
@@ -56,30 +56,6 @@ def _docker_available() -> bool:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
     return result.returncode == 0
-
-
-def _docker_buildx_available() -> bool:
-    try:
-        result = subprocess.run(
-            ['docker', 'buildx', 'version'],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-    return result.returncode == 0
-
-
-def _validate_docker() -> bool:
-    if not _docker_available():
-        logger.error('Docker is not available. Start Docker and retry.')
-        return False
-    if not _docker_buildx_available():
-        logger.error('Docker Buildx is not available.')
-        return False
-    return True
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -135,6 +111,11 @@ def main(argv: list[str] | None = None) -> int:
         from .reporting import write_report
         from .run.runner import run_experiment
 
+        if not _docker_command_available('version') or not _docker_command_available('buildx', 'version'):
+            logger.error('Docker or Docker Buildx is not available.'
+                         'Ensure that they are installed, start Docker and retry.')
+            return 1
+
         config_path = args.config.expanduser().resolve()
         if not config_path.is_file():
             ap.error(f'Config file is not a file: {config_path}')
@@ -163,9 +144,6 @@ def main(argv: list[str] | None = None) -> int:
             )
         except (OSError, UnicodeDecodeError, TypeError, ValueError, RuntimeError) as exc:
             ap.error(str(exc))
-
-        if not _validate_docker():
-            return 1
 
         os.environ['FM_OUT_SRC'] = str(fm_out)
         try:
