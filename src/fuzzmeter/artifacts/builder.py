@@ -18,8 +18,8 @@ from importlib import resources
 from pathlib import Path
 
 from ..composite.collect import collect_records, save_records
-from ..config import CampaignConfig
-from ..docker import DockerRuntime, fuzzer_source_dirs, generate_run_bake_hcl
+from ..config import CampaignConfig, fuzzer_source_dirs
+from ..docker import DockerRuntime, generate_run_bake_hcl
 from ..docker.bake import INSTRUMENTATION_PROFILES, fuzzer_local_repo_paths
 from ..paths import docker_resources, entrypoint_resources, instrumentation_resources
 from .extract import extract_fuzz_binaries
@@ -49,6 +49,7 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
         bake_hcl = generate_run_bake_hcl(
             campaign_cases=campaign_config.cases,
             fuzzer_dirs=campaign_config.fuzzer_dirs,
+            fuzzer_configs=campaign_config.fuzzer_configs,
             benchmark_dirs=campaign_config.benchmark_dirs,
             memory_limit=campaign_config.settings.memory,
             fuzzer_build_sources=fuzzer_contexts.build_by_fuzzer,
@@ -63,23 +64,16 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
         info_enabled = logger.isEnabledFor(logging.INFO)
         progress = 'auto' if info_enabled else 'plain'
         fuzzer_names = sorted({case.fuzzer_name for case in campaign_config.cases})
-        selected_fuzzer_dirs = sorted(
-            {
-                campaign_config.fuzzer_dirs[fuzzer]
-                for fuzzer_name in fuzzer_names
-                for fuzzer in fuzzer_source_dirs(campaign_config.fuzzer_dirs, fuzzer_name)
-            }
-        )
         selected_benchmark_dirs = sorted(
             {campaign_config.benchmark_dirs[case.benchmark] for case in campaign_config.cases}
         )
-        local_repo_paths = fuzzer_local_repo_paths(campaign_config.fuzzer_dirs, fuzzer_names)
+        local_repo_paths = fuzzer_local_repo_paths(campaign_config.fuzzer_configs, fuzzer_names)
         allow_args = [
             f'--allow=fs.read={Path(docker_resources_path).resolve()}',
             f'--allow=fs.read={Path(entrypoint_resources_path).resolve()}',
             f'--allow=fs.read={fuzzmeter_resources_path.resolve()}',
             f'--allow=fs.read={(Path(run_dir) / "fuzzer_resources").resolve()}',
-            *[f'--allow=fs.read={path.resolve()}' for path in selected_fuzzer_dirs],
+            *[f'--allow=fs.read={path.resolve()}' for path in campaign_config.fuzzer_dirs.values()],
             *[f'--allow=fs.read={path}' for path in local_repo_paths.values()],
             *[f'--allow=fs.read={path.resolve()}' for path in selected_benchmark_dirs],
         ]
@@ -116,7 +110,7 @@ def _prepare_fuzzer_contexts(
     build_by_fuzzer: dict[str, Path] = {}
     run_by_fuzzer: dict[str, Path] = {}
     for fuzzer_name in fuzzer_names:
-        source_dirs = fuzzer_source_dirs(campaign_config.fuzzer_dirs, fuzzer_name)
+        source_dirs = fuzzer_source_dirs(campaign_config.fuzzer_configs, fuzzer_name)
         build_by_fuzzer[fuzzer_name] = _copy_fuzzer_context(
             fuzzer_dirs=campaign_config.fuzzer_dirs,
             root=build_root,

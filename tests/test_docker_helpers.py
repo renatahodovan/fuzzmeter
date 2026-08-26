@@ -18,9 +18,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import call, patch
 
-from fuzzmeter.config import CampaignCase
+from fuzzmeter.config import CampaignCase, fuzzer_source_dirs
 from fuzzmeter.docker import DockerClient, DockerTimeoutError
-from fuzzmeter.docker.bake import _entry_args, fuzzer_source_dirs, generate_run_bake_hcl
+from fuzzmeter.docker.bake import _entry_args, generate_run_bake_hcl
 from fuzzmeter.docker.client import DEFAULT_DOCKER_TIMEOUT_S
 from fuzzmeter.docker.runtime import DockerRuntime
 from tests.support.bake import target_block
@@ -157,6 +157,7 @@ class DockerHelperTest(unittest.TestCase):
                     )
                 ],
                 fuzzer_dirs=_resource_dirs(fuzzers_root),
+                fuzzer_configs=_fuzzer_configs('libfuzzer'),
                 benchmark_dirs=_resource_dirs(benchmarks_root),
                 fuzzer_build_sources=build_sources,
                 fuzzer_run_sources=run_sources,
@@ -216,6 +217,7 @@ class DockerHelperTest(unittest.TestCase):
                     )
                 ],
                 fuzzer_dirs=_resource_dirs(fuzzers_root),
+                fuzzer_configs=_fuzzer_configs('libfuzzer'),
                 benchmark_dirs=_resource_dirs(benchmarks_root),
                 fuzzer_build_sources=build_sources,
                 fuzzer_run_sources=run_sources,
@@ -300,6 +302,7 @@ class DockerHelperTest(unittest.TestCase):
                     ),
                 ],
                 fuzzer_dirs=_resource_dirs(fuzzers_root),
+                fuzzer_configs=_fuzzer_configs('afl', 'libfuzzer'),
                 benchmark_dirs=_resource_dirs(benchmarks_root),
                 fuzzer_build_sources=build_sources,
                 fuzzer_run_sources=run_sources,
@@ -315,25 +318,16 @@ class DockerHelperTest(unittest.TestCase):
         self.assertNotIn(str(build_sources['afl'].resolve()), libfuzzer_block)
         self.assertNotIn(str(run_sources['afl'].resolve()), libfuzzer_block)
 
-    def test_fuzzer_source_dependencies_merge_build_and_run_yaml(self) -> None:
-        """Verify build and run source dependencies are both available to campaign builds."""
-        with TemporaryDirectory() as root:
-            fuzzers_root = Path(root) / 'fuzzers'
-            for fuzzer in ('grammarinator', 'libfuzzer', 'blackbox'):
-                (fuzzers_root / fuzzer / 'build').mkdir(parents=True)
-                (fuzzers_root / fuzzer / 'run').mkdir(parents=True)
-            (fuzzers_root / 'grammarinator' / 'build' / 'build.yaml').write_text(
-                'source_dependencies:\n'
-                '  - libfuzzer\n',
-                encoding='utf-8',
+    def test_fuzzer_source_dependencies_use_resolved_configs(self) -> None:
+        """Verify source dependencies are resolved from loaded fuzzer configs."""
+        source_dirs = fuzzer_source_dirs(
+            _fuzzer_configs(
+                'grammarinator',
+                source_dependencies=('libfuzzer', 'blackbox'),
             )
-            (fuzzers_root / 'grammarinator' / 'run' / 'run.yaml').write_text(
-                'source_dependencies:\n'
-                '  - blackbox\n',
-                encoding='utf-8',
-            )
-
-            source_dirs = fuzzer_source_dirs(_resource_dirs(fuzzers_root), 'grammarinator')
+            | _fuzzer_configs('libfuzzer', 'blackbox'),
+            'grammarinator',
+        )
 
         self.assertEqual(['grammarinator', 'blackbox', 'libfuzzer'], source_dirs)
 
@@ -391,6 +385,7 @@ class DockerHelperTest(unittest.TestCase):
                         )
                     ],
                     fuzzer_dirs=_resource_dirs(fuzzers_root),
+                    fuzzer_configs=_fuzzer_configs('local', local_repo_env='FM_TEST_LOCAL_REPO'),
                     benchmark_dirs=_resource_dirs(benchmarks_root),
                     fuzzer_build_sources=build_sources,
                     fuzzer_run_sources=run_sources,
@@ -460,6 +455,7 @@ class DockerHelperTest(unittest.TestCase):
                         )
                     ],
                     fuzzer_dirs=_resource_dirs(fuzzers_root),
+                    fuzzer_configs=_fuzzer_configs('local', local_repo_env='FM_TEST_LOCAL_REPO'),
                     benchmark_dirs=_resource_dirs(benchmarks_root),
                     fuzzer_build_sources=build_sources,
                     fuzzer_run_sources=run_sources,
@@ -529,6 +525,21 @@ class DockerHelperTest(unittest.TestCase):
 
 def _resource_dirs(root: Path) -> dict[str, Path]:
     return {path.name: path for path in root.iterdir() if path.is_dir()}
+
+
+def _fuzzer_configs(
+    *names: str,
+    source_dependencies: tuple[str, ...] = (),
+    local_repo_env: str | None = None,
+) -> dict[str, dict[str, object]]:
+    return {
+        name: {
+            'parent': None,
+            'source_dependencies': source_dependencies,
+            'local_repo_env': local_repo_env,
+        }
+        for name in names
+    }
 
 
 if __name__ == '__main__':

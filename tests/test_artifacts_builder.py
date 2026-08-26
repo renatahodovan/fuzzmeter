@@ -46,6 +46,7 @@ class ArtifactBuilderTest(unittest.TestCase):
                             ),
                         ],
                         fuzzer_dirs={'plain': repo_root / 'fuzzers' / 'plain'},
+                        fuzzer_configs=_fuzzer_configs('plain'),
                         benchmark_dirs={'bench': repo_root / 'benchmarks' / 'bench'},
                     ),
                     run_dir=run_dir,
@@ -109,6 +110,7 @@ class ArtifactBuilderTest(unittest.TestCase):
                             'other': repo_root / 'fuzzers' / 'other',
                             'plain': repo_root / 'fuzzers' / 'plain',
                         },
+                        fuzzer_configs=_fuzzer_configs('other', 'plain'),
                         benchmark_dirs={'bench': repo_root / 'benchmarks' / 'bench'},
                     ),
                     run_dir=run_dir,
@@ -151,12 +153,24 @@ class ArtifactBuilderTest(unittest.TestCase):
                             ),
                         ],
                         fuzzer_dirs={'plain': repo_root / 'fuzzers' / 'plain'},
+                        fuzzer_configs=_fuzzer_configs('plain', local_repo_env='FM_TEST_LOCAL_REPO'),
                         benchmark_dirs={'bench': repo_root / 'benchmarks' / 'bench'},
                     ),
                     run_dir=run_dir,
                 )
 
             self.assertIn(f'--allow=fs.read={local_repo.resolve()}', run.call_args.args[0])
+
+
+def _fuzzer_configs(*names: str, local_repo_env: str | None = None) -> dict[str, dict[str, object]]:
+    return {
+        name: {
+            'parent': None,
+            'source_dependencies': (),
+            'local_repo_env': local_repo_env,
+        }
+        for name in names
+    }
 
 
 def _write_repo_sources(

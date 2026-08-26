@@ -266,6 +266,33 @@ fuzz_targets:
             [(case.fuzzer_name, case.benchmark, case.fuzz_target) for case in config.cases],
         )
 
+    def test_campaign_config_keeps_only_required_fuzzer_dirs(self) -> None:
+        """Verify that campaign configuration excludes unused fuzzer directories."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            _write_fuzzer(root, 'base', 'source_dependencies:\n  - support\n')
+            _write_fuzzer(root, 'selected', 'parent: base\n')
+            _write_fuzzer(root, 'support', '')
+            _write_fuzzer(root, 'blackbox', '')
+            _write_fuzzer(root, 'unused', '')
+            run_dir = root / 'fuzzers' / 'base' / 'run'
+            run_dir.mkdir()
+            run_dir.joinpath('run.yaml').write_text('source_dependencies:\n  - blackbox\n', encoding='utf-8')
+            _write_benchmark(root, 'jerryscript', 'jerry')
+
+            config = _load_campaign_config(
+                root,
+                '''
+fuzzers:
+  - selected
+fuzz_targets:
+  - jerryscript:jerry
+''',
+            )
+
+        self.assertEqual({'base', 'blackbox', 'selected', 'support'}, set(config.fuzzer_dirs))
+        self.assertEqual(('support', 'blackbox'), config.fuzzer_configs['base']['source_dependencies'])
+
     def test_allowed_benchmarks_are_inherited_from_parent_fuzzer(self) -> None:
         """Verify that derived fuzzer entries keep parent benchmark allowlists."""
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -58,4 +58,5 @@ class CampaignConfig:
     settings: CampaignSettings
     cases: list[CampaignCase]
     fuzzer_dirs: dict[str, Path] = field(default_factory=dict)
+    fuzzer_configs: dict[str, dict[str, Any]] = field(default_factory=dict)
     benchmark_dirs: dict[str, Path] = field(default_factory=dict)
