@@ -29,42 +29,6 @@ class ConfigBuilderTest(unittest.TestCase):
         self.assertIn('fuzzer_name', field_names)
         self.assertIn('fuzzer_chain', field_names)
 
-    def test_source_info_setting_loads(self) -> None:
-        """Verify that run.source_info enables source metadata hooks."""
-        repo_root = Path(__file__).resolve().parents[1]
-
-        config = _load_campaign_config(
-            repo_root,
-            '''
-run:
-  source_info: true
-fuzzers:
-  - libfuzzer
-fuzz_targets:
-  - zlib:zlib_uncompress_fuzzer
-''',
-        )
-
-        self.assertTrue(config.settings.source_info)
-
-    def test_legacy_identity_setting_enables_source_info(self) -> None:
-        """Verify the old run.identity spelling maps to source metadata hooks."""
-        repo_root = Path(__file__).resolve().parents[1]
-
-        config = _load_campaign_config(
-            repo_root,
-            '''
-run:
-  identity: true
-fuzzers:
-  - libfuzzer
-fuzz_targets:
-  - zlib:zlib_uncompress_fuzzer
-''',
-        )
-
-        self.assertTrue(config.settings.source_info)
-
     def test_repository_curl_fuzz_target_config_loads(self) -> None:
         """Verify that the repository curl benchmark config loads as-is."""
         repo_root = Path(__file__).resolve().parents[1]

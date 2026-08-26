@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import unittest
 
+from pathlib import Path
 from unittest.mock import patch
 
 from fuzzmeter.composite import canonical_digest
@@ -36,13 +37,13 @@ class CompositeCollectorTest(unittest.TestCase):
         )
 
     def test_metadata_without_hooks_has_stable_digests_and_missing_source(self) -> None:
-        '''Disabled source hooks are represented explicitly and digestable.'''
+        '''Missing source hooks are represented explicitly and digestable.'''
+        case = _case()
         metadata = metadata_for_case(
-            case=_case(),
+            case=case,
             environment={'host': {'system': 'Darwin'}},
-            fuzzer_dirs={},
-            benchmark_dirs={},
-            source_info_enabled=False,
+            fuzzer_dirs={case.fuzzer_name: Path('/missing/fuzzer')},
+            benchmark_dirs={case.benchmark: Path('/missing/benchmark')},
         )
 
         self.assertIsNotNone(metadata.environment_digest)

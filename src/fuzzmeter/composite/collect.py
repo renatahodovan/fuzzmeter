@@ -90,14 +90,8 @@ def collect_source(
     case: CampaignCase,
     fuzzer_dirs: dict[str, Path],
     benchmark_dirs: dict[str, Path],
-    enabled: bool,
 ) -> dict[str, object]:
     '''Collect user-defined benchmark and fuzzer source metadata hook results.'''
-    if not enabled:
-        return {
-            'benchmark_source': {'status': 'missing', 'data': None, 'error': None},
-            'fuzzer_version': {'status': 'missing', 'data': None, 'error': None},
-        }
     benchmark_hook = benchmark_dirs[case.benchmark] / 'source_info.py'
     fuzzer_hook = fuzzer_dirs[case.fuzzer_name] / 'source_info.py'
     return {
@@ -120,11 +114,10 @@ def metadata_for_case(
     environment: dict[str, object],
     fuzzer_dirs: dict[str, Path],
     benchmark_dirs: dict[str, Path],
-    source_info_enabled: bool,
 ) -> MetadataTriplet:
     '''Build comparable metadata for one campaign case.'''
     config = collect_config(case)
-    source = collect_source(case, fuzzer_dirs, benchmark_dirs, source_info_enabled)
+    source = collect_source(case, fuzzer_dirs, benchmark_dirs)
     return MetadataTriplet(
         environment=environment,
         config=config,
@@ -148,7 +141,6 @@ def _record_for_case(
         environment=environment,
         fuzzer_dirs=campaign_config.fuzzer_dirs,
         benchmark_dirs=campaign_config.benchmark_dirs,
-        source_info_enabled=campaign_config.settings.source_info,
     )
     return db_metadata.MetadataRecord(
         run_id=run_id,
