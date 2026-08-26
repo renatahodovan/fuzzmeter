@@ -49,7 +49,7 @@ def _validate_benchmark_and_fuzz_target(benchmark: str, fuzz_target: str) -> Non
         raise ValueError(f'Fuzz target name must match [a-zA-Z0-9_.-]+: {fuzz_target!r}')
 
 
-def _load_yaml(path: Path) -> dict[str, Any]:
+def load_yaml(path: Path) -> dict[str, Any]:
     path = path.expanduser().resolve()
     if not path.is_file():
         raise FileNotFoundError(f'YAML file is not a file: {path}')
@@ -65,7 +65,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def _load_fuzz_target_config(path: Path, fuzz_target: str) -> dict[str, Any]:
-    data = _load_yaml(path)
+    data = load_yaml(path)
 
     benchmark = data.get('benchmark')
     if not benchmark or not isinstance(benchmark, str):
@@ -222,7 +222,7 @@ def _load_fuzzer_configs(
         )
         for path in paths:
             if path.is_file():
-                fuzzer_data = _merge(fuzzer_data, _load_yaml(path))
+                fuzzer_data = _merge(fuzzer_data, load_yaml(path))
         fuzzer_config = _load_fuzzer_spec(fuzzer_name, fuzzer_data)
         fuzzer_configs[fuzzer_name] = fuzzer_config
 

@@ -14,6 +14,8 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from ..config import load_yaml
+
 
 def load_fuzzer_plugin_candidates(run_dir: Path, fuzzer_dirs: Mapping[str, Path]) -> tuple[dict[str, list[str]], dict[str, str]]:
     '''Load configured reporting plugin candidates for measured fuzzers.'''
@@ -90,17 +92,11 @@ def _load_fuzzer_yaml(fuzzer_dirs: Mapping[str, Path], fuzzer: str) -> dict[str,
         if not path.is_file():
             continue
         try:
-            lines = path.read_text(encoding='utf-8').splitlines()
-        except (OSError, UnicodeDecodeError):
+            data = load_yaml(path)
+        except (OSError, TypeError, ValueError):
             continue
-        for line in lines:
-            stripped = line.strip()
-            if not stripped or stripped.startswith('#') or ':' not in stripped:
-                continue
-            if line[:1].isspace():
-                continue
-            key, value = stripped.split(':', 1)
-            key = key.strip()
-            if key in {'parent', 'reporting_parent'}:
-                out[key] = value.strip()
+        for key in ('parent', 'reporting_parent'):
+            value = data.get(key)
+            if isinstance(value, str):
+                out[key] = value
     return out
