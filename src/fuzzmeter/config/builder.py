@@ -464,5 +464,5 @@ def load_campaign_config(*, fuzzer_dirs: dict[str, Path], benchmark_dirs: dict[s
         cases=cases,
         fuzzer_dirs={name: path for name, path in fuzzer_dirs.items() if name in required_fuzzer_names},
         fuzzer_configs={name: fuzzer_configs[name] for name in fuzzer_dirs if name in required_fuzzer_names},
-        benchmark_dirs=benchmark_dirs,
+        benchmark_dirs={name: path for name, path in benchmark_dirs.items() if any(case.benchmark == name for case in cases)},
     )

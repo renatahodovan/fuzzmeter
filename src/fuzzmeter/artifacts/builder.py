@@ -64,9 +64,6 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
         info_enabled = logger.isEnabledFor(logging.INFO)
         progress = 'auto' if info_enabled else 'plain'
         fuzzer_names = sorted({case.fuzzer_name for case in campaign_config.cases})
-        selected_benchmark_dirs = sorted(
-            {campaign_config.benchmark_dirs[case.benchmark] for case in campaign_config.cases}
-        )
         local_repo_paths = fuzzer_local_repo_paths(campaign_config.fuzzer_configs, fuzzer_names)
         allow_args = [
             f'--allow=fs.read={Path(docker_resources_path).resolve()}',
@@ -75,7 +72,7 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
             f'--allow=fs.read={(Path(run_dir) / "fuzzer_resources").resolve()}',
             *[f'--allow=fs.read={path.resolve()}' for path in campaign_config.fuzzer_dirs.values()],
             *[f'--allow=fs.read={path}' for path in local_repo_paths.values()],
-            *[f'--allow=fs.read={path.resolve()}' for path in selected_benchmark_dirs],
+            *[f'--allow=fs.read={path.resolve()}' for path in campaign_config.benchmark_dirs.values()],
         ]
 
         subprocess.run(

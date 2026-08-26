@@ -354,6 +354,7 @@ fuzz_targets:
             [('limited_child', 'limited_base', 'jerryscript', 'jerry')],
             [(case.fuzzer_id, case.fuzzer_name, case.benchmark, case.fuzz_target) for case in config.cases],
         )
+        self.assertEqual({'jerryscript'}, set(config.benchmark_dirs))
 
     def test_fuzzer_with_parent_keeps_its_own_implementation(self) -> None:
         """Verify a selected fuzzer remains the implementation despite having a parent."""
