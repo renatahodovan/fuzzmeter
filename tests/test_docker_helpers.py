@@ -146,10 +146,9 @@ class DockerHelperTest(unittest.TestCase):
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             bake_hcl = generate_run_bake_hcl(
-                fuzzer_dirs=_resource_dirs(fuzzers_root),
-                benchmark_dirs=_resource_dirs(benchmarks_root),
-                entries=[
+                campaign_cases=[
                     CampaignCase(
+                        fuzzer_id='libfuzzer',
                         fuzzer_name='libfuzzer',
                         fuzzer_chain=('libfuzzer',),
                         benchmark='bench',
@@ -157,6 +156,8 @@ class DockerHelperTest(unittest.TestCase):
                         input_mode='file',
                     )
                 ],
+                fuzzer_dirs=_resource_dirs(fuzzers_root),
+                benchmark_dirs=_resource_dirs(benchmarks_root),
                 fuzzer_build_sources=build_sources,
                 fuzzer_run_sources=run_sources,
                 instrumentation_build_sources=instrumentation_sources,
@@ -204,10 +205,9 @@ class DockerHelperTest(unittest.TestCase):
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             bake_hcl = generate_run_bake_hcl(
-                fuzzer_dirs=_resource_dirs(fuzzers_root),
-                benchmark_dirs=_resource_dirs(benchmarks_root),
-                entries=[
+                campaign_cases=[
                     CampaignCase(
+                        fuzzer_id='libfuzzer',
                         fuzzer_name='libfuzzer',
                         fuzzer_chain=('libfuzzer',),
                         benchmark='bench',
@@ -215,6 +215,8 @@ class DockerHelperTest(unittest.TestCase):
                         input_mode='file',
                     )
                 ],
+                fuzzer_dirs=_resource_dirs(fuzzers_root),
+                benchmark_dirs=_resource_dirs(benchmarks_root),
                 fuzzer_build_sources=build_sources,
                 fuzzer_run_sources=run_sources,
                 instrumentation_build_sources=instrumentation_sources,
@@ -279,10 +281,9 @@ class DockerHelperTest(unittest.TestCase):
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             bake_hcl = generate_run_bake_hcl(
-                fuzzer_dirs=_resource_dirs(fuzzers_root),
-                benchmark_dirs=_resource_dirs(benchmarks_root),
-                entries=[
+                campaign_cases=[
                     CampaignCase(
+                        fuzzer_id='afl',
                         fuzzer_name='afl',
                         fuzzer_chain=('afl',),
                         benchmark='bench',
@@ -290,6 +291,7 @@ class DockerHelperTest(unittest.TestCase):
                         input_mode='file',
                     ),
                     CampaignCase(
+                        fuzzer_id='libfuzzer',
                         fuzzer_name='libfuzzer',
                         fuzzer_chain=('libfuzzer',),
                         benchmark='bench',
@@ -297,6 +299,8 @@ class DockerHelperTest(unittest.TestCase):
                         input_mode='file',
                     ),
                 ],
+                fuzzer_dirs=_resource_dirs(fuzzers_root),
+                benchmark_dirs=_resource_dirs(benchmarks_root),
                 fuzzer_build_sources=build_sources,
                 fuzzer_run_sources=run_sources,
                 instrumentation_build_sources=instrumentation_sources,
@@ -376,10 +380,9 @@ class DockerHelperTest(unittest.TestCase):
 
             with patch.dict(os.environ, {'FM_TEST_LOCAL_REPO': str(local_repo)}, clear=True):
                 bake_hcl = generate_run_bake_hcl(
-                    fuzzer_dirs=_resource_dirs(fuzzers_root),
-                    benchmark_dirs=_resource_dirs(benchmarks_root),
-                    entries=[
+                    campaign_cases=[
                         CampaignCase(
+                            fuzzer_id='local',
                             fuzzer_name='local',
                             fuzzer_chain=('local',),
                             benchmark='bench',
@@ -387,6 +390,8 @@ class DockerHelperTest(unittest.TestCase):
                             input_mode='file',
                         )
                     ],
+                    fuzzer_dirs=_resource_dirs(fuzzers_root),
+                    benchmark_dirs=_resource_dirs(benchmarks_root),
                     fuzzer_build_sources=build_sources,
                     fuzzer_run_sources=run_sources,
                     instrumentation_build_sources=instrumentation_sources,
@@ -444,10 +449,9 @@ class DockerHelperTest(unittest.TestCase):
 
             with patch.dict(os.environ, {}, clear=True):
                 bake_hcl = generate_run_bake_hcl(
-                    fuzzer_dirs=_resource_dirs(fuzzers_root),
-                    benchmark_dirs=_resource_dirs(benchmarks_root),
-                    entries=[
+                    campaign_cases=[
                         CampaignCase(
+                            fuzzer_id='local',
                             fuzzer_name='local',
                             fuzzer_chain=('local',),
                             benchmark='bench',
@@ -455,6 +459,8 @@ class DockerHelperTest(unittest.TestCase):
                             input_mode='file',
                         )
                     ],
+                    fuzzer_dirs=_resource_dirs(fuzzers_root),
+                    benchmark_dirs=_resource_dirs(benchmarks_root),
                     fuzzer_build_sources=build_sources,
                     fuzzer_run_sources=run_sources,
                     instrumentation_build_sources=instrumentation_sources,

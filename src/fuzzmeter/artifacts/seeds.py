@@ -14,7 +14,7 @@ import os
 
 from pathlib import Path
 
-from ..config import CampaignConfig, implementation_fuzzer, target_key
+from ..config import CampaignConfig, target_key
 from ..docker import DockerRuntime
 from ..fuzzers import FuzzerLoader
 from ..repro.coverage_baseline import SeedBaselineJob, measure_seed_baseline
@@ -35,26 +35,26 @@ def prepare_seed_corpora(
     seeds_out.mkdir(parents=True, exist_ok=True)
 
     LOG.info('Preparing shared seed corpora...')
-    for entry in campaign_config.cases:
-        target = target_key(entry.benchmark, entry.fuzz_target)
+    for case in campaign_config.cases:
+        target = target_key(case.benchmark, case.fuzz_target)
         runner_image = TrialImages(
-            fuzzer_name=entry.fuzzer_name,
+            fuzzer_name=case.fuzzer_id,
             target_key=target,
         ).runner
         extracted = extract_seed_corpus_from_image(
             image=runner_image,
-            fuzzer=entry.fuzzer_name,
-            benchmark=entry.benchmark,
-            fuzz_target=entry.fuzz_target,
+            fuzzer=case.fuzzer_id,
+            benchmark=case.benchmark,
+            fuzz_target=case.fuzz_target,
             out_dir=seeds_out,
             docker_runtime=docker_runtime,
         )
         if extracted is None:
             LOG.info(
                 'Starting without seed corpus for %s/%s__%s',
-                entry.fuzzer_name,
-                entry.benchmark,
-                entry.fuzz_target,
+                case.fuzzer_id,
+                case.benchmark,
+                case.fuzz_target,
             )
 
 
@@ -97,27 +97,25 @@ def _collect_seed_baseline_jobs(
     fuzzer_loader: FuzzerLoader,
 ) -> list[SeedBaselineJob]:
     jobs: list[SeedBaselineJob] = []
-    for entry in campaign_config.cases:
-        seed_dir_name = f'{entry.fuzzer_name}__{entry.benchmark}__{entry.fuzz_target}'
+    for case in campaign_config.cases:
+        seed_dir_name = f'{case.fuzzer_id}__{case.benchmark}__{case.fuzz_target}'
         seed_root = Path(run_dir) / 'seed_corpora' / seed_dir_name / 'corpus'
         if not seed_root.exists() or not any(seed_root.iterdir()):
             continue
         images = TrialImages(
-            fuzzer_name=entry.fuzzer_name,
-            target_key=target_key(entry.benchmark, entry.fuzz_target),
+            fuzzer_name=case.fuzzer_id,
+            target_key=target_key(case.benchmark, case.fuzz_target),
         )
         jobs.append(
             SeedBaselineJob(
-                fuzzer=entry.fuzzer_name,
-                benchmark=entry.benchmark,
-                fuzz_target=entry.fuzz_target,
-                input_mode=entry.input_mode,
-                timeout_s=entry.target_timeout_s,
+                fuzzer=case.fuzzer_id,
+                benchmark=case.benchmark,
+                fuzz_target=case.fuzz_target,
+                input_mode=case.input_mode,
+                timeout_s=case.target_timeout_s,
                 runner_image=images.runner,
                 coverage_image=images.coverage,
-                snapshot_preprocess_script=fuzzer_loader.load(
-                    implementation_fuzzer(entry.fuzzer_chain)
-                ).snapshot_preprocess_script(),
+                snapshot_preprocess_script=fuzzer_loader.load(case.fuzzer_name).snapshot_preprocess_script(),
                 seed_root=seed_root,
             )
         )

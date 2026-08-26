@@ -21,6 +21,7 @@ from fuzzmeter.composite.source_hook import redact_source_info, run_source_hook,
 
 @dataclass(frozen=True)
 class _Case:
+    fuzzer_id: str = 'libfuzzer'
     fuzzer_name: str = 'libfuzzer'
     fuzzer_chain: tuple[str, ...] = ('libfuzzer',)
     benchmark: str = 'zlib'
@@ -61,6 +62,8 @@ class CompositeSourceHookTest(unittest.TestCase):
         '''Hook context exposes safe campaign case metadata.'''
         ctx = source_hook_context(_Case())
 
+        self.assertEqual('libfuzzer', ctx['fuzzer_id'])
+        self.assertEqual('libfuzzer', ctx['fuzzer_name'])
         self.assertEqual('zlib', ctx['benchmark'])
         self.assertEqual('<redacted>', ctx['build_config']['token'])
         self.assertEqual('ok', ctx['build_config']['safe'])

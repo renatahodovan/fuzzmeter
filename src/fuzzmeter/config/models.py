@@ -21,17 +21,11 @@ def target_key(benchmark: str, fuzz_target: str) -> str:
     return f'{benchmark}-{fuzz_target}'
 
 
-def implementation_fuzzer(fuzzer_chain: tuple[str, ...]) -> str:
-    '''Return the fuzzer implementation that owns build/run adapters.'''
-    if not fuzzer_chain:
-        raise ValueError('Fuzzer chain must not be empty.')
-    return fuzzer_chain[1] if len(fuzzer_chain) > 1 else fuzzer_chain[0]
-
-
 @dataclass(frozen=True)
 class CampaignCase:
     '''Describe one fuzzer/fuzz-target combination in a campaign.'''
 
+    fuzzer_id: str
     fuzzer_name: str
     fuzzer_chain: tuple[str, ...]
     benchmark: str

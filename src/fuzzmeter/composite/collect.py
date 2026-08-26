@@ -18,7 +18,7 @@ import time
 
 from pathlib import Path
 
-from ..config import CampaignCase, CampaignConfig, implementation_fuzzer
+from ..config import CampaignCase, CampaignConfig
 from ..db import metadata as db_metadata
 from ..db.base import open_db
 from .canonical import canonical_digest
@@ -99,7 +99,7 @@ def collect_source(
             'fuzzer_version': {'status': 'missing', 'data': None, 'error': None},
         }
     benchmark_hook = benchmark_dirs[case.benchmark] / 'source_info.py'
-    fuzzer_hook = fuzzer_dirs[implementation_fuzzer(case.fuzzer_chain)] / 'source_info.py'
+    fuzzer_hook = fuzzer_dirs[case.fuzzer_name] / 'source_info.py'
     return {
         'benchmark_source': run_source_hook(
             benchmark_hook,
@@ -152,7 +152,7 @@ def _record_for_case(
     )
     return db_metadata.MetadataRecord(
         run_id=run_id,
-        fuzzer=case.fuzzer_name,
+        fuzzer=case.fuzzer_id,
         benchmark=case.benchmark,
         fuzz_target=case.fuzz_target,
         repetitions=campaign_config.settings.repetitions,

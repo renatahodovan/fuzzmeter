@@ -201,12 +201,15 @@ def _load_fuzzer_chain(
     return fuzzer_chain
 
 
-def _load_fuzzer_chains(data: dict[str, Any], fuzzer_dirs: dict[str, Path]) -> list[list[dict[str, Any]]]:
+def _load_fuzzer_chains(
+    data: dict[str, Any],
+    fuzzer_dirs: dict[str, Path],
+) -> list[tuple[list[dict[str, Any]], str]]:
     fuzzers = data.get('fuzzers', [])
     if not isinstance(fuzzers, list) or not fuzzers:
         raise ValueError('Campaign fuzzers must be a non-empty list.')
 
-    fuzzer_chains: list[list[dict[str, Any]]] = []
+    fuzzer_chains: list[tuple[list[dict[str, Any]], str]] = []
     fuzzer_names: set[str] = set()
     for fuzzer_data in fuzzers:
         if isinstance(fuzzer_data, str):
@@ -230,7 +233,7 @@ def _load_fuzzer_chains(data: dict[str, Any], fuzzer_dirs: dict[str, Path]) -> l
             raise ValueError(f'Fuzzer {fuzzer_name!r} is defined more than once.')
         fuzzer_names.add(fuzzer_name)
 
-        fuzzer_chains.append(fuzzer_config + _load_fuzzer_chain(fuzzer_dirs, parent_name))
+        fuzzer_chains.append((fuzzer_config + _load_fuzzer_chain(fuzzer_dirs, parent_name), parent_name))
     return fuzzer_chains
 
 
@@ -270,27 +273,32 @@ def _load_fuzz_target_configs(data: dict[str, Any], benchmark_dirs: dict[str, Pa
 def _build_campaign_case(
     *,
     fuzzer_config_chain: list[dict[str, Any]],
+    fuzzer_name: str,
     fuzz_target_config: dict[str, Any],
 ) -> CampaignCase:
     build_config: dict[str, Any] = {}
     runtime_config: dict[str, Any] = {}
     replay_trials: tuple[Path, ...] = ()
-    fuzzer_name = str(fuzzer_config_chain[0]['fuzzer_name'])
-    fuzzer_chain = tuple(str(fuzzer_config['fuzzer_name']) for fuzzer_config in fuzzer_config_chain)
     fuzzer_overrides = fuzz_target_config['fuzzers']
 
     for fuzzer_config in reversed(fuzzer_config_chain):
-        cur_fuzz_id = str(fuzzer_config['fuzzer_name'])
-        fuzz_target_override = fuzzer_overrides.get(cur_fuzz_id) or {}
-        cur_fuzz_build = _merge(fuzzer_config.get('build') or {}, fuzz_target_override.get('build') or {})
-        curr_fuzz_runtime = _merge(fuzzer_config.get('runtime') or {}, fuzz_target_override.get('runtime') or {})
-        build_config = _merge(build_config, cur_fuzz_build)
-        runtime_config = _merge(runtime_config, curr_fuzz_runtime)
+        fuzz_target_override = fuzzer_overrides.get(fuzzer_config['fuzzer_name']) or {}
+
+        build_config = _merge(build_config, fuzzer_config.get('build') or {})
+        build_config = _merge(build_config, fuzz_target_override.get('build') or {})
+
+        runtime_config = _merge(runtime_config, fuzzer_config.get('runtime') or {})
+        runtime_config = _merge(runtime_config, fuzz_target_override.get('runtime') or {})
+
         replay_trials = (*replay_trials, *tuple(fuzzer_config.get('replay_trials') or ()))
 
+    fuzzer_name_chain = tuple(fuzzer_config['fuzzer_name'] for fuzzer_config in fuzzer_config_chain)
+    fuzzer_id = fuzzer_name_chain[0]
+
     return CampaignCase(
+        fuzzer_id=fuzzer_id,
         fuzzer_name=fuzzer_name,
-        fuzzer_chain=fuzzer_chain,
+        fuzzer_chain=fuzzer_name_chain,
         benchmark=fuzz_target_config['benchmark'],
         fuzz_target=fuzz_target_config['fuzz_target'],
         input_mode=fuzz_target_config['input_mode'],
@@ -330,11 +338,12 @@ def load_campaign_config(*, fuzzer_dirs: dict[str, Path], benchmark_dirs: dict[s
     fuzz_target_configs = _load_fuzz_target_configs(data, benchmark_dirs)
 
     cases = []
-    for fuzzer_config_chain in fuzzer_config_chains:
+    for fuzzer_config_chain, fuzzer_name in fuzzer_config_chains:
         for fuzz_target_config in fuzz_target_configs:
             if _fuzzer_allows_fuzz_target(fuzzer_config_chain, fuzz_target_config):
                 cases.append(_build_campaign_case(
                     fuzzer_config_chain=fuzzer_config_chain,
+                    fuzzer_name=fuzzer_name,
                     fuzz_target_config=fuzz_target_config,
                 ))
 

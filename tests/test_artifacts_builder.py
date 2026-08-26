@@ -37,6 +37,7 @@ class ArtifactBuilderTest(unittest.TestCase):
                         settings=CampaignSettings(),
                         cases=[
                             CampaignCase(
+                                fuzzer_id='plain',
                                 fuzzer_name='plain',
                                 fuzzer_chain=('plain',),
                                 benchmark='bench',
@@ -84,6 +85,7 @@ class ArtifactBuilderTest(unittest.TestCase):
                         settings=CampaignSettings(),
                         cases=[
                             CampaignCase(
+                                fuzzer_id='other',
                                 fuzzer_name='other',
                                 fuzzer_chain=('other',),
                                 benchmark='bench',
@@ -91,6 +93,7 @@ class ArtifactBuilderTest(unittest.TestCase):
                                 input_mode='file',
                             ),
                             CampaignCase(
+                                fuzzer_id='plain',
                                 fuzzer_name='plain',
                                 fuzzer_chain=('plain',),
                                 benchmark='bench',
@@ -135,6 +138,7 @@ class ArtifactBuilderTest(unittest.TestCase):
                         settings=CampaignSettings(),
                         cases=[
                             CampaignCase(
+                                fuzzer_id='plain',
                                 fuzzer_name='plain',
                                 fuzzer_chain=('plain',),
                                 benchmark='bench',

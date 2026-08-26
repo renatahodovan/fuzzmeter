@@ -21,12 +21,13 @@ from fuzzmeter.config import CampaignCase, load_campaign_config
 class ConfigBuilderTest(unittest.TestCase):
     """Verify campaign config expansion rules."""
 
-    def test_campaign_case_does_not_store_derived_identity_fields(self) -> None:
-        """Verify target and implementation helpers stay outside the model."""
+    def test_campaign_case_stores_fuzzer_identity_fields(self) -> None:
+        """Verify that a case keeps its stable and effective fuzzer names."""
         field_names = {field.name for field in fields(CampaignCase)}
 
-        self.assertNotIn('target_id', field_names)
-        self.assertNotIn('fuzzer_base', field_names)
+        self.assertIn('fuzzer_id', field_names)
+        self.assertIn('fuzzer_name', field_names)
+        self.assertIn('fuzzer_chain', field_names)
 
     def test_source_info_setting_loads(self) -> None:
         """Verify that run.source_info enables source metadata hooks."""
@@ -322,8 +323,31 @@ fuzz_targets:
             )
 
         self.assertEqual(
-            [('limited_child', 'jerryscript', 'jerry')],
-            [(case.fuzzer_name, case.benchmark, case.fuzz_target) for case in config.cases],
+            [('limited_child', 'limited_base', 'jerryscript', 'jerry')],
+            [(case.fuzzer_id, case.fuzzer_name, case.benchmark, case.fuzz_target) for case in config.cases],
+        )
+
+    def test_fuzzer_with_parent_keeps_its_own_implementation(self) -> None:
+        """Verify a selected fuzzer remains the implementation despite having a parent."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            _write_fuzzer(root, 'base', '')
+            _write_fuzzer(root, 'derived', 'parent: base\n')
+            _write_benchmark(root, 'jerryscript', 'jerry')
+
+            config = _load_campaign_config(
+                root,
+                '''
+fuzzers:
+  - derived
+fuzz_targets:
+  - jerryscript:jerry
+''',
+            )
+
+        self.assertEqual(
+            [('derived', 'derived', ('derived', 'base'))],
+            [(case.fuzzer_id, case.fuzzer_name, case.fuzzer_chain) for case in config.cases],
         )
 
     def test_target_timeout_is_stored_on_campaign_case(self) -> None:

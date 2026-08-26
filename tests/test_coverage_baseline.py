@@ -40,9 +40,9 @@ class CoverageBaselineTest(unittest.TestCase):
                 campaign_config=CampaignConfig(
                     settings=CampaignSettings(),
                     cases=[
-                        _case(fuzzer_name='missing', timeout_s=1.0),
-                        _case(fuzzer_name='empty', timeout_s=2.0),
-                        _case(fuzzer_name='full', timeout_s=3.5),
+                        _case(fuzzer_id='missing', timeout_s=1.0),
+                        _case(fuzzer_id='empty', timeout_s=2.0),
+                        _case(fuzzer_id='full', timeout_s=3.5),
                     ],
                 ),
                 run_dir=run_dir,
@@ -118,10 +118,11 @@ class CoverageBaselineTest(unittest.TestCase):
         self.assertEqual(11, row['cov_lines_total'])
 
 
-def _case(*, fuzzer_name: str, timeout_s: float) -> CampaignCase:
+def _case(*, fuzzer_id: str, timeout_s: float) -> CampaignCase:
     return CampaignCase(
-        fuzzer_name=fuzzer_name,
-        fuzzer_chain=('plain',),
+        fuzzer_id=fuzzer_id,
+        fuzzer_name='plain',
+        fuzzer_chain=(fuzzer_id, 'plain'),
         benchmark='bench',
         fuzz_target='target',
         input_mode='file',

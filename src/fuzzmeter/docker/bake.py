@@ -19,7 +19,7 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 
-from ..config import CampaignCase, implementation_fuzzer, target_key
+from ..config import CampaignCase, target_key
 
 INSTRUMENTATION_PROFILES = (
     ('coverage', 'coverage_runner', 'coverage-runner'),
@@ -273,9 +273,9 @@ def _entry_args(
 
 def generate_run_bake_hcl(
     *,
+    campaign_cases: list[CampaignCase],
     fuzzer_dirs: Mapping[str, Path],
     benchmark_dirs: Mapping[str, Path],
-    entries: list[CampaignCase],
     fuzzer_build_sources: Mapping[str, Path],
     fuzzer_run_sources: Mapping[str, Path],
     instrumentation_build_sources: Mapping[str, Path],
@@ -296,13 +296,13 @@ def generate_run_bake_hcl(
     fuzzmeter_resources_arg = _escape(str(Path(fuzzmeter_resources).resolve()))
     campaign_dockerfile = f'{docker_resources_arg}/campaign.Dockerfile'
 
-    entry_fuzzers = sorted({implementation_fuzzer(entry.fuzzer_chain) for entry in entries})
-    campaign_fuzzers = _fuzzers_with_parents(fuzzer_dirs, entry_fuzzers)
-    local_repo_paths = fuzzer_local_repo_paths(fuzzer_dirs, entry_fuzzers)
+    fuzzer_names = sorted({case.fuzzer_name for case in campaign_cases})
+    campaign_fuzzers = _fuzzers_with_parents(fuzzer_dirs, fuzzer_names)
+    local_repo_paths = fuzzer_local_repo_paths(fuzzer_dirs, fuzzer_names)
     build_fuzzers = list(campaign_fuzzers)
     benchmark_workdirs = {
         benchmark: _escape(_benchmark_workdir(benchmark_dirs, benchmark))
-        for benchmark in sorted({entry.benchmark for entry in entries})
+        for benchmark in sorted({case.benchmark for case in campaign_cases})
     }
 
     base_targets = [
@@ -438,16 +438,16 @@ def generate_run_bake_hcl(
         )
 
     seen_benchmarks: set[str] = set()
-    for entry in entries:
-        if entry.benchmark in seen_benchmarks:
+    for case in campaign_cases:
+        if case.benchmark in seen_benchmarks:
             continue
-        seen_benchmarks.add(entry.benchmark)
-        benchmark_name = f'benchmark_{entry.benchmark}'
+        seen_benchmarks.add(case.benchmark)
+        benchmark_name = f'benchmark_{case.benchmark}'
         hcl_parts.append(
             _hcl_block(
                 benchmark_name,
                 [
-                    f'context    = "{_escape(str(benchmark_dirs[entry.benchmark]))}"',
+                    f'context    = "{_escape(str(benchmark_dirs[case.benchmark]))}"',
                     'dockerfile = "Dockerfile"',
                     f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
                     'contexts = {',
@@ -458,32 +458,32 @@ def generate_run_bake_hcl(
             )
         )
 
-    for entry in entries:
-        fuzzer_impl = implementation_fuzzer(entry.fuzzer_chain)
-        target = target_key(entry.benchmark, entry.fuzz_target)
-        benchmark_workdir = benchmark_workdirs[entry.benchmark]
-        fuzzer_source_dirs = _fuzzer_source_dirs(fuzzer_dirs, fuzzer_impl)
-        runner_base = _runner_base_target(fuzzer_dirs, fuzzer_impl)
-        build_config_json = json.dumps(entry.build_config, sort_keys=True)
-        fuzzer_build_sources_arg = _context_path(fuzzer_build_sources, fuzzer_impl, 'fuzzer build')
-        fuzzer_run_sources_arg = _context_path(fuzzer_run_sources, fuzzer_impl, 'fuzzer run')
+    for case in campaign_cases:
+        fuzzer_name = case.fuzzer_name
+        target = target_key(case.benchmark, case.fuzz_target)
+        benchmark_workdir = benchmark_workdirs[case.benchmark]
+        fuzzer_source_dirs = _fuzzer_source_dirs(fuzzer_dirs, fuzzer_name)
+        runner_base = _runner_base_target(fuzzer_dirs, fuzzer_name)
+        build_config_json = json.dumps(case.build_config, sort_keys=True)
+        fuzzer_build_sources_arg = _context_path(fuzzer_build_sources, fuzzer_name, 'fuzzer build')
+        fuzzer_run_sources_arg = _context_path(fuzzer_run_sources, fuzzer_name, 'fuzzer run')
 
-        runner_name = f'runner_{entry.fuzzer_name}_{target}'
+        runner_name = f'runner_{case.fuzzer_id}_{target}'
         runner_depends = [
-            f'fuzzer_builder_{fuzzer_impl}',
-            f'benchmark_{entry.benchmark}',
+            f'fuzzer_builder_{fuzzer_name}',
+            f'benchmark_{case.benchmark}',
             'build_base',
             'runtime_base',
         ]
         if runner_base != 'runtime_base':
             runner_depends.append(runner_base)
         runner_args_lines = _entry_args(
-            fuzzer=fuzzer_impl,
+            fuzzer=fuzzer_name,
             build_config_json=build_config_json,
             fuzzer_source_dirs=fuzzer_source_dirs,
-            benchmark=entry.benchmark,
+            benchmark=case.benchmark,
             benchmark_workdir=benchmark_workdir,
-            target_name=entry.fuzz_target,
+            target_name=case.fuzz_target,
             runner_base_image='runner_base',
         )
         hcl_parts.append(
@@ -495,11 +495,11 @@ def generate_run_bake_hcl(
                     'target     = "runner"',
                     f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
                     f'memory     = "{_escape(campaign_memory_limit)}"',
-                    f'tags       = ["fuzzmeter/runner-{entry.fuzzer_name}-{target}:dev"]',
+                    f'tags       = ["fuzzmeter/runner-{case.fuzzer_id}-{target}:dev"]',
                     docker_output_line,
                     'contexts = {',
-                    f'  builder = "target:fuzzer_builder_{fuzzer_impl}"',
-                    f'  benchmark = "target:benchmark_{entry.benchmark}"',
+                    f'  builder = "target:fuzzer_builder_{fuzzer_name}"',
+                    f'  benchmark = "target:benchmark_{case.benchmark}"',
                     '  build_base = "target:build_base"',
                     '  runtime_base = "target:runtime_base"',
                     f'  runner_base = "target:{runner_base}"',
@@ -513,11 +513,11 @@ def generate_run_bake_hcl(
         )
         group_targets.append(runner_name)
 
-    target_entries = {target_key(entry.benchmark, entry.fuzz_target): entry for entry in entries}
+    target_entries = {target_key(case.benchmark, case.fuzz_target): case for case in campaign_cases}
 
     for internal_fuzzer, stage_name, image_prefix in INSTRUMENTATION_PROFILES:
-        for entry in target_entries.values():
-            target = target_key(entry.benchmark, entry.fuzz_target)
+        for case in target_entries.values():
+            target = target_key(case.benchmark, case.fuzz_target)
             instrumentation_builder = f'instrumentation_builder_{internal_fuzzer}'
             instrumentation_build_sources_arg = _context_path(
                 instrumentation_build_sources,
@@ -526,7 +526,7 @@ def generate_run_bake_hcl(
             )
             instrumentation_depends = [
                 instrumentation_builder,
-                f'benchmark_{entry.benchmark}',
+                f'benchmark_{case.benchmark}',
                 'build_base',
                 'runtime_base',
                 'instrumentation_runtime',
@@ -535,9 +535,9 @@ def generate_run_bake_hcl(
                 fuzzer=internal_fuzzer,
                 build_config_json='{}',
                 fuzzer_source_dirs=[internal_fuzzer],
-                benchmark=entry.benchmark,
-                benchmark_workdir=benchmark_workdirs[entry.benchmark],
-                target_name=entry.fuzz_target,
+                benchmark=case.benchmark,
+                benchmark_workdir=benchmark_workdirs[case.benchmark],
+                target_name=case.fuzz_target,
             )
 
             final_name = f'{stage_name}_{target}'
@@ -554,7 +554,7 @@ def generate_run_bake_hcl(
                         docker_output_line,
                         'contexts = {',
                         f'  builder = "target:instrumentation_builder_{internal_fuzzer}"',
-                        f'  benchmark = "target:benchmark_{entry.benchmark}"',
+                        f'  benchmark = "target:benchmark_{case.benchmark}"',
                         '  build_base = "target:build_base"',
                         '  runtime_base = "target:runtime_base"',
                         '  instrumentation_runtime = "target:instrumentation_runtime"',

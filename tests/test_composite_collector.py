@@ -82,6 +82,7 @@ class CompositeCollectorTest(unittest.TestCase):
 
 def _case() -> CampaignCase:
     return CampaignCase(
+        fuzzer_id='libfuzzer',
         fuzzer_name='libfuzzer',
         fuzzer_chain=('libfuzzer',),
         benchmark='zlib',

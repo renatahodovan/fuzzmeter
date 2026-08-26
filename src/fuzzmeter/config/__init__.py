@@ -12,7 +12,6 @@ from .models import (
     CampaignCase,
     CampaignConfig,
     CampaignSettings,
-    implementation_fuzzer,
     target_key,
 )
 
@@ -20,7 +19,6 @@ __all__ = [
     'CampaignCase',
     'CampaignConfig',
     'CampaignSettings',
-    'implementation_fuzzer',
     'load_campaign_config',
     'target_key',
 ]

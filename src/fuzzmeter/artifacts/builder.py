@@ -18,7 +18,7 @@ from importlib import resources
 from pathlib import Path
 
 from ..composite.collect import collect_records, save_records
-from ..config import CampaignConfig, implementation_fuzzer
+from ..config import CampaignConfig
 from ..docker import DockerRuntime, fuzzer_source_dirs, generate_run_bake_hcl
 from ..docker.bake import INSTRUMENTATION_PROFILES, fuzzer_local_repo_paths
 from ..paths import docker_resources, entrypoint_resources, instrumentation_resources
@@ -55,9 +55,9 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
     ):
         fuzzmeter_resources_path = Path(__file__).resolve().parents[1]
         bake_hcl = generate_run_bake_hcl(
+            campaign_cases=campaign_config.cases,
             fuzzer_dirs=campaign_config.fuzzer_dirs,
             benchmark_dirs=campaign_config.benchmark_dirs,
-            entries=campaign_config.cases,
             memory_limit=campaign_config.settings.memory,
             fuzzer_build_sources=fuzzer_contexts.build_by_fuzzer,
             fuzzer_run_sources=fuzzer_contexts.run_by_fuzzer,
@@ -70,8 +70,8 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
         bake_hcl_path.write_text(str(bake_hcl), encoding='utf-8')
         info_enabled = logger.isEnabledFor(logging.INFO)
         progress = 'auto' if info_enabled else 'plain'
-        entry_fuzzers = sorted({implementation_fuzzer(entry.fuzzer_chain) for entry in campaign_config.cases})
-        local_repo_paths = fuzzer_local_repo_paths(campaign_config.fuzzer_dirs, entry_fuzzers)
+        fuzzer_names = sorted({case.fuzzer_name for case in campaign_config.cases})
+        local_repo_paths = fuzzer_local_repo_paths(campaign_config.fuzzer_dirs, fuzzer_names)
         allow_args = [
             f'--allow=fs.read={Path(docker_resources_path).resolve()}',
             f'--allow=fs.read={Path(entrypoint_resources_path).resolve()}',
@@ -109,22 +109,22 @@ def _prepare_fuzzer_contexts(
         else:
             root.mkdir(parents=True, exist_ok=True)
 
-    fuzzer_impls = sorted({implementation_fuzzer(entry.fuzzer_chain) for entry in campaign_config.cases})
+    fuzzer_names = sorted({case.fuzzer_name for case in campaign_config.cases})
     build_by_fuzzer: dict[str, Path] = {}
     run_by_fuzzer: dict[str, Path] = {}
-    for fuzzer in fuzzer_impls:
-        source_dirs = fuzzer_source_dirs(campaign_config.fuzzer_dirs, fuzzer)
-        build_by_fuzzer[fuzzer] = _copy_fuzzer_context(
+    for fuzzer_name in fuzzer_names:
+        source_dirs = fuzzer_source_dirs(campaign_config.fuzzer_dirs, fuzzer_name)
+        build_by_fuzzer[fuzzer_name] = _copy_fuzzer_context(
             fuzzer_dirs=campaign_config.fuzzer_dirs,
             root=build_root,
-            context_name=fuzzer,
+            context_name=fuzzer_name,
             fuzzers=source_dirs,
             phase='build',
         )
-        run_by_fuzzer[fuzzer] = _copy_fuzzer_context(
+        run_by_fuzzer[fuzzer_name] = _copy_fuzzer_context(
             fuzzer_dirs=campaign_config.fuzzer_dirs,
             root=run_root,
-            context_name=fuzzer,
+            context_name=fuzzer_name,
             fuzzers=source_dirs,
             phase='run',
         )

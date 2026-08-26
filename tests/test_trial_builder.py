@@ -74,6 +74,7 @@ class _TrialBuilderTest(unittest.TestCase):
 
 def _campaign_case(*, fuzzer: str, fuzz_target: str) -> CampaignCase:
     return CampaignCase(
+        fuzzer_id=fuzzer,
         fuzzer_name=fuzzer,
         fuzzer_chain=(fuzzer,),
         benchmark='bench',

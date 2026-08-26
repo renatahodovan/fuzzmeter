@@ -82,7 +82,8 @@ def run_source_hook(path: Path, context: dict[str, Any], scope: str) -> SourceHo
 def source_hook_context(case: Any) -> dict[str, Any]:
     '''Build the safe context passed to a source metadata hook.'''
     return {
-        'fuzzer': case.fuzzer_name,
+        'fuzzer_id': case.fuzzer_id,
+        'fuzzer_name': case.fuzzer_name,
         'fuzzer_chain': list(case.fuzzer_chain),
         'benchmark': case.benchmark,
         'fuzz_target': case.fuzz_target,
