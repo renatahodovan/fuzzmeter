@@ -151,22 +151,10 @@ def _load_campaign_settings(data: dict[str, Any]) -> CampaignSettings:
     )
 
 
-def _build_fuzzer_config(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[str, Any]:
+def _fuzzer_config_fields(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[str, Any]:
     allowed_fuzz_targets = fuzzer_data.get('allowed_fuzz_targets') or []
     if not isinstance(allowed_fuzz_targets, list):
         raise ValueError('allowed_fuzz_targets must be defined as a list.')
-
-    source_dependencies = fuzzer_data.get('source_dependencies') or []
-    if isinstance(source_dependencies, str):
-        source_dependencies = [source_dependencies]
-    if not isinstance(source_dependencies, list):
-        source_dependencies = []
-
-    parent = fuzzer_data.get('parent')
-    if parent is not None and not isinstance(parent, str):
-        raise ValueError('Parent fuzzer must be defined as string.')
-
-    local_repo_env = fuzzer_data.get('local_repo_env')
 
     replay_trials = []
     for replay_path in fuzzer_data.get('replay_trials') or []:
@@ -180,12 +168,32 @@ def _build_fuzzer_config(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[
         'build': dict(fuzzer_data.get('build') or {}),
         'runtime': dict(fuzzer_data.get('runtime') or {}),
         'replay_trials': tuple(replay_trials),
+    }
+
+
+def _load_fuzzer_spec(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[str, Any]:
+    source_dependencies = fuzzer_data.get('source_dependencies') or []
+    if isinstance(source_dependencies, str):
+        source_dependencies = [source_dependencies]
+    if not isinstance(source_dependencies, list):
+        source_dependencies = []
+
+    parent = fuzzer_data.get('parent')
+    if parent is not None and not isinstance(parent, str):
+        raise ValueError('Parent fuzzer must be defined as string.')
+
+    return {
+        **_fuzzer_config_fields(fuzzer_name, fuzzer_data),
         'parent': parent,
         'source_dependencies': tuple(
             str(dependency).strip() for dependency in source_dependencies if str(dependency).strip()
         ),
-        'local_repo_env': str(local_repo_env).strip() if local_repo_env else None,
+        'local_repo_env': str(fuzzer_data.get('local_repo_env') or '').strip() or None,
     }
+
+
+def _campaign_override(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[str, Any]:
+    return _fuzzer_config_fields(fuzzer_name, fuzzer_data)
 
 
 def _load_fuzzer_configs(
@@ -211,7 +219,7 @@ def _load_fuzzer_configs(
         for path in paths:
             if path.is_file():
                 fuzzer_data = _merge(fuzzer_data, _load_yaml(path))
-        fuzzer_config = _build_fuzzer_config(fuzzer_name, fuzzer_data)
+        fuzzer_config = _load_fuzzer_spec(fuzzer_name, fuzzer_data)
         fuzzer_configs[fuzzer_name] = fuzzer_config
 
         if fuzzer_config['parent']:
@@ -280,7 +288,7 @@ def _load_fuzzer_chains(
             parent_name = fuzzer_data.get('parent') or fuzzer_name
             if not isinstance(parent_name, str):
                 raise ValueError('Parent fuzzer must be defined as string.')
-            fuzzer_config = [_build_fuzzer_config(fuzzer_name, fuzzer_data)]
+            fuzzer_config = [_campaign_override(fuzzer_name, fuzzer_data)]
         else:
             raise TypeError(f'Unsupported fuzzer entry: {fuzzer_data!r}')
 
