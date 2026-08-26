@@ -37,6 +37,8 @@ def _resolve_resource_dirs(
             raise FileNotFoundError(f'{label} directory does not exist: {path}')
         if not path.is_dir():
             continue
+        if path.name == '__pycache__':
+            continue
         previous = dirs.get(path.name)
         if previous is not None and previous != path:
             raise ValueError(f'Duplicate {label.lower()} name {path.name!r}: {previous} and {path}')

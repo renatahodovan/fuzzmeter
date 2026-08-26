@@ -172,11 +172,11 @@ def _fuzzer_config_fields(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict
 
 
 def _load_fuzzer_spec(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[str, Any]:
-    source_dependencies = fuzzer_data.get('source_dependencies') or []
-    if isinstance(source_dependencies, str):
-        source_dependencies = [source_dependencies]
+    source_dependencies = fuzzer_data.get('source_dependencies', [])
     if not isinstance(source_dependencies, list):
-        source_dependencies = []
+        raise ValueError('source_dependencies must be defined as a list.')
+    if not all(isinstance(dependency, str) and dependency for dependency in source_dependencies):
+        raise ValueError('source_dependencies must contain non-empty strings.')
 
     parent = fuzzer_data.get('parent')
     if parent is not None and not isinstance(parent, str):
@@ -189,9 +189,7 @@ def _load_fuzzer_spec(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[str
         **_fuzzer_config_fields(fuzzer_name, fuzzer_data),
         'parent': parent,
         'reporting_parent': reporting_parent,
-        'source_dependencies': tuple(
-            str(dependency).strip() for dependency in source_dependencies if str(dependency).strip()
-        ),
+        'source_dependencies': tuple(source_dependencies),
         'local_repo_env': str(fuzzer_data.get('local_repo_env') or '').strip() or None,
     }
 
@@ -202,10 +200,10 @@ def _campaign_override(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[st
 
 def _load_fuzzer_configs(
     fuzzer_dirs: dict[str, Path],
-    fuzzer_names: list[str],
+    root_names: list[str],
 ) -> dict[str, dict[str, Any]]:
     fuzzer_configs: dict[str, dict[str, Any]] = {}
-    pending_fuzzer_names = list(fuzzer_names)
+    pending_fuzzer_names = list(root_names)
     while pending_fuzzer_names:
         fuzzer_name = pending_fuzzer_names.pop()
         if fuzzer_name in fuzzer_configs:
@@ -230,9 +228,13 @@ def _load_fuzzer_configs(
             pending_fuzzer_names.append(fuzzer_config['parent'])
         if fuzzer_config['reporting_parent']:
             pending_fuzzer_names.append(fuzzer_config['reporting_parent'])
-        pending_fuzzer_names.extend(
-            dependency for dependency in fuzzer_config['source_dependencies'] if dependency in fuzzer_dirs
-        )
+        for dependency in fuzzer_config['source_dependencies']:
+            if dependency not in fuzzer_dirs:
+                raise ValueError(
+                    f'Fuzzer {fuzzer_name!r} requires source dependency {dependency!r}; '
+                    'include it with --fuzzers.'
+                )
+            pending_fuzzer_names.append(dependency)
     return fuzzer_configs
 
 

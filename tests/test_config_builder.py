@@ -294,6 +294,42 @@ fuzz_targets:
         self.assertEqual({'base', 'blackbox', 'reporter', 'selected', 'support'}, set(config.fuzzer_dirs))
         self.assertEqual(('support', 'blackbox'), config.fuzzer_configs['base']['source_dependencies'])
 
+    def test_source_dependencies_must_be_a_list(self) -> None:
+        """Verify malformed source dependency configuration fails at load time."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            _write_fuzzer(root, 'plain', 'source_dependencies: support\n')
+            _write_benchmark(root, 'jerryscript', 'jerry')
+
+            with self.assertRaisesRegex(ValueError, 'source_dependencies must be defined as a list'):
+                _load_campaign_config(
+                    root,
+                    '''
+fuzzers:
+  - plain
+fuzz_targets:
+  - jerryscript:jerry
+''',
+                )
+
+    def test_source_dependencies_must_be_configured(self) -> None:
+        """Verify missing source dependencies fail before artifact building."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            _write_fuzzer(root, 'plain', 'source_dependencies:\n  - support\n')
+            _write_benchmark(root, 'jerryscript', 'jerry')
+
+            with self.assertRaisesRegex(ValueError, "requires source dependency 'support'"):
+                _load_campaign_config(
+                    root,
+                    '''
+fuzzers:
+  - plain
+fuzz_targets:
+  - jerryscript:jerry
+''',
+                )
+
     def test_allowed_benchmarks_are_inherited_from_parent_fuzzer(self) -> None:
         """Verify that derived fuzzer entries keep parent benchmark allowlists."""
         with tempfile.TemporaryDirectory() as tmp_dir:
