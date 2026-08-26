@@ -46,10 +46,13 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
         resources.as_file(entrypoint_resources()) as entrypoint_resources_path,
     ):
         fuzzmeter_resources_path = Path(__file__).resolve().parents[1]
+        fuzzer_names = sorted({case.fuzzer_name for case in campaign_config.cases})
+        local_repo_paths = fuzzer_local_repo_paths(campaign_config.fuzzer_configs, fuzzer_names)
         bake_hcl = generate_run_bake_hcl(
             campaign_cases=campaign_config.cases,
             fuzzer_dirs=campaign_config.fuzzer_dirs,
             fuzzer_configs=campaign_config.fuzzer_configs,
+            local_repo_paths=local_repo_paths,
             benchmark_dirs=campaign_config.benchmark_dirs,
             memory_limit=campaign_config.settings.memory,
             fuzzer_build_sources=fuzzer_contexts.build_by_fuzzer,
@@ -63,8 +66,6 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
         bake_hcl_path.write_text(str(bake_hcl), encoding='utf-8')
         info_enabled = logger.isEnabledFor(logging.INFO)
         progress = 'auto' if info_enabled else 'plain'
-        fuzzer_names = sorted({case.fuzzer_name for case in campaign_config.cases})
-        local_repo_paths = fuzzer_local_repo_paths(campaign_config.fuzzer_configs, fuzzer_names)
         allow_args = [
             f'--allow=fs.read={Path(docker_resources_path).resolve()}',
             f'--allow=fs.read={Path(entrypoint_resources_path).resolve()}',

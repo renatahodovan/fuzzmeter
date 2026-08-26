@@ -210,6 +210,7 @@ def generate_run_bake_hcl(
     campaign_cases: list[CampaignCase],
     fuzzer_dirs: Mapping[str, Path],
     fuzzer_configs: Mapping[str, dict[str, Any]],
+    local_repo_paths: Mapping[str, Path],
     benchmark_dirs: Mapping[str, Path],
     fuzzer_build_sources: Mapping[str, Path],
     fuzzer_run_sources: Mapping[str, Path],
@@ -233,7 +234,6 @@ def generate_run_bake_hcl(
 
     fuzzer_names = sorted({case.fuzzer_name for case in campaign_cases})
     campaign_fuzzers = _fuzzers_with_parents(fuzzer_configs, fuzzer_names)
-    local_repo_paths = fuzzer_local_repo_paths(fuzzer_configs, fuzzer_names)
     build_fuzzers = list(campaign_fuzzers)
     benchmark_workdirs = {
         benchmark: _escape(_benchmark_workdir(benchmark_dirs, benchmark))

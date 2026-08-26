@@ -20,7 +20,7 @@ from unittest.mock import call, patch
 
 from fuzzmeter.config import CampaignCase, fuzzer_source_dirs
 from fuzzmeter.docker import DockerClient, DockerTimeoutError
-from fuzzmeter.docker.bake import _entry_args, generate_run_bake_hcl
+from fuzzmeter.docker.bake import _entry_args, fuzzer_local_repo_paths, generate_run_bake_hcl
 from fuzzmeter.docker.client import DEFAULT_DOCKER_TIMEOUT_S
 from fuzzmeter.docker.runtime import DockerRuntime
 from tests.support.bake import target_block
@@ -158,6 +158,7 @@ class DockerHelperTest(unittest.TestCase):
                 ],
                 fuzzer_dirs=_resource_dirs(fuzzers_root),
                 fuzzer_configs=_fuzzer_configs('libfuzzer'),
+                local_repo_paths={},
                 benchmark_dirs=_resource_dirs(benchmarks_root),
                 fuzzer_build_sources=build_sources,
                 fuzzer_run_sources=run_sources,
@@ -218,6 +219,7 @@ class DockerHelperTest(unittest.TestCase):
                 ],
                 fuzzer_dirs=_resource_dirs(fuzzers_root),
                 fuzzer_configs=_fuzzer_configs('libfuzzer'),
+                local_repo_paths={},
                 benchmark_dirs=_resource_dirs(benchmarks_root),
                 fuzzer_build_sources=build_sources,
                 fuzzer_run_sources=run_sources,
@@ -303,6 +305,7 @@ class DockerHelperTest(unittest.TestCase):
                 ],
                 fuzzer_dirs=_resource_dirs(fuzzers_root),
                 fuzzer_configs=_fuzzer_configs('afl', 'libfuzzer'),
+                local_repo_paths={},
                 benchmark_dirs=_resource_dirs(benchmarks_root),
                 fuzzer_build_sources=build_sources,
                 fuzzer_run_sources=run_sources,
@@ -386,6 +389,10 @@ class DockerHelperTest(unittest.TestCase):
                     ],
                     fuzzer_dirs=_resource_dirs(fuzzers_root),
                     fuzzer_configs=_fuzzer_configs('local', local_repo_env='FM_TEST_LOCAL_REPO'),
+                    local_repo_paths=fuzzer_local_repo_paths(
+                        _fuzzer_configs('local', local_repo_env='FM_TEST_LOCAL_REPO'),
+                        ['local'],
+                    ),
                     benchmark_dirs=_resource_dirs(benchmarks_root),
                     fuzzer_build_sources=build_sources,
                     fuzzer_run_sources=run_sources,
@@ -456,6 +463,10 @@ class DockerHelperTest(unittest.TestCase):
                     ],
                     fuzzer_dirs=_resource_dirs(fuzzers_root),
                     fuzzer_configs=_fuzzer_configs('local', local_repo_env='FM_TEST_LOCAL_REPO'),
+                    local_repo_paths=fuzzer_local_repo_paths(
+                        _fuzzer_configs('local', local_repo_env='FM_TEST_LOCAL_REPO'),
+                        ['local'],
+                    ),
                     benchmark_dirs=_resource_dirs(benchmarks_root),
                     fuzzer_build_sources=build_sources,
                     fuzzer_run_sources=run_sources,
