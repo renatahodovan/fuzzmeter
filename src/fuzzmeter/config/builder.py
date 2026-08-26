@@ -194,10 +194,6 @@ def _load_fuzzer_spec(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[str
     }
 
 
-def _campaign_override(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[str, Any]:
-    return _fuzzer_config_fields(fuzzer_name, fuzzer_data)
-
-
 def _load_fuzzer_configs(
     fuzzer_dirs: dict[str, Path],
     root_names: list[str],
@@ -316,7 +312,7 @@ def _load_fuzzer_chains(
             parent_name = fuzzer_data.get('parent') or fuzzer_name
             if not isinstance(parent_name, str):
                 raise ValueError('Parent fuzzer must be defined as string.')
-            fuzzer_config = [_campaign_override(fuzzer_name, fuzzer_data)]
+            fuzzer_config = [_fuzzer_config_fields(fuzzer_name, fuzzer_data)]
         else:
             raise TypeError(f'Unsupported fuzzer entry: {fuzzer_data!r}')
 
