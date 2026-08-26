@@ -34,14 +34,6 @@ class _FuzzerContexts:
     run_by_fuzzer: dict[str, Path]
     instrumentation_build_by_profile: dict[str, Path]
 
-    def paths(self) -> list[Path]:
-        paths = [
-            *self.build_by_fuzzer.values(),
-            *self.run_by_fuzzer.values(),
-            *self.instrumentation_build_by_profile.values(),
-        ]
-        return sorted(set(paths))
-
 
 def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
     '''Build all docker images needed by a run.'''
@@ -71,14 +63,25 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
         info_enabled = logger.isEnabledFor(logging.INFO)
         progress = 'auto' if info_enabled else 'plain'
         fuzzer_names = sorted({case.fuzzer_name for case in campaign_config.cases})
+        selected_fuzzer_dirs = sorted(
+            {
+                campaign_config.fuzzer_dirs[fuzzer]
+                for fuzzer_name in fuzzer_names
+                for fuzzer in fuzzer_source_dirs(campaign_config.fuzzer_dirs, fuzzer_name)
+            }
+        )
+        selected_benchmark_dirs = sorted(
+            {campaign_config.benchmark_dirs[case.benchmark] for case in campaign_config.cases}
+        )
         local_repo_paths = fuzzer_local_repo_paths(campaign_config.fuzzer_dirs, fuzzer_names)
         allow_args = [
             f'--allow=fs.read={Path(docker_resources_path).resolve()}',
             f'--allow=fs.read={Path(entrypoint_resources_path).resolve()}',
             f'--allow=fs.read={fuzzmeter_resources_path.resolve()}',
-            *[f'--allow=fs.read={path.resolve()}' for path in fuzzer_contexts.paths()],
+            f'--allow=fs.read={(Path(run_dir) / "fuzzer_resources").resolve()}',
+            *[f'--allow=fs.read={path.resolve()}' for path in selected_fuzzer_dirs],
             *[f'--allow=fs.read={path}' for path in local_repo_paths.values()],
-            *[f'--allow=fs.read={path.resolve()}' for path in campaign_config.benchmark_dirs.values()],
+            *[f'--allow=fs.read={path.resolve()}' for path in selected_benchmark_dirs],
         ]
 
         subprocess.run(

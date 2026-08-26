@@ -57,6 +57,10 @@ class ArtifactBuilderTest(unittest.TestCase):
             resolved_root = repo_root.resolve()
             self.assertIn(f'context    = "{resolved_root / "fuzzers" / "plain" / "build"}"', bake_hcl)
             self.assertIn(f'context    = "{resolved_root / "benchmarks" / "bench"}"', bake_hcl)
+            command = run.call_args.args[0]
+            self.assertIn(f'--allow=fs.read={resolved_root / "fuzzers" / "plain"}', command)
+            self.assertIn(f'--allow=fs.read={resolved_root / "benchmarks" / "bench"}', command)
+            self.assertIn(f'--allow=fs.read={(run_dir / "fuzzer_resources").resolve()}', command)
 
             campaign_dockerfile = Path('src/fuzzmeter/resources/docker/campaign.Dockerfile').read_text(
                 encoding='utf-8'
