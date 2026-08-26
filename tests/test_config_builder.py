@@ -271,9 +271,10 @@ fuzz_targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'base', 'source_dependencies:\n  - support\n')
-            _write_fuzzer(root, 'selected', 'parent: base\n')
+            _write_fuzzer(root, 'selected', 'parent: base\nreporting_parent: reporter\n')
             _write_fuzzer(root, 'support', '')
             _write_fuzzer(root, 'blackbox', '')
+            _write_fuzzer(root, 'reporter', '')
             _write_fuzzer(root, 'unused', '')
             run_dir = root / 'fuzzers' / 'base' / 'run'
             run_dir.mkdir()
@@ -290,7 +291,7 @@ fuzz_targets:
 ''',
             )
 
-        self.assertEqual({'base', 'blackbox', 'selected', 'support'}, set(config.fuzzer_dirs))
+        self.assertEqual({'base', 'blackbox', 'reporter', 'selected', 'support'}, set(config.fuzzer_dirs))
         self.assertEqual(('support', 'blackbox'), config.fuzzer_configs['base']['source_dependencies'])
 
     def test_allowed_benchmarks_are_inherited_from_parent_fuzzer(self) -> None:

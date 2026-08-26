@@ -181,10 +181,14 @@ def _load_fuzzer_spec(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[str
     parent = fuzzer_data.get('parent')
     if parent is not None and not isinstance(parent, str):
         raise ValueError('Parent fuzzer must be defined as string.')
+    reporting_parent = fuzzer_data.get('reporting_parent')
+    if reporting_parent is not None and not isinstance(reporting_parent, str):
+        raise ValueError('Reporting parent fuzzer must be defined as string.')
 
     return {
         **_fuzzer_config_fields(fuzzer_name, fuzzer_data),
         'parent': parent,
+        'reporting_parent': reporting_parent,
         'source_dependencies': tuple(
             str(dependency).strip() for dependency in source_dependencies if str(dependency).strip()
         ),
@@ -224,6 +228,8 @@ def _load_fuzzer_configs(
 
         if fuzzer_config['parent']:
             pending_fuzzer_names.append(fuzzer_config['parent'])
+        if fuzzer_config['reporting_parent']:
+            pending_fuzzer_names.append(fuzzer_config['reporting_parent'])
         pending_fuzzer_names.extend(
             dependency for dependency in fuzzer_config['source_dependencies'] if dependency in fuzzer_dirs
         )
@@ -265,6 +271,26 @@ def fuzzer_source_dirs(fuzzer_configs: Mapping[str, dict[str, Any]], fuzzer_name
 
     add(fuzzer_name)
     return source_dirs
+
+
+def _required_fuzzer_names(
+    fuzzer_configs: Mapping[str, dict[str, Any]],
+    fuzzer_names: list[str],
+) -> set[str]:
+    required: set[str] = set()
+    pending = list(fuzzer_names)
+    while pending:
+        fuzzer_name = pending.pop()
+        if fuzzer_name in required:
+            continue
+        for source in fuzzer_source_dirs(fuzzer_configs, fuzzer_name):
+            if source in required:
+                continue
+            required.add(source)
+            reporting_parent = fuzzer_configs[source]['reporting_parent']
+            if reporting_parent:
+                pending.append(reporting_parent)
+    return required
 
 
 def _load_fuzzer_chains(
@@ -426,11 +452,10 @@ def load_campaign_config(*, fuzzer_dirs: dict[str, Path], benchmark_dirs: dict[s
     if not cases:
         raise ValueError('No selected fuzzer supports any selected fuzz target.')
 
-    required_fuzzer_names = {
-        source
-        for case in cases
-        for source in fuzzer_source_dirs(fuzzer_configs, case.fuzzer_name)
-    }
+    required_fuzzer_names = _required_fuzzer_names(
+        fuzzer_configs,
+        [case.fuzzer_name for case in cases],
+    )
 
     return CampaignConfig(
         settings=_load_campaign_settings(data),
