@@ -17,7 +17,7 @@ from typing import Any
 
 import yaml
 
-from .models import CampaignCase, CampaignConfig, CampaignSettings, target_key
+from .models import CampaignCase, CampaignConfig, CampaignSettings
 
 IDENTIFIER_RE = re.compile(r'^[a-zA-Z0-9_.-]+$')
 INPUT_MODE_OPTIONS = ('in_process', 'file', 'stdin')
@@ -201,9 +201,14 @@ def _load_fuzzer_chain(
     return fuzzer_chain
 
 
-def _load_fuzzer_configs(data: dict[str, Any], fuzzer_dirs: dict[str, Path]) -> dict[str, list[dict[str, Any]]]:
-    fuzzers: dict[str, list[dict[str, Any]]] = {}
-    for fuzzer_data in data.get('fuzzers', []):
+def _load_fuzzer_chains(data: dict[str, Any], fuzzer_dirs: dict[str, Path]) -> list[list[dict[str, Any]]]:
+    fuzzers = data.get('fuzzers', [])
+    if not isinstance(fuzzers, list) or not fuzzers:
+        raise ValueError('Campaign fuzzers must be a non-empty list.')
+
+    fuzzer_chains: list[list[dict[str, Any]]] = []
+    fuzzer_names: set[str] = set()
+    for fuzzer_data in fuzzers:
         if isinstance(fuzzer_data, str):
             fuzzer_name, parent_name = fuzzer_data, fuzzer_data
             fuzzer_config: list[dict[str, Any]] = []
@@ -221,15 +226,28 @@ def _load_fuzzer_configs(data: dict[str, Any], fuzzer_dirs: dict[str, Path]) -> 
         if not IDENTIFIER_RE.fullmatch(fuzzer_name):
             raise ValueError(f'Fuzzer name must match [a-zA-Z0-9_.-]+: {fuzzer_name!r}')
 
-        fuzzers[fuzzer_name] = fuzzer_config + _load_fuzzer_chain(fuzzer_dirs, parent_name)
-    return fuzzers
+        if fuzzer_name in fuzzer_names:
+            raise ValueError(f'Fuzzer {fuzzer_name!r} is defined more than once.')
+        fuzzer_names.add(fuzzer_name)
+
+        fuzzer_chains.append(fuzzer_config + _load_fuzzer_chain(fuzzer_dirs, parent_name))
+    return fuzzer_chains
 
 
-def _load_fuzz_target_configs(data: dict[str, Any], benchmark_dirs: dict[str, Path]) -> dict[str, dict[str, Any]]:
-    fuzz_target_configs: dict[str, dict[str, Any]] = {}
-    for fuzz_target_spec in data.get('fuzz_targets', []):
+def _load_fuzz_target_configs(data: dict[str, Any], benchmark_dirs: dict[str, Path]) -> list[dict[str, Any]]:
+    fuzz_target_specs = data.get('fuzz_targets', [])
+    if not isinstance(fuzz_target_specs, list) or not fuzz_target_specs:
+        raise ValueError('Campaign fuzz_targets must be a non-empty list.')
+
+    fuzz_target_keys: set[tuple[str, str]] = set()
+    fuzz_target_configs: list[dict[str, Any]] = []
+    for fuzz_target_spec in fuzz_target_specs:
+        if not isinstance(fuzz_target_spec, str):
+            raise TypeError(f'Unsupported fuzz target entry: {fuzz_target_spec!r}')
+
         if ':' not in fuzz_target_spec:
             raise ValueError(f"Unexpected fuzz target spec format: {fuzz_target_spec!r} (missing ':')")
+
         benchmark, fuzz_target = fuzz_target_spec.split(':', 1)
         benchmark, fuzz_target = benchmark.strip(), fuzz_target.strip()
         _validate_benchmark_and_fuzz_target(benchmark, fuzz_target)
@@ -237,9 +255,14 @@ def _load_fuzz_target_configs(data: dict[str, Any], benchmark_dirs: dict[str, Pa
         if benchmark not in benchmark_dirs:
             raise ValueError(f'Benchmark {benchmark!r} is not configured; include it with --benchmarks.')
 
+        key = benchmark, fuzz_target
+        if key in fuzz_target_keys:
+            raise ValueError(f'Fuzz target {benchmark}:{fuzz_target} is defined more than once.')
+        fuzz_target_keys.add(key)
+
         path = benchmark_dirs[benchmark] / 'benchmark.yaml'
         fuzz_target_config = _load_fuzz_target_config(path, fuzz_target)
-        fuzz_target_configs[target_key(fuzz_target_config['benchmark'], fuzz_target_config['fuzz_target'])] = fuzz_target_config
+        fuzz_target_configs.append(fuzz_target_config)
 
     return fuzz_target_configs
 
@@ -303,17 +326,20 @@ def load_campaign_config(*, fuzzer_dirs: dict[str, Path], benchmark_dirs: dict[s
     if not data or not isinstance(data, dict):
         raise TypeError('Campaign config is empty or not a mapping.')
 
-    fuzzer_config_chains = _load_fuzzer_configs(data, fuzzer_dirs)
+    fuzzer_config_chains = _load_fuzzer_chains(data, fuzzer_dirs)
     fuzz_target_configs = _load_fuzz_target_configs(data, benchmark_dirs)
-    cases = [
-        _build_campaign_case(
-            fuzzer_config_chain=fuzzer_config_chain,
-            fuzz_target_config=fuzz_target_config,
-        )
-        for fuzzer_config_chain in fuzzer_config_chains.values()
-        for fuzz_target_config in fuzz_target_configs.values()
-        if _fuzzer_allows_fuzz_target(fuzzer_config_chain, fuzz_target_config)
-    ]
+
+    cases = []
+    for fuzzer_config_chain in fuzzer_config_chains:
+        for fuzz_target_config in fuzz_target_configs:
+            if _fuzzer_allows_fuzz_target(fuzzer_config_chain, fuzz_target_config):
+                cases.append(_build_campaign_case(
+                    fuzzer_config_chain=fuzzer_config_chain,
+                    fuzz_target_config=fuzz_target_config,
+                ))
+
+    if not cases:
+        raise ValueError('No selected fuzzer supports any selected fuzz target.')
 
     return CampaignConfig(
         settings=_load_campaign_settings(data),
