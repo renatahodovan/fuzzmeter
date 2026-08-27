@@ -31,8 +31,8 @@ class DockerRuntime:
     def from_paths(cls, *, fuzzer_dirs: dict[str, Path], out_root: Path, run_id: str | None = None) -> 'DockerRuntime':
         '''Create Docker runtime settings from explicit host paths.'''
         return cls(
-            fuzzer_dirs={name: Path(path).expanduser().resolve() for name, path in fuzzer_dirs.items()},
-            out_src=str(out_root.expanduser().resolve()),
+            fuzzer_dirs=dict(fuzzer_dirs),
+            out_src=str(out_root),
             run_user=_host_user(),
             run_id=run_id,
         )
@@ -52,20 +52,10 @@ class DockerRuntime:
         '''Return the shared output volume mount specification.'''
         return f'{self.out_src}:{container_path}'
 
-    def host_out_root(self) -> Path | None:
-        '''Return the host output root when it is an absolute filesystem path.'''
-        try:
-            path = Path(self.out_src)
-        except Exception:
-            return None
-        if not path.is_absolute():
-            return None
-        return path
-
     def map_out_path(self, host_path: Path, *, container_root: str = '/tmp/fuzzmeter/out') -> str:
         '''Map a host output path to the corresponding container output path.'''
-        host_root = self.host_out_root()
-        if host_root is None:
+        host_root = Path(self.out_src)
+        if not host_root.is_absolute():
             return str(host_path)
 
         try:
