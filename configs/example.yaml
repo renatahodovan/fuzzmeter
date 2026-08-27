@@ -1,13 +1,13 @@
 fuzzers:
   - aflplusplus
   - libfuzzer
-  - fuzzer: grammarinator
+  - id: grammarinator
     runtime:
       args:
         - --max-depth=25
         - --memo-size 1000
         - --max-tokens=500
-  - fuzzer: grafl
+  - id: grafl
     parent: afl_grammarinator
     runtime:
       env:

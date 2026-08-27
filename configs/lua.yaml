@@ -1,17 +1,17 @@
 fuzzers:
   - aflplusplus
-  - fuzzer: libfuzzer_entropic
+  - id: libfuzzer_entropic
     parent: libfuzzer
     runtime:
       args:
         - -entropic=1
-  - fuzzer: grammarinator
+  - id: grammarinator
     runtime:
       args:
         - --max-depth=25
         - --memo-size 1000
         - --max-tokens=500
-  - fuzzer: grafl
+  - id: grafl
     parent: afl_grammarinator
     # replay_trials:
     #   - /path/to/existing/fuzzer/outdir

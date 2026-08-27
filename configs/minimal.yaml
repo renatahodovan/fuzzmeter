@@ -1,7 +1,7 @@
 fuzzers:
   - aflplusplus
   - libfuzzer
-  - fuzzer: libfuzzer_entropic
+  - id: libfuzzer_entropic
     parent: libfuzzer
     runtime:
       args:

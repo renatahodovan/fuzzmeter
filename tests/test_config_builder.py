@@ -342,7 +342,7 @@ fuzz_targets:
                 root,
                 '''
 fuzzers:
-  - fuzzer: limited_child
+  - id: limited_child
     parent: limited_base
 fuzz_targets:
   - jerryscript:jerry
@@ -430,7 +430,7 @@ fuzz_targets:
                 root,
                 '''
 fuzzers:
-  - fuzzer: plain
+  - id: plain
     runtime:
       target:
         timeout_s: 3

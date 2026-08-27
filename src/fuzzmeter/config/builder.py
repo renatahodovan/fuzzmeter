@@ -300,38 +300,38 @@ def _load_fuzzer_chains(
         raise ValueError('Campaign fuzzers must be a non-empty list.')
 
     fuzzer_entries: list[tuple[list[dict[str, Any]], str]] = []
-    fuzzer_names: set[str] = set()
+    fuzzer_ids: set[str] = set()
     for fuzzer_data in fuzzers:
         if isinstance(fuzzer_data, str):
-            fuzzer_name, parent_name = fuzzer_data, fuzzer_data
+            fuzzer_id, parent_id = fuzzer_data, fuzzer_data
             fuzzer_config: list[dict[str, Any]] = []
         elif isinstance(fuzzer_data, dict):
-            fuzzer_name = fuzzer_data.get('fuzzer')
-            if not fuzzer_name or not isinstance(fuzzer_name, str):
-                raise ValueError(f'Fuzzer description must contain a "fuzzer" field of string value: {fuzzer_data!r}')
-            parent_name = fuzzer_data.get('parent') or fuzzer_name
-            if not isinstance(parent_name, str):
+            fuzzer_id = fuzzer_data.get('id')
+            if not fuzzer_id or not isinstance(fuzzer_id, str):
+                raise ValueError(f'Fuzzer description must contain an "id" field of string value: {fuzzer_data!r}')
+            parent_id = fuzzer_data.get('parent') or fuzzer_id
+            if not isinstance(parent_id, str):
                 raise ValueError('Parent fuzzer must be defined as string.')
-            fuzzer_config = [_fuzzer_config_fields(fuzzer_name, fuzzer_data)]
+            fuzzer_config = [_fuzzer_config_fields(fuzzer_id, fuzzer_data)]
         else:
             raise TypeError(f'Unsupported fuzzer entry: {fuzzer_data!r}')
 
-        if not IDENTIFIER_RE.fullmatch(fuzzer_name):
-            raise ValueError(f'Fuzzer name must match [a-zA-Z0-9_.-]+: {fuzzer_name!r}')
+        if not IDENTIFIER_RE.fullmatch(fuzzer_id):
+            raise ValueError(f'Fuzzer id must match [a-zA-Z0-9_.-]+: {fuzzer_id!r}')
 
-        if fuzzer_name in fuzzer_names:
-            raise ValueError(f'Fuzzer {fuzzer_name!r} is defined more than once.')
-        fuzzer_names.add(fuzzer_name)
+        if fuzzer_id in fuzzer_ids:
+            raise ValueError(f'Fuzzer {fuzzer_id!r} is defined more than once.')
+        fuzzer_ids.add(fuzzer_id)
 
-        fuzzer_entries.append((fuzzer_config, parent_name))
+        fuzzer_entries.append((fuzzer_config, parent_id))
 
     fuzzer_configs = _load_fuzzer_configs(
         fuzzer_dirs,
-        [parent_name for _, parent_name in fuzzer_entries],
+        [parent_id for _, parent_id in fuzzer_entries],
     )
     fuzzer_chains = [
-        (fuzzer_config + _build_fuzzer_chain(fuzzer_configs, parent_name), parent_name)
-        for fuzzer_config, parent_name in fuzzer_entries
+        (fuzzer_config + _build_fuzzer_chain(fuzzer_configs, parent_id), parent_id)
+        for fuzzer_config, parent_id in fuzzer_entries
     ]
     return fuzzer_chains, fuzzer_configs
 
