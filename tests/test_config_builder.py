@@ -16,6 +16,7 @@ from dataclasses import fields
 from pathlib import Path
 
 from fuzzmeter.config import CampaignCase, load_campaign_config
+from fuzzmeter.config.models import read_run_config
 
 
 class ConfigBuilderTest(unittest.TestCase):
@@ -490,6 +491,31 @@ fuzz_targets:
             )
 
         self.assertEqual([(root,), (root,)], [case.replay_trials for case in config.cases])
+
+    def test_run_config_records_resolved_reporting_candidates(self) -> None:
+        """Verify that a report can resolve plugin candidates without reading fuzzer configs."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            _write_fuzzer(root, 'grand', '')
+            _write_fuzzer(root, 'reported', '')
+            _write_fuzzer(root, 'base', 'parent: grand\nreporting_parent: reported\n')
+            _write_benchmark(root, 'jerryscript', 'jerry')
+
+            config = _load_campaign_config(
+                root,
+                '''
+fuzzers:
+  - id: variant
+    parent: base
+fuzz_targets:
+  - jerryscript:jerry
+''',
+            )
+            config.write_run_config(root)
+            candidates, bases = read_run_config(root)
+
+        self.assertEqual({'variant': ['variant', 'base', 'reported', 'grand']}, candidates)
+        self.assertEqual({'variant': 'base'}, bases)
 
     def test_target_timeout_is_stored_on_campaign_case(self) -> None:
         """Verify that target-level timeouts are stored on the campaign case."""

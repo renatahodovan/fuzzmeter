@@ -16,9 +16,9 @@ from pathlib import Path
 from typing import get_args
 from unittest.mock import patch
 
+from fuzzmeter.config.models import RUN_CONFIG_FILE, read_run_config
 from fuzzmeter.reporting.analyzers.custom_metrics import attach_custom_metric_sections
 from fuzzmeter.reporting.data.coverage_data import CoverageData
-from fuzzmeter.reporting.fuzzer_chain import expand_reporting_candidates, load_fuzzer_plugin_candidates
 from fuzzmeter.reporting.plugin_api import (
     ChartSeries,
     ChartSpec,
@@ -399,37 +399,16 @@ class ReportingPluginLoaderTest(unittest.TestCase):
 class ReportingPluginSectionsTest(unittest.TestCase):
     '''Verify plugin section context, candidate, and debug helpers.'''
 
-    def test_expand_reporting_candidates_follows_parent_chain(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            fuzzers_root = Path(tmp) / 'fuzzers'
-            child_build = fuzzers_root / 'child' / 'build' / 'build.yaml'
-            parent_run = fuzzers_root / 'parent' / 'run' / 'run.yaml'
-            child_build.parent.mkdir(parents=True)
-            parent_run.parent.mkdir(parents=True)
-            child_build.write_text('reporting_parent: parent\n', encoding='utf-8')
-            parent_run.write_text('parent: grand\n', encoding='utf-8')
-
-            self.assertEqual(
-                ['child', 'parent', 'grand'],
-                expand_reporting_candidates({'child': fuzzers_root / 'child', 'parent': fuzzers_root / 'parent', 'grand': fuzzers_root / 'grand'}, ['child', 'parent']),
-            )
-
-    def test_expand_reporting_candidates_ignores_unreadable_yaml(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            fuzzers_root = Path(tmp) / 'fuzzers'
-            child_build = fuzzers_root / 'child' / 'build' / 'build.yaml'
-            child_build.parent.mkdir(parents=True)
-            child_build.write_text('reporting_parent: parent\n', encoding='utf-8')
-
-            with patch('pathlib.Path.read_text', side_effect=OSError('blocked')):
-                self.assertEqual(['child'], expand_reporting_candidates({'child': fuzzers_root / 'child'}, ['child']))
-
-    def test_load_fuzzer_plugin_candidates_ignores_invalid_json(self) -> None:
+    def test_read_run_config_ignores_unreadable_or_foreign_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
-            (run_dir / 'benchmark_config.json').write_text('[not-json', encoding='utf-8')
+            self.assertEqual(({}, {}), read_run_config(run_dir))
 
-            self.assertEqual(({}, {}), load_fuzzer_plugin_candidates(run_dir, run_dir))
+            (run_dir / RUN_CONFIG_FILE).write_text('{not-json', encoding='utf-8')
+            self.assertEqual(({}, {}), read_run_config(run_dir))
+
+            (run_dir / RUN_CONFIG_FILE).write_text('{"version": 999, "fuzzers": {}}', encoding='utf-8')
+            self.assertEqual(({}, {}), read_run_config(run_dir))
 
     def test_snapshot_dirs_use_fuzzer_base_and_candidate_fallbacks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

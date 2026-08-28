@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 
 from dataclasses import dataclass, field
@@ -17,6 +18,9 @@ from pathlib import Path
 from typing import Any
 
 from .benchmark_dockerfile import benchmark_workdir
+
+RUN_CONFIG_FILE = 'benchmark_config.json'
+RUN_CONFIG_VERSION = 1
 
 
 @dataclass
@@ -38,6 +42,23 @@ class Fuzzer:
     def runner_image(self) -> str | None:
         """Return this fuzzer's own runner image target, when it defines a run Dockerfile."""
         return f'fuzzer_runner_{self.name}' if (self.src_dir / 'run' / 'Dockerfile').is_file() else None
+
+    @cached_property
+    def reporting_candidates(self) -> tuple[str, ...]:
+        """Return the fuzzer names a report should look for reporting plugins in."""
+        names: list[str] = []
+
+        def add(name: str, fuzzer: Fuzzer) -> None:
+            if name in names:
+                return
+            names.append(name)
+            for reporting_parent in fuzzer.reporting_parents:
+                add(reporting_parent.name, reporting_parent)
+            if fuzzer.parent:
+                add(fuzzer.parent.name, fuzzer.parent)
+
+        add(self.id, self)
+        return tuple(names)
 
     @cached_property
     def local_repo(self) -> Path | None:
@@ -180,3 +201,36 @@ class CampaignConfig:
             for fuzzer in case.fuzzer.resources:
                 dir_list[fuzzer.name] = fuzzer.src_dir
         return dir_list
+
+    def write_run_config(self, run_dir: Path) -> None:
+        """Store what a later, standalone report run cannot resolve on its own."""
+        fuzzers = {
+            case.fuzzer.id: {
+                'base': case.fuzzer.parent.name if case.fuzzer.parent else case.fuzzer.id,
+                'reporting_candidates': list(case.fuzzer.reporting_candidates),
+            }
+            for case in self.cases
+        }
+        (Path(run_dir) / RUN_CONFIG_FILE).write_text(
+            json.dumps({'version': RUN_CONFIG_VERSION, 'fuzzers': fuzzers}, indent=2, sort_keys=True),
+            encoding='utf-8',
+        )
+
+
+def read_run_config(run_dir: Path) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """Return the reporting plugin candidates and base fuzzer of each measured fuzzer."""
+    try:
+        data = json.loads((Path(run_dir) / RUN_CONFIG_FILE).read_text(encoding='utf-8'))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}, {}
+    if not isinstance(data, dict) or data.get('version') != RUN_CONFIG_VERSION:
+        return {}, {}
+    candidates: dict[str, list[str]] = {}
+    bases: dict[str, str] = {}
+    for fuzzer, entry in (data.get('fuzzers') or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        candidates[str(fuzzer)] = [str(name) for name in entry.get('reporting_candidates') or []]
+        if entry.get('base'):
+            bases[str(fuzzer)] = str(entry['base'])
+    return candidates, bases

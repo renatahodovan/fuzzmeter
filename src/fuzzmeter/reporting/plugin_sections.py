@@ -14,11 +14,7 @@ import logging
 from pathlib import Path
 from typing import Any, Sequence
 
-from .fuzzer_chain import (
-    dedupe,
-    load_fuzzer_plugin_candidates,
-    plugin_candidates_for,
-)
+from ..config.models import read_run_config
 from .metrics import safe_int
 from .plugin_api import ExtraSection, ReportingContext
 from .plugins.loader import ReportingPluginLoader
@@ -40,7 +36,7 @@ def attach_extra_sections(
     '''Attach plugin-provided extra report sections to target and fuzzer entries.'''
 
     loader = ReportingPluginLoader(fuzzer_dirs)
-    fuzzer_candidates_by_name, fuzzer_base_by_name = load_fuzzer_plugin_candidates(run_dir, fuzzer_dirs)
+    fuzzer_candidates_by_name, fuzzer_base_by_name = read_run_config(Path(run_dir))
     trial_snapshot_index = _build_trial_snapshot_index(run_dir)
     trials_by_target_fuzzer = _group_by_target_fuzzer(trials)
     bugs_by_target_fuzzer = _group_by_target_fuzzer(bugs)
@@ -54,7 +50,7 @@ def attach_extra_sections(
             fuzzer = str(fuzzer_entry.get('fuzzer') or '')
             if not fuzzer:
                 continue
-            plugin_candidates = plugin_candidates_for(fuzzer, fuzzer_dirs, fuzzer_candidates_by_name)
+            plugin_candidates = fuzzer_candidates_by_name.get(fuzzer) or [fuzzer]
             plugin, matched_plugin_name = loader.load_first(plugin_candidates)
             reps = trials_by_target_fuzzer.get((benchmark, fuzz_target, fuzzer), [])
             ctx = _build_reporting_context(
@@ -215,6 +211,17 @@ def _trial_snapshot_dirs(
         if snapshots:
             return list(snapshots)
     return []
+
+
+def dedupe(values: Sequence[str | None]) -> list[str]:
+    '''Return non-empty strings without duplicates, preserving order.'''
+
+    out: list[str] = []
+    for value in values:
+        text = str(value or '').strip()
+        if text and text not in out:
+            out.append(text)
+    return out
 
 
 def _build_trial_snapshot_index(run_dir: Path) -> dict[tuple[str, str, int], list[Path]]:

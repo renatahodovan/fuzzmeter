@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 
 from pathlib import Path
@@ -43,26 +42,7 @@ def initialize_run_dir(
 
 
 def _write_run_entries(*, run_dir: Path, run_id: str, campaign_config: CampaignConfig) -> None:
-    (Path(run_dir) / 'benchmark_config.json').write_text(
-        json.dumps(
-            [
-                {
-                    'fuzzer_id': case.fuzzer.id,
-                    'fuzzer_name': case.fuzzer.name,
-                    'fuzzer_chain': [case.fuzzer.id, *(fuzzer.name for fuzzer in case.fuzzer.parents)],
-                    'benchmark': case.fuzz_target.benchmark.name,
-                    'fuzz_target': case.fuzz_target.fuzz_target,
-                    'build_config': case.build_config,
-                    'runtime_config': case.run_config,
-                    'replay_trials': [str(path) for path in case.replay_trials],
-                }
-                for case in campaign_config.cases
-            ],
-            indent=2,
-            sort_keys=True,
-        ),
-        encoding='utf-8',
-    )
+    campaign_config.write_run_config(Path(run_dir))
     save_records(
         Path(run_dir) / 'fuzzmeter.db',
         collect_records(run_id=run_id, campaign_config=campaign_config),
