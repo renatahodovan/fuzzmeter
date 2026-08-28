@@ -15,6 +15,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..config import CampaignCase
 from ..db import DB, open_db
 from ..db import snapshot as db_snapshot
 from ..docker import DockerRuntime
@@ -71,7 +72,7 @@ def process_snapshot_coverage(
         trial = snapshot.trial
         corpus_dir = snapshot.snapshot_dir / 'corpus'
         latest_root = (
-            trial_coverage_root(run_dir, trial.config.fuzzer, trial.config.benchmark, trial.config.fuzz_target)
+            trial_coverage_root(run_dir, trial.config.case)
             / trial.config.trial_key
         )
         state_dir = trial.layout.trial_dir / 'coverage_state'
@@ -95,13 +96,13 @@ def process_snapshot_coverage(
             continue
 
         batch_profdata_paths, batches = build_coverage_replay_batches(
-            image=trial.config.images.coverage,
-            fuzz_target=trial.config.fuzz_target,
-            input_mode=trial.config.fuzz_target_input_mode,
+            image=trial.config.case.images.coverage,
+            fuzz_target=trial.config.fuzz_target.fuzz_target,
+            input_mode=trial.config.fuzz_target.input_mode,
             inputs=inputs,
             state_dir=state_dir,
             batch_tag=snapshot.snapshot_id,
-            timeout_s=trial.config.fuzz_target_timeout * 2,
+            timeout_s=trial.config.fuzz_target.target_timeout_s * 2,
             container_prefix=f'fm-{run_id}-cov-{tick_idx}-{trial.config.trial_key}',
             trial_key=trial.config.trial_key,
         )
@@ -150,19 +151,15 @@ def process_snapshot_coverage(
     if progress is not None:
         progress.idle_coverage()
 
-    campaigns: dict[tuple[str, str, str], str] = {}
+    campaigns: dict[tuple[str, str, str], CampaignCase] = {}
     for snapshot in snapshots:
-        config = snapshot.trial.config
-        campaigns[(config.fuzzer, config.benchmark, config.fuzz_target)] = config.images.coverage
+        case = snapshot.trial.config.case
+        campaigns[(case.fuzzer.id, case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target)] = case
 
-    for (fuzzer, benchmark, fuzz_target), image in sorted(campaigns.items()):
+    for (fuzzer, benchmark, fuzz_target), case in sorted(campaigns.items()):
         profile_inputs = []
         for trial in campaign_trials:
-            if (
-                trial.config.fuzzer != fuzzer
-                or trial.config.benchmark != benchmark
-                or trial.config.fuzz_target != fuzz_target
-            ):
+            if trial.config.case is not case:
                 continue
             profile_input = trial.layout.trial_dir / 'coverage_state' / 'merged.profdata'
             if profile_input.is_file() and profile_input.stat().st_size > 64:
@@ -173,9 +170,7 @@ def process_snapshot_coverage(
         campaign_trial_keys = {
             trial.config.trial_key
             for trial in campaign_trials
-            if trial.config.fuzzer == fuzzer
-            and trial.config.benchmark == benchmark
-            and trial.config.fuzz_target == fuzz_target
+            if trial.config.case is case
         }
         campaign_batches = [
             batch
@@ -189,10 +184,8 @@ def process_snapshot_coverage(
         summary = merge_coverage_outputs(
             docker_runtime=docker_runtime,
             run_dir=run_dir,
-            image=image,
+            case=case,
             out_root=agg_root,
-            benchmark=benchmark,
-            fuzz_target=fuzz_target,
             state_dir=state_dir,
             work_dir=state_dir / '_work',
             profile_inputs=profile_inputs,
@@ -200,7 +193,7 @@ def process_snapshot_coverage(
             container_name=f'fm-{run_id}-cov-{tick_idx}-{fuzzer}-{benchmark}-{fuzz_target}-campaign',
             measurement_context=coverage_measurement_context(
                 batches=campaign_batches,
-                image=image,
+                image=case.images.coverage,
                 snapshot_tick=tick_idx,
                 repetitions=len(profile_inputs),
             ),
@@ -250,19 +243,12 @@ def merge_trial_coverage_outputs(
     '''Merge one trial snapshot's batch coverage and store its summary.'''
     snapshot = coverage_state.snapshot
     trial_config = snapshot.trial.config
-    out_root = trial_coverage_root(
-        run_dir,
-        trial_config.fuzzer,
-        trial_config.benchmark,
-        trial_config.fuzz_target,
-    ) / trial_config.trial_key
+    out_root = trial_coverage_root(run_dir, trial_config.case) / trial_config.trial_key
     summary = merge_coverage_outputs(
         docker_runtime=docker_runtime,
         run_dir=run_dir,
-        image=trial_config.images.coverage,
+        case=trial_config.case,
         out_root=out_root,
-        benchmark=trial_config.benchmark,
-        fuzz_target=trial_config.fuzz_target,
         state_dir=coverage_state.state_dir,
         work_dir=coverage_state.state_dir / f'_tmp_{snapshot.snapshot_id}_final',
         profile_inputs=coverage_state.batch_profdata_paths,
@@ -275,7 +261,7 @@ def merge_trial_coverage_outputs(
         trial_key=trial_config.trial_key,
         measurement_context=coverage_measurement_context(
             batches=coverage_state.batches,
-            image=trial_config.images.coverage,
+            image=trial_config.case.images.coverage,
             snapshot_tick=snapshot.tick_idx,
             repetitions=1,
         ),
@@ -298,7 +284,7 @@ def bootstrap_from_seed_baseline(
     state_dir: Path,
 ) -> None:
     '''Copy seed baseline coverage state into an empty trial coverage state.'''
-    base_root = seed_coverage_root(run_dir, trial.config.fuzzer, trial.config.benchmark, trial.config.fuzz_target)
+    base_root = seed_coverage_root(run_dir, trial.config.case)
     baseline_profdata = base_root / '_state' / 'merged.profdata'
 
     if not (base_root / 'summary.json').exists():

@@ -16,7 +16,8 @@ from unittest.mock import patch
 
 from fuzzmeter.composite import canonical_digest
 from fuzzmeter.composite.collect import collect_config, collect_environment, metadata_for_case
-from fuzzmeter.config import CampaignCase
+from fuzzmeter.config import Benchmark, CampaignCase
+from fuzzmeter.config.models import Fuzzer, FuzzTarget
 
 
 class CompositeCollectorTest(unittest.TestCase):
@@ -42,8 +43,6 @@ class CompositeCollectorTest(unittest.TestCase):
         metadata = metadata_for_case(
             case=case,
             environment={'host': {'system': 'Darwin'}},
-            fuzzer_dirs={case.fuzzer_name: Path('/missing/fuzzer')},
-            benchmark_dirs={case.benchmark: Path('/missing/benchmark')},
         )
 
         self.assertIsNotNone(metadata.environment_digest)
@@ -83,13 +82,13 @@ class CompositeCollectorTest(unittest.TestCase):
 
 def _case() -> CampaignCase:
     return CampaignCase(
-        fuzzer_id='libfuzzer',
-        fuzzer_name='libfuzzer',
-        fuzzer_chain=('libfuzzer',),
-        benchmark='zlib',
-        fuzz_target='compress',
-        input_mode='file',
-        target_timeout_s=2.0,
+        fuzzer=Fuzzer(id='libfuzzer', name='libfuzzer', src_dir=Path('/missing/fuzzer')),
+        fuzz_target=FuzzTarget(
+            benchmark=Benchmark(name='zlib', src_dir=Path('/missing/benchmark'), config_path=Path('/missing/benchmark/benchmark.yaml')),
+            fuzz_target='compress',
+            input_mode='file',
+            target_timeout_s=2.0,
+        ),
     )
 
 

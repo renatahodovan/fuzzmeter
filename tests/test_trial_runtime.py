@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fuzzmeter.fuzzers.models import OutputPaths
-from fuzzmeter.trial.models import TrialConfig, TrialImages
+from fuzzmeter.trial.models import TrialConfig
 from fuzzmeter.trial.runtime import TrialContainer
 from tests.support.trials import make_trial_config
 
@@ -101,7 +101,6 @@ def _trial_config(root: Path) -> TrialConfig:
         ),
         trial_timeout=3600,
         snapshot_preprocess=None,
-        images=TrialImages(fuzzer_name='aflplusplus', target_key='sqlite3-sqlite'),
     )
 
 

@@ -34,7 +34,7 @@ from fuzzmeter.run.runner import (
 from fuzzmeter.snapshot.collector import collect_snapshots
 from fuzzmeter.snapshot.scheduler import ReplaySnapshotScheduler, SnapshotScheduler
 from fuzzmeter.snapshot.trial_snapshot import TrialCoverageSnapshot, TrialCrashSnapshot
-from fuzzmeter.trial.models import ReplayTrialInstance, TrialConfig, TrialImages, TrialInstance, TrialLayout
+from fuzzmeter.trial.models import ReplayTrialInstance, TrialConfig, TrialInstance, TrialLayout
 from tests.support.trials import make_trial_config
 
 
@@ -55,7 +55,6 @@ def _trial_config(root: Path, *, rep_idx: int = 0, replay_dir: Path | None = Non
         ),
         trial_timeout=300,
         snapshot_preprocess=None,
-        images=TrialImages(fuzzer_name='aflplusplus', target_key='bench-target'),
         replay_dir=replay_dir,
     )
 

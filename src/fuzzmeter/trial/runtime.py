@@ -83,10 +83,10 @@ class TrialContainer:
         umask 022
         mkdir -p "$(dirname "$LOG")"
         : > "$LOG"
-        echo "[fuzzmeter] fuzzer={self.cfg.fuzzer} benchmark={self.cfg.benchmark}" >> "$LOG"
-        echo "[fuzzmeter] fuzz_target={self.cfg.fuzz_target} trial={self.cfg.trial_key}" >> "$LOG"
+        echo "[fuzzmeter] fuzzer={self.cfg.case.fuzzer.id} benchmark={self.cfg.fuzz_target.benchmark.name}" >> "$LOG"
+        echo "[fuzzmeter] fuzz_target={self.cfg.fuzz_target.fuzz_target} trial={self.cfg.trial_key}" >> "$LOG"
         echo "[fuzzmeter] container_name={self.container_name}" >> "$LOG"
-        echo "[fuzzmeter] runner_image={self.cfg.images.runner}" >> "$LOG"
+        echo "[fuzzmeter] runner_image={self.cfg.case.images.runner}" >> "$LOG"
         echo "[fuzzmeter] FM_TARGET_BIN=$FM_TARGET_BIN" >> "$LOG"
         echo "[fuzzmeter] FM_INPUT=$FM_INPUT FM_OUTPUT=$FM_OUTPUT" >> "$LOG"
         echo "[fuzzmeter] FM_FUZZ_TARGET_TIMEOUT=$FM_FUZZ_TARGET_TIMEOUT" >> "$LOG"
@@ -108,13 +108,13 @@ class TrialContainer:
 
         env = {
             'FM_TARGET_BIN': str(fuzz_target_bin),
-            'FM_INPUT_MODE': str(self.cfg.fuzz_target_input_mode),
-            'FM_FUZZ_TARGET_TIMEOUT': str(self.cfg.fuzz_target_timeout),
+            'FM_INPUT_MODE': str(self.cfg.fuzz_target.input_mode),
+            'FM_FUZZ_TARGET_TIMEOUT': str(self.cfg.fuzz_target.target_timeout_s),
             'FM_INPUT': str(input_corpus_dir),
             'FM_OUTPUT': str(fuzz_dir),
             'FM_TIME_SECONDS': str(self.cfg.trial_timeout),
-            'FUZZER': self.cfg.fuzzer_impl,
-            'FM_FUZZER_RUNTIME_CONFIG_JSON': json.dumps(self.cfg.runtime_config, sort_keys=True),
+            'FUZZER': self.cfg.case.fuzzer.name,
+            'FM_FUZZER_RUNTIME_CONFIG_JSON': json.dumps(self.cfg.case.run_config, sort_keys=True),
             'FM_LOG': str(fuzzer_log_in_container),
             'FM_LOG_LEVEL': str(logging.getLevelName(LOG.getEffectiveLevel())),
         }
@@ -124,7 +124,7 @@ class TrialContainer:
             self._active_container_names.add(self.container_name)
             self.docker.start(
                 ContainerSpec(
-                    image=self.cfg.images.runner,
+                    image=self.cfg.case.images.runner,
                     name=self.container_name,
                     workdir='/',
                     entrypoint='/bin/bash',

@@ -22,7 +22,7 @@ from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.repro.coverage_state import apply_snapshot_summary
 from fuzzmeter.snapshot.coverage import process_snapshot_coverage
 from fuzzmeter.snapshot.trial_snapshot import TrialCoverageSnapshot
-from fuzzmeter.trial.models import TrialImages, TrialInstance, TrialLayout
+from fuzzmeter.trial.models import TrialInstance, TrialLayout
 from tests.support.trials import make_trial_config
 
 
@@ -151,7 +151,6 @@ def _trial_instance(root: Path) -> TrialInstance:
         ),
         trial_timeout=60,
         snapshot_preprocess=None,
-        images=TrialImages(fuzzer_name='fuzzer', target_key='bench-target'),
     )
     layout = TrialLayout.from_config(trial_dir=root / 'trial', cfg=config)
     return TrialInstance(

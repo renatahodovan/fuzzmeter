@@ -11,37 +11,33 @@ from __future__ import annotations
 
 import json
 import os
-import re
-import shlex
 
-from collections.abc import Mapping
-from pathlib import Path, PurePosixPath
-from typing import Any
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 
-from ..config import CampaignCase, fuzzer_source_dirs, target_key
+from ..config import CampaignCase
+from ..config.models import Fuzzer
 
 INSTRUMENTATION_PROFILES = (
-    ('coverage', 'coverage_runner', 'coverage-runner'),
-    ('asan', 'crash_runner', 'asan-runner'),
+    ('coverage', 'coverage_runner'),
+    ('asan', 'crash_runner'),
 )
 ENTRY_BUILDER_MEMORY_LIMIT = '4g'
 DEFAULT_DOCKER_PLATFORM = 'linux/amd64'
-DOCKER_ENV_RE = re.compile(r'\$([A-Za-z_][A-Za-z0-9_]*)|\$\{([A-Za-z_][A-Za-z0-9_]*)\}')
 LOCAL_REPO_BUILD_ARG = 'FM_LOCAL_REPO'
 
 
 def _hcl_str_list(items: list[str]) -> str:
-    inner = ', '.join([f'"{x}"' for x in items])
-    return f'[{inner}]'
+    return '[' + ', '.join(f'"{item}"' for item in items) + ']'
 
 
-def _escape(value: str) -> str:
-    return value.replace('\\', '\\\\').replace('"', '\\"')
+def _escape(value: str | Path) -> str:
+    return str(value).replace('\\', '\\\\').replace('"', '\\"')
 
 
 def _context_path(contexts: Mapping[str, Path], key: str, label: str) -> str:
     try:
-        return _escape(str(Path(contexts[key]).resolve()))
+        return _escape(contexts[key].resolve())
     except KeyError as exc:
         raise ValueError(f'Missing {label} context for {key}') from exc
 
@@ -51,127 +47,23 @@ def _hcl_block(name: str, lines: list[str]) -> str:
     return f'target "{name}" {{\n{body}\n}}'
 
 
-def _fuzzers_with_parents(fuzzer_configs: Mapping[str, dict[str, Any]], fuzzers: list[str]) -> list[str]:
-    seen: list[str] = []
-
-    def add(name: str) -> None:
-        if name in seen:
-            return
-        parent = fuzzer_configs[name]['parent']
-        if parent:
-            add(parent)
-        seen.append(name)
-
-    for name in fuzzers:
-        add(name)
-    return seen
+def _image_block(name: str, *, context: str, dockerfile: str, parent: str, args: Sequence[str] = ()) -> str:
+    """Render a target built from a single parent target."""
+    return _hcl_block(name, [
+        f'context    = "{context}"',
+        f'dockerfile = "{dockerfile}"',
+        f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
+        'contexts = {',
+        f'  parent_image = "target:{parent}"',
+        '}',
+        *args,
+        f'depends_on = ["{parent}"]',
+    ])
 
 
-def _has_fuzzer_runner_dockerfile(fuzzer_dirs: Mapping[str, Path], fuzzer: str) -> bool:
-    return (fuzzer_dirs[fuzzer] / 'run' / 'Dockerfile').is_file()
-
-
-def _runner_parent_target(
-    fuzzer_dirs: Mapping[str, Path],
-    fuzzer_configs: Mapping[str, dict[str, Any]],
-    fuzzer: str,
-) -> str:
-    current = fuzzer_configs[fuzzer]['parent']
-    while current:
-        if _has_fuzzer_runner_dockerfile(fuzzer_dirs, current):
-            return f'fuzzer_runner_{current}'
-        current = fuzzer_configs[current]['parent']
-    return 'runtime_base'
-
-
-def _runner_base_target(
-    fuzzer_dirs: Mapping[str, Path],
-    fuzzer_configs: Mapping[str, dict[str, Any]],
-    fuzzer: str,
-) -> str:
-    if _has_fuzzer_runner_dockerfile(fuzzer_dirs, fuzzer):
-        return f'fuzzer_runner_{fuzzer}'
-    return _runner_parent_target(fuzzer_dirs, fuzzer_configs, fuzzer)
-
-
-def _local_repo_path(env_var: str) -> Path | None:
-    raw_path = os.environ.get(env_var, '').strip()
-    if not raw_path:
-        return None
-    path = Path(raw_path).expanduser().resolve()
-    if not path.is_dir():
-        raise NotADirectoryError(f'Local fuzzer repository from {env_var} is not a directory: {path}')
-    return path
-
-
-def fuzzer_local_repo_paths(
-    fuzzer_configs: Mapping[str, dict[str, Any]],
-    fuzzers: list[str],
-) -> dict[str, Path]:
-    """Return configured host-side fuzzer source checkouts by fuzzer."""
-    paths: dict[str, Path] = {}
-    for fuzzer in _fuzzers_with_parents(fuzzer_configs, fuzzers):
-        env_var = fuzzer_configs[fuzzer]['local_repo_env']
-        if not env_var:
-            continue
-        local_repo = _local_repo_path(env_var)
-        if local_repo:
-            paths[fuzzer] = local_repo
-    return paths
-
-
-def _benchmark_workdir(benchmark_dirs: Mapping[str, Path], benchmark: str) -> str:
-    path = benchmark_dirs[benchmark] / 'Dockerfile'
-    env = {'OUT': '/out', 'SRC': '/src', 'WORK': '/work'}
-    workdir = env['SRC']
-    if not path.is_file():
-        return workdir
-
-    for raw_line in path.read_text(encoding='utf-8', errors='replace').splitlines():
-        line = raw_line.split('#', 1)[0].strip()
-        if not line:
-            continue
-        instruction, _, value = line.partition(' ')
-        instruction = instruction.upper()
-        value = value.strip()
-        if instruction == 'ENV':
-            _update_docker_env(env, value)
-        elif instruction == 'WORKDIR':
-            workdir = _resolve_workdir(value, env, workdir)
-    return workdir
-
-
-def _update_docker_env(env: dict[str, str], value: str) -> None:
-    try:
-        parts = shlex.split(value)
-    except ValueError:
-        return
-    if len(parts) == 2 and '=' not in parts[0]:
-        env[parts[0]] = _expand_docker_env(parts[1], env)
-        return
-    for part in parts:
-        key, sep, raw_value = part.partition('=')
-        if sep and key:
-            env[key] = _expand_docker_env(raw_value, env)
-
-
-def _resolve_workdir(value: str, env: dict[str, str], current: str) -> str:
-    try:
-        parts = shlex.split(value)
-    except ValueError:
-        parts = []
-    raw_workdir = parts[0] if parts else value
-    workdir = _expand_docker_env(raw_workdir, env)
-    if not workdir.startswith('/'):
-        workdir = str(PurePosixPath(current) / workdir)
-    return str(PurePosixPath(workdir))
-
-
-def _expand_docker_env(value: str, env: dict[str, str]) -> str:
-    def replace(match: re.Match[str]) -> str:
-        return env.get(match.group(1) or match.group(2) or '', match.group(0))
-
-    return DOCKER_ENV_RE.sub(replace, value)
+def _runner_target(fuzzers: Sequence[Fuzzer]) -> str:
+    """Return the first runner image in the chain, or the plain runtime base."""
+    return next((fuzzer.runner_image for fuzzer in fuzzers if fuzzer.runner_image), 'runtime_base')
 
 
 def _entry_args(
@@ -193,7 +85,7 @@ def _entry_args(
         '  CLANG_BASE_IMAGE = "clang_base"',
         f'  FUZZER        = "{fuzzer}"',
         f'  FUZZER_BUILD_CONFIG_JSON = "{_escape(build_config_json)}"',
-        f'  FUZZER_SOURCE_DIRS = "{_escape(" ".join(fuzzer_source_dirs))}"',
+        f'  FUZZER_SOURCE_DIRS = "{" ".join(fuzzer_source_dirs)}"',
         f'  BENCHMARK     = "{benchmark}"',
         f'  BENCHMARK_WORKDIR = "{benchmark_workdir}"',
         f'  TARGET_NAME   = "{target_name}"',
@@ -205,13 +97,19 @@ def _entry_args(
     return lines
 
 
+BASE_TARGETS = [
+    ('runtime_tools', 'runtime-tools.Dockerfile', [], []),
+    ('build_base', 'build-base.Dockerfile', [('runtime_tools', 'runtime_tools')], ['runtime_tools']),
+    ('runtime_base', 'runtime-base.Dockerfile', [('build_base', 'build_base')], ['build_base']),
+    ('clang_base', 'clang-base.Dockerfile', [('runtime_tools', 'runtime_tools')], ['runtime_tools']),
+    ('benchmark_base', 'benchmark-base.Dockerfile', [('parent_image', 'clang_base')], ['clang_base']),
+    ('instrumentation_runtime', 'instrumentation-runtime.Dockerfile', [('runtime_base', 'runtime_base')], ['runtime_base']),
+]
+
+
 def generate_run_bake_hcl(
     *,
     campaign_cases: list[CampaignCase],
-    fuzzer_dirs: Mapping[str, Path],
-    fuzzer_configs: Mapping[str, dict[str, Any]],
-    local_repo_paths: Mapping[str, Path],
-    benchmark_dirs: Mapping[str, Path],
     fuzzer_build_sources: Mapping[str, Path],
     fuzzer_run_sources: Mapping[str, Path],
     instrumentation_build_sources: Mapping[str, Path],
@@ -220,286 +118,173 @@ def generate_run_bake_hcl(
     fuzzmeter_resources: Path,
     memory_limit: str | None = None,
 ) -> str:
-    campaign_memory_limit = memory_limit or ENTRY_BUILDER_MEMORY_LIMIT
-    hcl_parts: list[str] = []
-    group_targets: list[str] = []
-    docker_output_line = 'output = ["type=docker"]'
+    benchmarks = {case.fuzz_target.benchmark.name: case.fuzz_target.benchmark for case in campaign_cases}
 
-    fuzzer_dirs = {name: Path(path).resolve() for name, path in fuzzer_dirs.items()}
-    benchmark_dirs = {name: Path(path).resolve() for name, path in benchmark_dirs.items()}
-    docker_resources_arg = _escape(str(Path(docker_resources).resolve()))
-    entrypoint_resources_arg = _escape(str(Path(entrypoint_resources).resolve()))
-    fuzzmeter_resources_arg = _escape(str(Path(fuzzmeter_resources).resolve()))
+    docker_resources_arg = _escape(docker_resources.resolve())
+    entrypoint_resources_arg = _escape(entrypoint_resources.resolve())
+    fuzzmeter_resources_arg = _escape(fuzzmeter_resources.resolve())
     campaign_dockerfile = f'{docker_resources_arg}/campaign.Dockerfile'
-
-    fuzzer_names = sorted({case.fuzzer_name for case in campaign_cases})
-    campaign_fuzzers = _fuzzers_with_parents(fuzzer_configs, fuzzer_names)
-    build_fuzzers = list(campaign_fuzzers)
-    benchmark_workdirs = {
-        benchmark: _escape(_benchmark_workdir(benchmark_dirs, benchmark))
-        for benchmark in sorted({case.benchmark for case in campaign_cases})
+    extra_base_contexts = {
+        'build_base': [('entrypoints', entrypoint_resources_arg), ('fuzzmeter_resources', fuzzmeter_resources_arg)],
+        'runtime_base': [('entrypoints', entrypoint_resources_arg)],
     }
 
-    base_targets = [
-        ('runtime_tools', 'runtime-tools.Dockerfile', [], []),
-        (
-            'build_base',
-            'build-base.Dockerfile',
-            [('runtime_tools', 'runtime_tools')],
-            ['runtime_tools'],
-        ),
-        (
-            'runtime_base',
-            'runtime-base.Dockerfile',
-            [('build_base', 'build_base')],
-            ['build_base'],
-        ),
-        (
-            'clang_base',
-            'clang-base.Dockerfile',
-            [('runtime_tools', 'runtime_tools')],
-            ['runtime_tools'],
-        ),
-        (
-            'benchmark_base',
-            'benchmark-base.Dockerfile',
-            [('parent_image', 'clang_base')],
-            ['clang_base'],
-        ),
-        (
-            'instrumentation_runtime',
-            'instrumentation-runtime.Dockerfile',
-            [('runtime_base', 'runtime_base')],
-            ['runtime_base'],
-        ),
-    ]
-    for name, dockerfile, base_contexts, depends_on in base_targets:
-        contexts = list(base_contexts)
+    hcl_parts: list[str] = []
+    for name, dockerfile, base_contexts, depends_on in BASE_TARGETS:
         lines = [
             f'context    = "{docker_resources_arg}"',
             f'dockerfile = "{docker_resources_arg}/{dockerfile}"',
             f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
         ]
-        if name in {'build_base', 'runtime_base'}:
-            contexts.append(('entrypoints', entrypoint_resources_arg))
-        if name == 'build_base':
-            contexts = [*contexts, ('fuzzmeter_resources', fuzzmeter_resources_arg)]
+
+        contexts = [
+            *[(key, f'target:{parent}') for key, parent in base_contexts],
+            *extra_base_contexts.get(name, ()),
+        ]
         if contexts:
-            lines.extend(
-                [
-                    'contexts = {',
-                    *[
-                        f'  {key} = "{target}"' if '/' in target else f'  {key} = "target:{target}"'
-                        for key, target in contexts
-                    ],
-                    '}',
-                ]
-            )
+            lines.extend(['contexts = {', *[f'  {key} = "{value}"' for key, value in contexts], '}'])
         if depends_on:
             lines.append(f'depends_on = {_hcl_str_list(depends_on)}')
         hcl_parts.append(_hcl_block(name, lines))
 
-    for fuzzer in build_fuzzers:
-        parent = fuzzer_configs[fuzzer]['parent']
-        builder_parent = f'fuzzer_builder_{parent}' if parent else 'clang_base'
-        builder_depends = [f'depends_on = ["{builder_parent}"]']
-        builder_context = _escape(str(fuzzer_dirs[fuzzer] / 'build'))
-        dockerfile = 'Dockerfile'
-        extra_args: list[str] = []
-        local_repo = local_repo_paths.get(fuzzer)
+    fuzzers = list({
+        fuzzer.name: fuzzer for case in campaign_cases for fuzzer in case.fuzzer.dependencies
+    }.values())
+
+    for fuzzer in fuzzers:
+        args: tuple[str, ...] = ()
+        local_repo = fuzzer.local_repo
         if local_repo:
-            builder_context = _escape(str(local_repo))
-            dockerfile = _escape(str(fuzzer_dirs[fuzzer] / 'build' / 'Dockerfile'))
-            extra_args = [
-                'args = {',
-                f'  {LOCAL_REPO_BUILD_ARG} = "1"',
-                '}',
-            ]
-        hcl_parts.append(
-            _hcl_block(
-                f'fuzzer_builder_{fuzzer}',
-                [
-                    f'context    = "{builder_context}"',
-                    f'dockerfile = "{dockerfile}"',
-                    f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
-                    'contexts = {',
-                    f'  parent_image = "target:{builder_parent}"',
-                    '}',
-                    *extra_args,
-                    *builder_depends,
-                ],
-            )
-        )
+            context, dockerfile = _escape(local_repo), _escape(fuzzer.src_dir / 'build' / 'Dockerfile')
+            args = ('args = {', f'  {LOCAL_REPO_BUILD_ARG} = "1"', '}')
+        else:
+            context, dockerfile = _escape(fuzzer.src_dir / 'build'), 'Dockerfile'
+        hcl_parts.append(_image_block(
+            f'fuzzer_builder_{fuzzer.name}',
+            context=context,
+            dockerfile=dockerfile,
+            parent=f'fuzzer_builder_{fuzzer.parent.name}' if fuzzer.parent else 'clang_base',
+            args=args,
+        ))
 
-    for profile, _, _ in INSTRUMENTATION_PROFILES:
-        builder_name = f'instrumentation_builder_{profile}'
-        instrumentation_build_sources_arg = _context_path(
-            instrumentation_build_sources,
-            profile,
-            'instrumentation build',
-        )
-        hcl_parts.append(
-            _hcl_block(
-                builder_name,
-                [
-                    f'context    = "{instrumentation_build_sources_arg}/{profile}"',
-                    'dockerfile = "Dockerfile"',
-                    f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
-                    'contexts = {',
-                    '  parent_image = "target:clang_base"',
-                    '}',
-                    'depends_on = ["clang_base"]',
-                ],
-            )
-        )
+    for profile, _ in INSTRUMENTATION_PROFILES:
+        sources = _context_path(instrumentation_build_sources, profile, 'instrumentation build')
+        hcl_parts.append(_image_block(
+            f'instrumentation_builder_{profile}',
+            context=f'{sources}/{profile}',
+            dockerfile='Dockerfile',
+            parent='clang_base',
+        ))
 
-    for fuzzer in campaign_fuzzers:
-        if not _has_fuzzer_runner_dockerfile(fuzzer_dirs, fuzzer):
-            continue
-        runner_parent = _runner_parent_target(fuzzer_dirs, fuzzer_configs, fuzzer)
-        hcl_parts.append(
-            _hcl_block(
-                f'fuzzer_runner_{fuzzer}',
-                [
-                    f'context    = "{_escape(str(fuzzer_dirs[fuzzer] / "run"))}"',
-                    'dockerfile = "Dockerfile"',
-                    f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
-                    'contexts = {',
-                    f'  parent_image = "target:{runner_parent}"',
-                    '}',
-                    f'depends_on = ["{runner_parent}"]',
-                ],
-            )
-        )
+    for fuzzer in fuzzers:
+        if fuzzer.runner_image:
+            hcl_parts.append(_image_block(
+                fuzzer.runner_image,
+                context=_escape(fuzzer.src_dir / 'run'),
+                dockerfile='Dockerfile',
+                parent=_runner_target(fuzzer.parents),
+            ))
 
-    seen_benchmarks: set[str] = set()
+    for name, benchmark in benchmarks.items():
+        hcl_parts.append(_image_block(
+            f'benchmark_{name}',
+            context=_escape(benchmark.src_dir),
+            dockerfile='Dockerfile',
+            parent='benchmark_base',
+        ))
+
+    group_targets: list[str] = []
+
+    campaign_memory_limit = memory_limit or ENTRY_BUILDER_MEMORY_LIMIT
+
+    def campaign_block(
+        name: str, *, stage: str, tag: str, contexts: list[str], args: list[str], depends_on: list[str]
+    ) -> str:
+        return _hcl_block(name, [
+            f'context    = "{docker_resources_arg}"',
+            f'dockerfile = "{campaign_dockerfile}"',
+            f'target     = "{stage}"',
+            f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
+            f'memory     = "{_escape(campaign_memory_limit)}"',
+            f'tags       = ["{tag}"]',
+            'output = ["type=docker"]',
+            'contexts = {',
+            *contexts,
+            '}',
+            *args,
+            f'depends_on = {_hcl_str_list(depends_on)}',
+        ])
     for case in campaign_cases:
-        if case.benchmark in seen_benchmarks:
-            continue
-        seen_benchmarks.add(case.benchmark)
-        benchmark_name = f'benchmark_{case.benchmark}'
-        hcl_parts.append(
-            _hcl_block(
-                benchmark_name,
-                [
-                    f'context    = "{_escape(str(benchmark_dirs[case.benchmark]))}"',
-                    'dockerfile = "Dockerfile"',
-                    f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
-                    'contexts = {',
-                    '  parent_image = "target:benchmark_base"',
-                    '}',
-                    'depends_on = ["benchmark_base"]',
-                ],
-            )
-        )
-
-    for case in campaign_cases:
-        fuzzer_name = case.fuzzer_name
-        target = target_key(case.benchmark, case.fuzz_target)
-        benchmark_workdir = benchmark_workdirs[case.benchmark]
-        source_dirs = fuzzer_source_dirs(fuzzer_configs, fuzzer_name)
-        runner_base = _runner_base_target(fuzzer_dirs, fuzzer_configs, fuzzer_name)
-        build_config_json = json.dumps(case.build_config, sort_keys=True)
-        fuzzer_build_sources_arg = _context_path(fuzzer_build_sources, fuzzer_name, 'fuzzer build')
-        fuzzer_run_sources_arg = _context_path(fuzzer_run_sources, fuzzer_name, 'fuzzer run')
-
-        runner_name = f'runner_{case.fuzzer_id}_{target}'
+        fuzzer, target = case.fuzzer, case.fuzz_target.ident
+        runner_base = _runner_target([fuzzer, *fuzzer.parents])
+        runner_name = f'runner_{fuzzer.id}_{target}'
         runner_depends = [
-            f'fuzzer_builder_{fuzzer_name}',
-            f'benchmark_{case.benchmark}',
+            f'fuzzer_builder_{fuzzer.name}',
+            f'benchmark_{case.fuzz_target.benchmark.name}',
             'build_base',
             'runtime_base',
         ]
         if runner_base != 'runtime_base':
             runner_depends.append(runner_base)
-        runner_args_lines = _entry_args(
-            fuzzer=fuzzer_name,
-            build_config_json=build_config_json,
-            fuzzer_source_dirs=source_dirs,
-            benchmark=case.benchmark,
-            benchmark_workdir=benchmark_workdir,
-            target_name=case.fuzz_target,
-            runner_base_image='runner_base',
-        )
-        hcl_parts.append(
-            _hcl_block(
-                runner_name,
-                [
-                    f'context    = "{docker_resources_arg}"',
-                    f'dockerfile = "{campaign_dockerfile}"',
-                    'target     = "runner"',
-                    f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
-                    f'memory     = "{_escape(campaign_memory_limit)}"',
-                    f'tags       = ["fuzzmeter/runner-{case.fuzzer_id}-{target}:dev"]',
-                    docker_output_line,
-                    'contexts = {',
-                    f'  builder = "target:fuzzer_builder_{fuzzer_name}"',
-                    f'  benchmark = "target:benchmark_{case.benchmark}"',
-                    '  build_base = "target:build_base"',
-                    '  runtime_base = "target:runtime_base"',
-                    f'  runner_base = "target:{runner_base}"',
-                    f'  fuzzer_build_sources = "{fuzzer_build_sources_arg}"',
-                    f'  fuzzer_run_sources = "{fuzzer_run_sources_arg}"',
-                    '}',
-                    *runner_args_lines,
-                    f'depends_on = {_hcl_str_list(runner_depends)}',
-                ],
-            )
-        )
+        hcl_parts.append(campaign_block(
+            runner_name,
+            stage='runner',
+            tag=case.images.runner,
+            contexts=[
+                f'  builder = "target:fuzzer_builder_{fuzzer.name}"',
+                f'  benchmark = "target:benchmark_{case.fuzz_target.benchmark.name}"',
+                '  build_base = "target:build_base"',
+                '  runtime_base = "target:runtime_base"',
+                f'  runner_base = "target:{runner_base}"',
+                f'  fuzzer_build_sources = "{_context_path(fuzzer_build_sources, fuzzer.name, "fuzzer build")}"',
+                f'  fuzzer_run_sources = "{_context_path(fuzzer_run_sources, fuzzer.name, "fuzzer run")}"',
+            ],
+            args=_entry_args(
+                fuzzer=fuzzer.name,
+                build_config_json=json.dumps(case.build_config, sort_keys=True),
+                fuzzer_source_dirs=[dep.name for dep in fuzzer.dependencies],
+                benchmark=case.fuzz_target.benchmark.name,
+                benchmark_workdir=_escape(case.fuzz_target.benchmark.workdir),
+                target_name=case.fuzz_target.fuzz_target,
+                runner_base_image='runner_base',
+            ),
+            depends_on=runner_depends,
+        ))
         group_targets.append(runner_name)
 
-    target_entries = {target_key(case.benchmark, case.fuzz_target): case for case in campaign_cases}
-
-    for internal_fuzzer, stage_name, image_prefix in INSTRUMENTATION_PROFILES:
-        for case in target_entries.values():
-            target = target_key(case.benchmark, case.fuzz_target)
-            instrumentation_builder = f'instrumentation_builder_{internal_fuzzer}'
-            instrumentation_build_sources_arg = _context_path(
-                instrumentation_build_sources,
-                internal_fuzzer,
-                'instrumentation build',
-            )
-            instrumentation_depends = [
-                instrumentation_builder,
-                f'benchmark_{case.benchmark}',
-                'build_base',
-                'runtime_base',
-                'instrumentation_runtime',
-            ]
-            args_lines = _entry_args(
-                fuzzer=internal_fuzzer,
-                build_config_json='{}',
-                fuzzer_source_dirs=[internal_fuzzer],
-                benchmark=case.benchmark,
-                benchmark_workdir=benchmark_workdirs[case.benchmark],
-                target_name=case.fuzz_target,
-            )
-
+    target_cases = {case.fuzz_target.ident: case for case in campaign_cases}
+    for internal_fuzzer, stage_name in INSTRUMENTATION_PROFILES:
+        sources = _context_path(instrumentation_build_sources, internal_fuzzer, 'instrumentation build')
+        for target, case in target_cases.items():
             final_name = f'{stage_name}_{target}'
-            hcl_parts.append(
-                _hcl_block(
-                    final_name,
-                    [
-                        f'context    = "{docker_resources_arg}"',
-                        f'dockerfile = "{campaign_dockerfile}"',
-                        f'target     = "{stage_name}"',
-                        f'platforms  = ["{DEFAULT_DOCKER_PLATFORM}"]',
-                        f'memory     = "{_escape(campaign_memory_limit)}"',
-                        f'tags       = ["fuzzmeter/{image_prefix}-{target}:dev"]',
-                        docker_output_line,
-                        'contexts = {',
-                        f'  builder = "target:instrumentation_builder_{internal_fuzzer}"',
-                        f'  benchmark = "target:benchmark_{case.benchmark}"',
-                        '  build_base = "target:build_base"',
-                        '  runtime_base = "target:runtime_base"',
-                        '  instrumentation_runtime = "target:instrumentation_runtime"',
-                        f'  fuzzer_build_sources = "{instrumentation_build_sources_arg}"',
-                        '}',
-                        *args_lines,
-                        f'depends_on = {_hcl_str_list(instrumentation_depends)}',
-                    ],
-                )
-            )
+            hcl_parts.append(campaign_block(
+                final_name,
+                stage=stage_name,
+                tag=getattr(case.images, internal_fuzzer),
+                contexts=[
+                    f'  builder = "target:instrumentation_builder_{internal_fuzzer}"',
+                    f'  benchmark = "target:benchmark_{case.fuzz_target.benchmark.name}"',
+                    '  build_base = "target:build_base"',
+                    '  runtime_base = "target:runtime_base"',
+                    '  instrumentation_runtime = "target:instrumentation_runtime"',
+                    f'  fuzzer_build_sources = "{sources}"',
+                ],
+                args=_entry_args(
+                    fuzzer=internal_fuzzer,
+                    build_config_json='{}',
+                    fuzzer_source_dirs=[internal_fuzzer],
+                    benchmark=case.fuzz_target.benchmark.name,
+                    benchmark_workdir=_escape(case.fuzz_target.benchmark.workdir),
+                    target_name=case.fuzz_target.fuzz_target,
+                ),
+                depends_on=[
+                    f'instrumentation_builder_{internal_fuzzer}',
+                    f'benchmark_{case.fuzz_target.benchmark.name}',
+                    'build_base',
+                    'runtime_base',
+                    'instrumentation_runtime',
+                ],
+            ))
             group_targets.append(final_name)
 
     group_block = '\n'.join(

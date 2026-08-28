@@ -12,13 +12,12 @@ from __future__ import annotations
 import logging
 import re
 
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from .models import CampaignCase, CampaignConfig, CampaignSettings
+from .models import Benchmark, CampaignCase, CampaignConfig, CampaignSettings, Fuzzer, FuzzTarget
 
 IDENTIFIER_RE = re.compile(r'^[a-zA-Z0-9_.-]+$')
 INPUT_MODE_OPTIONS = ('in_process', 'file', 'stdin')
@@ -42,13 +41,6 @@ def _merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _validate_benchmark_and_fuzz_target(benchmark: str, fuzz_target: str) -> None:
-    if not IDENTIFIER_RE.fullmatch(benchmark):
-        raise ValueError(f'Benchmark name must match [a-zA-Z0-9_.-]+: {benchmark!r}')
-    if not IDENTIFIER_RE.fullmatch(fuzz_target):
-        raise ValueError(f'Fuzz target name must match [a-zA-Z0-9_.-]+: {fuzz_target!r}')
-
-
 def load_yaml(path: Path) -> dict[str, Any]:
     path = path.expanduser().resolve()
     if not path.is_file():
@@ -64,32 +56,36 @@ def load_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
-def _load_fuzz_target_config(path: Path, fuzz_target: str) -> dict[str, Any]:
+def _fuzz_target_from_config(benchmark_dir: Path, required_benchmark: str, required_fuzz_target: str) -> FuzzTarget:
+    path = benchmark_dir / 'benchmark.yaml'
     data = load_yaml(path)
 
     benchmark = data.get('benchmark')
     if not benchmark or not isinstance(benchmark, str):
         raise ValueError(f'{path}: benchmark must be a non-empty string.')
 
+    if required_benchmark != benchmark:
+        raise ValueError('')
+
     fuzz_targets_data = data.get('fuzz_targets')
     if not fuzz_targets_data or not isinstance(fuzz_targets_data, dict):
         raise ValueError(f'{path}: fuzz_targets must be a non-empty mapping.')
 
-    fuzz_target_data = fuzz_targets_data.get(fuzz_target)
+    fuzz_target_data = fuzz_targets_data.get(required_fuzz_target)
     if fuzz_target_data is None or not isinstance(fuzz_target_data, dict):
-        raise ValueError(f'{path}: fuzz_targets[{fuzz_target!r}] must be a mapping.')
+        raise ValueError(f'{path}: fuzz_targets[{required_fuzz_target!r}] must be a mapping.')
 
     input_mode = str(fuzz_target_data.get('input_mode') or '')
     if input_mode not in INPUT_MODE_OPTIONS:
-        raise ValueError(f'{path}: fuzz_targets[{fuzz_target!r}].input_mode must be one of {INPUT_MODE_OPTIONS}; got {input_mode!r}.')
+        raise ValueError(f'{path}: fuzz_targets[{required_fuzz_target!r}].input_mode must be one of {INPUT_MODE_OPTIONS}; got {input_mode!r}.')
 
     timeout_value = fuzz_target_data.get('timeout_s')
     if timeout_value is None:
         LOG.debug(
-            f'No fuzz target timeout was specified for {benchmark}:{fuzz_target}; '
-            f'using {CampaignCase.target_timeout_s} as default.'
+            f'No fuzz target timeout was specified for {benchmark}:{required_fuzz_target}; '
+            f'using {FuzzTarget.target_timeout_s} as default.'
         )
-        timeout_value = CampaignCase.target_timeout_s
+        timeout_value = FuzzTarget.target_timeout_s
 
     try:
         timeout_s = float(timeout_value)
@@ -97,7 +93,7 @@ def _load_fuzz_target_config(path: Path, fuzz_target: str) -> dict[str, Any]:
             raise ValueError
     except (TypeError, ValueError):
         raise ValueError(
-            f'{path}: fuzz_targets[{fuzz_target!r}].timeout_s '
+            f'{path}: fuzz_targets[{required_fuzz_target!r}].timeout_s '
             f'must be a positive number; got {timeout_value!r}.'
         ) from None
 
@@ -107,14 +103,11 @@ def _load_fuzz_target_config(path: Path, fuzz_target: str) -> dict[str, Any]:
     if not all(isinstance(override, dict) for override in fuzzer_overrides.values()):
         raise ValueError('Fuzzer overrides in benchmark configs must be mappings.')
 
-    return {
-        'benchmark': benchmark,
-        'fuzz_target': fuzz_target,
-        'input_mode': input_mode,
-        'timeout_s': timeout_s,
-        'config_path': str(path),
-        'fuzzers': fuzzer_overrides,
-    }
+    return FuzzTarget(benchmark=Benchmark(name=benchmark, src_dir=benchmark_dir, config_path=path),
+                      fuzz_target=required_fuzz_target,
+                      input_mode=input_mode,
+                      target_timeout_s=timeout_s,
+                      fuzzer_overrides=fuzzer_overrides)
 
 
 def _normalized_int_value(name: str, value: str, min_value: int, max_value: int | None = None) -> int:
@@ -151,198 +144,161 @@ def _load_campaign_settings(data: dict[str, Any]) -> CampaignSettings:
     )
 
 
-def _fuzzer_config_fields(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[str, Any]:
-    allowed_fuzz_targets = fuzzer_data.get('allowed_fuzz_targets') or []
-    if not isinstance(allowed_fuzz_targets, list):
-        raise ValueError('allowed_fuzz_targets must be defined as a list.')
+def _check_id_format(src: Any, name: str) -> None:
+    if not src or not isinstance(src, str):
+        raise ValueError(f'Input field {name!r} must be a string value: {src!r}')
 
-    replay_trials = []
-    for replay_path in fuzzer_data.get('replay_trials') or []:
-        path = Path(replay_path).expanduser().resolve()
+    if not IDENTIFIER_RE.fullmatch(src):
+        raise ValueError(f'Input field {name!r} must match [a-zA-Z0-9_.-]+: {src!r}')
+
+
+def _replay_trials(data: dict[str, Any]) -> dict[str, tuple[Path, ...]]:
+    specs = data.get('replay_trials') or {}
+    if not isinstance(specs, dict) or not all(isinstance(paths, list) for paths in specs.values()):
+        raise ValueError('replay_trials must map "benchmark:fuzz_target" specs to lists of directories.')
+    resolved = {spec: tuple(Path(p).expanduser().resolve() for p in paths) for spec, paths in specs.items()}
+    for path in (path for paths in resolved.values() for path in paths):
         if not path.is_dir():
             raise NotADirectoryError(f'Replay trial directory is not a directory: {path}')
-        replay_trials.append(path)
-    return {
-        'fuzzer_name': fuzzer_name,
-        'allowed_fuzz_targets': allowed_fuzz_targets,
-        'build': dict(fuzzer_data.get('build') or {}),
-        'runtime': dict(fuzzer_data.get('runtime') or {}),
-        'replay_trials': tuple(replay_trials),
-    }
+    return resolved
 
 
-def _load_fuzzer_spec(fuzzer_name: str, fuzzer_data: dict[str, Any]) -> dict[str, Any]:
-    source_dependencies = fuzzer_data.get('source_dependencies', [])
-    if not isinstance(source_dependencies, list):
-        raise ValueError('source_dependencies must be defined as a list.')
-    if not all(isinstance(dependency, str) and dependency for dependency in source_dependencies):
-        raise ValueError('source_dependencies must contain non-empty strings.')
-
-    parent = fuzzer_data.get('parent')
-    if parent is not None and not isinstance(parent, str):
-        raise ValueError('Parent fuzzer must be defined as string.')
-    reporting_parent = fuzzer_data.get('reporting_parent')
-    if reporting_parent is not None and not isinstance(reporting_parent, str):
-        raise ValueError('Reporting parent fuzzer must be defined as string.')
-
-    return {
-        **_fuzzer_config_fields(fuzzer_name, fuzzer_data),
-        'parent': parent,
-        'reporting_parent': reporting_parent,
-        'source_dependencies': tuple(source_dependencies),
-        'local_repo_env': str(fuzzer_data.get('local_repo_env') or '').strip() or None,
-    }
+def _effective_allowed(own: list[str], inherited: tuple[str, ...] | None) -> tuple[str, ...] | None:
+    if not own:
+        return inherited
+    if inherited is None:
+        return tuple(own)
+    return tuple(spec for spec in own if spec in inherited)
 
 
-def _load_fuzzer_configs(
-    fuzzer_dirs: dict[str, Path],
-    root_names: list[str],
-) -> dict[str, dict[str, Any]]:
-    fuzzer_configs: dict[str, dict[str, Any]] = {}
-    pending_fuzzer_names = list(root_names)
-    while pending_fuzzer_names:
-        fuzzer_name = pending_fuzzer_names.pop()
-        if fuzzer_name in fuzzer_configs:
-            continue
-        if not IDENTIFIER_RE.fullmatch(fuzzer_name):
-            raise ValueError(f'Fuzzer name must match [a-zA-Z0-9_.-]+: {fuzzer_name!r}')
-        if fuzzer_name not in fuzzer_dirs:
-            raise ValueError(f'Fuzzer {fuzzer_name!r} is not configured; include it with --fuzzers.')
-
-        fuzzer_data: dict[str, Any] = {}
-        paths = (
-            fuzzer_dirs[fuzzer_name] / 'build' / 'build.yaml',
-            fuzzer_dirs[fuzzer_name] / 'run' / 'run.yaml',
-        )
-        for path in paths:
-            if path.is_file():
-                fuzzer_data = _merge(fuzzer_data, load_yaml(path))
-        fuzzer_config = _load_fuzzer_spec(fuzzer_name, fuzzer_data)
-        fuzzer_configs[fuzzer_name] = fuzzer_config
-
-        if fuzzer_config['parent']:
-            pending_fuzzer_names.append(fuzzer_config['parent'])
-        if fuzzer_config['reporting_parent']:
-            pending_fuzzer_names.append(fuzzer_config['reporting_parent'])
-        for dependency in fuzzer_config['source_dependencies']:
-            if dependency not in fuzzer_dirs:
-                raise ValueError(
-                    f'Fuzzer {fuzzer_name!r} requires source dependency {dependency!r}; '
-                    'include it with --fuzzers.'
-                )
-            pending_fuzzer_names.append(dependency)
-    return fuzzer_configs
-
-
-def _build_fuzzer_chain(
-    fuzzer_configs: dict[str, dict[str, Any]],
+def _load_fuzzer_from_config(
     fuzzer_name: str,
-    seen: set[str] | None = None,
-) -> list[dict[str, Any]]:
-    seen = seen or set()
-    if fuzzer_name in seen:
-        raise ValueError(f'Cyclic fuzzer parent chain detected at {fuzzer_name}')
-    seen.add(fuzzer_name)
+    fuzzer_entries: dict[str, Fuzzer | None],
+    fuzzer_dirs: dict[str, Path],
+) -> Fuzzer:
+    if fuzzer_name in fuzzer_entries:
+        fuzzer = fuzzer_entries[fuzzer_name]
+        if fuzzer is None:
+            raise ValueError(f'Cyclic fuzzer dependency detected at {fuzzer_name!r}.')
+        return fuzzer
 
-    fuzzer_config = fuzzer_configs[fuzzer_name]
-    fuzzer_chain = [fuzzer_config]
-    parent_name = fuzzer_config['parent']
-    if parent_name:
-        fuzzer_chain.extend(_build_fuzzer_chain(fuzzer_configs, parent_name, seen))
-    return fuzzer_chain
+    fuzzer_dir = fuzzer_dirs.get(fuzzer_name)
+    if not fuzzer_dir or not fuzzer_dir.is_dir():
+        raise ValueError(f'Fuzzer {fuzzer_name!r} is not configured; include it with --fuzzers.')
+
+    fuzzer_entries[fuzzer_name] = None
+    build_path = fuzzer_dir / 'build' / 'build.yaml'
+    run_path = fuzzer_dir / 'run' / 'run.yaml'
+    data = _merge(
+        load_yaml(build_path) if build_path.is_file() else {},
+        load_yaml(run_path) if run_path.is_file() else {},
+    )
+    parent_name = data.get('parent')
+    if parent_name is not None:
+        _check_id_format(parent_name, 'fuzzer parent')
+    source_names = data.get('source_dependencies') or []
+    if not isinstance(source_names, list) or not all(isinstance(name, str) and name for name in source_names):
+        raise ValueError('source_dependencies must be defined as a list of non-empty strings.')
+    reporting_parent = data.get('reporting_parent')
+    if reporting_parent is not None:
+        _check_id_format(reporting_parent, 'reporting_parent')
+    allowed = data.get('allowed_fuzz_targets') or []
+    if not isinstance(allowed, list) or not all(isinstance(spec, str) and spec for spec in allowed):
+        raise ValueError('allowed_fuzz_targets must be defined as a list of non-empty strings.')
+    build_config = data.get('build') or {}
+    run_config = data.get('runtime') or {}
+    if not isinstance(build_config, dict) or not isinstance(run_config, dict):
+        raise ValueError('Fuzzer build and runtime configuration must be mappings.')
+
+    parent = _load_fuzzer_from_config(parent_name, fuzzer_entries, fuzzer_dirs) if parent_name else None
+    fuzzer = Fuzzer(
+        id=fuzzer_name,
+        name=fuzzer_name,
+        src_dir=fuzzer_dir,
+        parent=parent,
+        allowed_fuzz_targets=_effective_allowed(allowed, parent.allowed_fuzz_targets if parent else None),
+        build_config=build_config,
+        run_config=run_config,
+        local_repo_env=str(data.get('local_repo_env') or '').strip() or None,
+    )
+    fuzzer.source_dependencies = [
+        _load_fuzzer_from_config(name, fuzzer_entries, fuzzer_dirs)
+        for name in source_names
+    ]
+    if reporting_parent:
+        fuzzer.reporting_parents = [
+            _load_fuzzer_from_config(reporting_parent, fuzzer_entries, fuzzer_dirs)
+        ]
+    fuzzer_entries[fuzzer_name] = fuzzer
+    return fuzzer
 
 
-def fuzzer_source_dirs(fuzzer_configs: Mapping[str, dict[str, Any]], fuzzer_name: str) -> list[str]:
-    """Return source directories needed by a fuzzer implementation."""
-    source_dirs: list[str] = []
-
-    def add(name: str) -> None:
-        if name in source_dirs:
-            return
-        fuzzer_config = fuzzer_configs[name]
-        if fuzzer_config['parent']:
-            add(fuzzer_config['parent'])
-        source_dirs.append(name)
-        for dependency in sorted(set(fuzzer_config['source_dependencies'])):
-            if dependency in fuzzer_configs:
-                add(dependency)
-
-    add(fuzzer_name)
-    return source_dirs
-
-
-def _required_fuzzer_names(
-    fuzzer_configs: Mapping[str, dict[str, Any]],
-    fuzzer_names: list[str],
-) -> set[str]:
-    required: set[str] = set()
-    pending = list(fuzzer_names)
-    while pending:
-        fuzzer_name = pending.pop()
-        if fuzzer_name in required:
-            continue
-        for source in fuzzer_source_dirs(fuzzer_configs, fuzzer_name):
-            if source in required:
-                continue
-            required.add(source)
-            reporting_parent = fuzzer_configs[source]['reporting_parent']
-            if reporting_parent:
-                pending.append(reporting_parent)
-    return required
-
-
-def _load_fuzzer_chains(
+def _load_fuzzers(
     data: dict[str, Any],
     fuzzer_dirs: dict[str, Path],
-) -> tuple[list[tuple[list[dict[str, Any]], str]], dict[str, dict[str, Any]]]:
+) -> list[tuple[Fuzzer, dict[str, tuple[Path, ...]]]]:
     fuzzers = data.get('fuzzers', [])
     if not isinstance(fuzzers, list) or not fuzzers:
         raise ValueError('Campaign fuzzers must be a non-empty list.')
 
-    fuzzer_entries: list[tuple[list[dict[str, Any]], str]] = []
-    fuzzer_ids: set[str] = set()
+    fuzzer_entries: dict[str, Fuzzer | None] = {}
+    campaign_ids: set[str] = set()
+    campaign_fuzzers: list[tuple[Fuzzer, dict[str, tuple[Path, ...]]]] = []
     for fuzzer_data in fuzzers:
         if isinstance(fuzzer_data, str):
-            fuzzer_id, parent_id = fuzzer_data, fuzzer_data
-            fuzzer_config: list[dict[str, Any]] = []
+            fuzzer_id, fuzzer_name = fuzzer_data, fuzzer_data
         elif isinstance(fuzzer_data, dict):
-            fuzzer_id = fuzzer_data.get('id')
-            if not fuzzer_id or not isinstance(fuzzer_id, str):
-                raise ValueError(f'Fuzzer description must contain an "id" field of string value: {fuzzer_data!r}')
-            parent_id = fuzzer_data.get('parent') or fuzzer_id
-            if not isinstance(parent_id, str):
-                raise ValueError('Parent fuzzer must be defined as string.')
-            fuzzer_config = [_fuzzer_config_fields(fuzzer_id, fuzzer_data)]
+            if 'id' not in fuzzer_data:
+                raise ValueError('"id" field must be defined in a fuzzer mapping.')
+            fuzzer_id = fuzzer_data['id']
+            fuzzer_name = fuzzer_data.get('parent') or fuzzer_id
         else:
             raise TypeError(f'Unsupported fuzzer entry: {fuzzer_data!r}')
 
-        if not IDENTIFIER_RE.fullmatch(fuzzer_id):
-            raise ValueError(f'Fuzzer id must match [a-zA-Z0-9_.-]+: {fuzzer_id!r}')
+        _check_id_format(fuzzer_id, 'fuzzer id')
+        _check_id_format(fuzzer_name, 'fuzzer name')
 
-        if fuzzer_id in fuzzer_ids:
+        if fuzzer_id in campaign_ids:
             raise ValueError(f'Fuzzer {fuzzer_id!r} is defined more than once.')
-        fuzzer_ids.add(fuzzer_id)
+        campaign_ids.add(fuzzer_id)
 
-        fuzzer_entries.append((fuzzer_config, parent_id))
+        base_fuzzer = _load_fuzzer_from_config(fuzzer_name, fuzzer_entries, fuzzer_dirs)
+        if isinstance(fuzzer_data, dict):
+            allowed = fuzzer_data.get('allowed_fuzz_targets')
+            if allowed is not None and (
+                not isinstance(allowed, list) or not all(isinstance(spec, str) and spec for spec in allowed)
+            ):
+                raise ValueError('allowed_fuzz_targets must be defined as a list of non-empty strings.')
+            build_override = fuzzer_data.get('build') or {}
+            run_override = fuzzer_data.get('runtime') or {}
+            if not isinstance(build_override, dict) or not isinstance(run_override, dict):
+                raise ValueError('Campaign fuzzer build and runtime configuration must be mappings.')
+            fuzzer = Fuzzer(
+                id=fuzzer_id,
+                name=base_fuzzer.name,
+                src_dir=base_fuzzer.src_dir,
+                parent=base_fuzzer,
+                allowed_fuzz_targets=_effective_allowed(allowed or [], base_fuzzer.allowed_fuzz_targets),
+                build_config=build_override,
+                run_config=run_override,
+            )
+            replay_trials = _replay_trials(fuzzer_data)
+        else:
+            fuzzer, replay_trials = base_fuzzer, {}
 
-    fuzzer_configs = _load_fuzzer_configs(
-        fuzzer_dirs,
-        [parent_id for _, parent_id in fuzzer_entries],
-    )
-    fuzzer_chains = [
-        (fuzzer_config + _build_fuzzer_chain(fuzzer_configs, parent_id), parent_id)
-        for fuzzer_config, parent_id in fuzzer_entries
-    ]
-    return fuzzer_chains, fuzzer_configs
+        campaign_fuzzers.append((fuzzer, replay_trials))
+
+    return campaign_fuzzers
 
 
-def _load_fuzz_target_configs(data: dict[str, Any], benchmark_dirs: dict[str, Path]) -> list[dict[str, Any]]:
+def _load_fuzz_targets(data: dict[str, Any], benchmark_dirs: dict[str, Path]) -> list[FuzzTarget]:
     fuzz_target_specs = data.get('fuzz_targets', [])
     if not isinstance(fuzz_target_specs, list) or not fuzz_target_specs:
         raise ValueError('Campaign fuzz_targets must be a non-empty list.')
 
-    fuzz_target_keys: set[tuple[str, str]] = set()
-    fuzz_target_configs: list[dict[str, Any]] = []
+    fuzz_targets: list[FuzzTarget] = []
+    benchmarks: dict[str, Benchmark] = {}
+    seen_idents: set[str] = set()
     for fuzz_target_spec in fuzz_target_specs:
         if not isinstance(fuzz_target_spec, str):
             raise TypeError(f'Unsupported fuzz target entry: {fuzz_target_spec!r}')
@@ -350,76 +306,51 @@ def _load_fuzz_target_configs(data: dict[str, Any], benchmark_dirs: dict[str, Pa
         if ':' not in fuzz_target_spec:
             raise ValueError(f"Unexpected fuzz target spec format: {fuzz_target_spec!r} (missing ':')")
 
-        benchmark, fuzz_target = fuzz_target_spec.split(':', 1)
-        benchmark, fuzz_target = benchmark.strip(), fuzz_target.strip()
-        _validate_benchmark_and_fuzz_target(benchmark, fuzz_target)
+        benchmark, fuzz_target_name = fuzz_target_spec.split(':', 1)
+        benchmark, fuzz_target_name = benchmark.strip(), fuzz_target_name.strip()
+        _check_id_format(benchmark, 'benchmark')
+        _check_id_format(fuzz_target_name, 'fuzz_target_name')
 
         if benchmark not in benchmark_dirs:
             raise ValueError(f'Benchmark {benchmark!r} is not configured; include it with --benchmarks.')
 
-        key = benchmark, fuzz_target
-        if key in fuzz_target_keys:
-            raise ValueError(f'Fuzz target {benchmark}:{fuzz_target} is defined more than once.')
-        fuzz_target_keys.add(key)
 
-        path = benchmark_dirs[benchmark] / 'benchmark.yaml'
-        fuzz_target_config = _load_fuzz_target_config(path, fuzz_target)
-        fuzz_target_configs.append(fuzz_target_config)
+        fuzz_target = _fuzz_target_from_config(benchmark_dirs[benchmark], benchmark, fuzz_target_name)
+        fuzz_target.benchmark = benchmarks.setdefault(benchmark, fuzz_target.benchmark)
+        if fuzz_target.ident in seen_idents:
+            raise ValueError(f'Fuzz target {fuzz_target.ident} is defined more than once.')
+        seen_idents.add(fuzz_target.ident)
+        fuzz_targets.append(fuzz_target)
 
-    return fuzz_target_configs
+    return fuzz_targets
 
 
 def _build_campaign_case(
     *,
-    fuzzer_config_chain: list[dict[str, Any]],
-    fuzzer_name: str,
-    fuzz_target_config: dict[str, Any],
+    fuzzer: Fuzzer,
+    fuzz_target: FuzzTarget,
+    replay_trials: tuple[Path, ...],
 ) -> CampaignCase:
     build_config: dict[str, Any] = {}
-    runtime_config: dict[str, Any] = {}
-    replay_trials: tuple[Path, ...] = ()
-    fuzzer_overrides = fuzz_target_config['fuzzers']
+    run_config: dict[str, Any] = {}
+    fuzzer_overrides = fuzz_target.fuzzer_overrides
 
-    for fuzzer_config in reversed(fuzzer_config_chain):
-        fuzz_target_override = fuzzer_overrides.get(fuzzer_config['fuzzer_name']) or {}
+    for parent_fuzzer in reversed([fuzzer, *fuzzer.parents]):
+        fuzz_target_override = fuzzer_overrides.get(parent_fuzzer.id) or {}
 
-        build_config = _merge(build_config, fuzzer_config.get('build') or {})
+        build_config = _merge(build_config, parent_fuzzer.build_config)
         build_config = _merge(build_config, fuzz_target_override.get('build') or {})
 
-        runtime_config = _merge(runtime_config, fuzzer_config.get('runtime') or {})
-        runtime_config = _merge(runtime_config, fuzz_target_override.get('runtime') or {})
-
-        replay_trials = (*replay_trials, *tuple(fuzzer_config.get('replay_trials') or ()))
-
-    fuzzer_name_chain = tuple(fuzzer_config['fuzzer_name'] for fuzzer_config in fuzzer_config_chain)
-    fuzzer_id = fuzzer_name_chain[0]
+        run_config = _merge(run_config, parent_fuzzer.run_config)
+        run_config = _merge(run_config, fuzz_target_override.get('runtime') or {})
 
     return CampaignCase(
-        fuzzer_id=fuzzer_id,
-        fuzzer_name=fuzzer_name,
-        fuzzer_chain=fuzzer_name_chain,
-        benchmark=fuzz_target_config['benchmark'],
-        fuzz_target=fuzz_target_config['fuzz_target'],
-        input_mode=fuzz_target_config['input_mode'],
-        target_timeout_s=fuzz_target_config['timeout_s'],
+        fuzzer=fuzzer,
+        fuzz_target=fuzz_target,
+
         build_config=build_config,
-        runtime_config=runtime_config,
+        run_config=run_config,
         replay_trials=replay_trials,
-    )
-
-
-def _fuzzer_allows_fuzz_target(fuzzer_config_chain: list[dict[str, Any]], fuzz_target_config: dict) -> bool:
-    allowed_sets = [
-        fuzzer_config['allowed_fuzz_targets']
-        for fuzzer_config in fuzzer_config_chain
-        if fuzzer_config.get('allowed_fuzz_targets')
-    ]
-    if not allowed_sets:
-        return True
-
-    return all(
-        f'{fuzz_target_config["benchmark"]}:{fuzz_target_config["fuzz_target"]}' in allowed
-        for allowed in allowed_sets
     )
 
 
@@ -433,32 +364,37 @@ def load_campaign_config(*, fuzzer_dirs: dict[str, Path], benchmark_dirs: dict[s
     if not data or not isinstance(data, dict):
         raise TypeError('Campaign config is empty or not a mapping.')
 
-    fuzzer_config_chains, fuzzer_configs = _load_fuzzer_chains(data, fuzzer_dirs)
-    fuzz_target_configs = _load_fuzz_target_configs(data, benchmark_dirs)
+    fuzzers = _load_fuzzers(data, fuzzer_dirs)
+    fuzz_targets = _load_fuzz_targets(data, benchmark_dirs)
 
     cases = []
-    for fuzzer_config_chain, fuzzer_name in fuzzer_config_chains:
-        for fuzz_target_config in fuzz_target_configs:
-            if _fuzzer_allows_fuzz_target(fuzzer_config_chain, fuzz_target_config):
-                case = _build_campaign_case(
-                    fuzzer_config_chain=fuzzer_config_chain,
-                    fuzzer_name=fuzzer_name,
-                    fuzz_target_config=fuzz_target_config,
-                )
-                cases.append(case)
+    for fuzzer, replay_trials in fuzzers:
+        unselected = set(replay_trials)
+        for fuzz_target in fuzz_targets:
+            if fuzzer.allowed_fuzz_targets is None or fuzz_target.spec in fuzzer.allowed_fuzz_targets:
+                unselected.discard(fuzz_target.spec)
+                cases.append(_build_campaign_case(
+                    fuzzer=fuzzer,
+                    fuzz_target=fuzz_target,
+                    replay_trials=replay_trials.get(fuzz_target.spec, ()),
+                ))
+        if unselected:
+            raise ValueError(
+                f'Fuzzer {fuzzer.id!r} has replay_trials for unselected fuzz targets: {sorted(unselected)}'
+            )
 
     if not cases:
         raise ValueError('No selected fuzzer supports any selected fuzz target.')
 
-    required_fuzzer_names = _required_fuzzer_names(
-        fuzzer_configs,
-        [case.fuzzer_name for case in cases],
-    )
+    settings = _load_campaign_settings(data)
+    replay_counts = [len(case.replay_trials) for case in cases]
+    if any(replay_counts) and set(replay_counts) != {settings.repetitions}:
+        raise ValueError(
+            f'replay_trials must list exactly run.repetitions ({settings.repetitions}) directories '
+            'for every campaign case, or for none of them.'
+        )
 
     return CampaignConfig(
-        settings=_load_campaign_settings(data),
+        settings=settings,
         cases=cases,
-        fuzzer_dirs={name: path for name, path in fuzzer_dirs.items() if name in required_fuzzer_names},
-        fuzzer_configs={name: fuzzer_configs[name] for name in fuzzer_dirs if name in required_fuzzer_names},
-        benchmark_dirs={name: path for name, path in benchmark_dirs.items() if any(case.benchmark == name for case in cases)},
     )

@@ -9,10 +9,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
+from ..config.models import CampaignCase, FuzzTarget
 from ..fuzzers import OutputPaths
 
 FUZZ_DIR = Path('work')
@@ -21,35 +21,22 @@ LOGS_DIR = Path('logs')
 FUZZER_LOG = Path('logs/fuzzer.log')
 
 
-class TrialImages:
-    '''Build docker image names for one fuzzer and target pair.'''
-
-    def __init__(self, *, fuzzer_name: str, target_key: str) -> None:
-        self.runner = f'fuzzmeter/runner-{fuzzer_name}-{target_key}:dev'
-        self.coverage = f'fuzzmeter/coverage-runner-{target_key}:dev'
-        self.asan = f'fuzzmeter/asan-runner-{target_key}:dev'
-
-
 @dataclass(frozen=True)
 class TrialConfig:
     '''Describe one logical trial independent of its run directory.'''
 
-    fuzzer: str
-    fuzzer_impl: str
-    benchmark: str
-    fuzz_target: str
+    case: CampaignCase
     fuzz_target_bin: Path
-    fuzz_target_input_mode: str
-    fuzz_target_timeout: float
     rep_idx: int
     trial_key: str
     output_paths: OutputPaths
     trial_timeout: int
     snapshot_preprocess: Path | None
-    images: TrialImages
     replay_dir: Path | None = None
-    build_config: dict[str, Any] = field(default_factory=dict)
-    runtime_config: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def fuzz_target(self) -> FuzzTarget:
+        return self.case.fuzz_target
 
 
 @dataclass(frozen=True)

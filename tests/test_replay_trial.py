@@ -19,7 +19,7 @@ from pathlib import Path
 
 from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.fuzzers.models import OutputPaths
-from fuzzmeter.trial.models import TrialConfig, TrialImages
+from fuzzmeter.trial.models import TrialConfig
 from fuzzmeter.trial.replay import prepare_replay_trial
 from tests.support.trials import make_trial_config
 
@@ -47,7 +47,6 @@ def _trial_config(root: Path, *, replay_dir: Path) -> TrialConfig:
         ),
         trial_timeout=7_200,
         snapshot_preprocess=None,
-        images=TrialImages(fuzzer_name='aflplusplus', target_key='jerryscript-jerry'),
         replay_dir=replay_dir,
     )
 

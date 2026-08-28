@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fuzzmeter.trial import workspace
+from tests.support.trials import make_campaign_case
 
 
 class _SeedDocker:
@@ -40,10 +41,7 @@ class TrialWorkspaceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             with patch('fuzzmeter.trial.workspace.DockerClient', return_value=docker):
                 seed_root = workspace.extract_seed_corpus_from_image(
-                    image='runner',
-                    fuzzer='grafl',
-                    benchmark='sqlite3',
-                    fuzz_target='sqlite',
+                    case=make_campaign_case(fuzzer='grafl', benchmark='sqlite3', fuzz_target='sqlite'),
                     out_dir=Path(tmp_dir),
                 )
 

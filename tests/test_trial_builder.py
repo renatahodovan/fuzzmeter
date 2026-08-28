@@ -14,7 +14,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fuzzmeter.config import CampaignCase, CampaignConfig, CampaignSettings
+from fuzzmeter.config import Benchmark, CampaignCase, CampaignConfig, CampaignSettings
+from fuzzmeter.config.models import Fuzzer, FuzzTarget
 from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.trial.builder import plan_trials
 
@@ -47,7 +48,6 @@ class _TrialBuilderTest(unittest.TestCase):
         config = CampaignConfig(
             settings=CampaignSettings(repetitions=3),
             cases=cases,
-            fuzzer_dirs={'fuzzer_a': Path('/fuzzers/fuzzer_a'), 'fuzzer_b': Path('/fuzzers/fuzzer_b')},
         )
 
         with patch('fuzzmeter.trial.builder.FuzzerLoader', _FuzzerLoaderStub):
@@ -74,12 +74,12 @@ class _TrialBuilderTest(unittest.TestCase):
 
 def _campaign_case(*, fuzzer: str, fuzz_target: str) -> CampaignCase:
     return CampaignCase(
-        fuzzer_id=fuzzer,
-        fuzzer_name=fuzzer,
-        fuzzer_chain=(fuzzer,),
-        benchmark='bench',
-        fuzz_target=fuzz_target,
-        input_mode='file',
+        fuzzer=Fuzzer(id=fuzzer, name=fuzzer, src_dir=Path('/fuzzers') / fuzzer),
+        fuzz_target=FuzzTarget(
+            benchmark=Benchmark(name='bench', src_dir=Path('/benchmarks/bench'), config_path=Path('/benchmarks/bench/benchmark.yaml')),
+            fuzz_target=fuzz_target,
+            input_mode='file',
+        ),
     )
 
 

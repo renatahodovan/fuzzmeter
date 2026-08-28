@@ -79,21 +79,18 @@ def collect_environment() -> dict[str, object]:
 def collect_config(case: CampaignCase) -> dict[str, object]:
     '''Return the case configuration fields used in composite comparisons.'''
     return {
-        'benchmark': case.benchmark,
-        'fuzz_target': case.fuzz_target,
-        'input_mode': case.input_mode,
-        'timeout': case.target_timeout_s,
+        'benchmark': case.fuzz_target.benchmark.name,
+        'fuzz_target': case.fuzz_target.fuzz_target,
+        'input_mode': case.fuzz_target.input_mode,
+        'timeout': case.fuzz_target.target_timeout_s,
     }
 
 
-def collect_source(
-    case: CampaignCase,
-    fuzzer_dirs: dict[str, Path],
-    benchmark_dirs: dict[str, Path],
-) -> dict[str, object]:
+def collect_source(case: CampaignCase) -> dict[str, object]:
     '''Collect user-defined benchmark and fuzzer source metadata hook results.'''
-    benchmark_hook = benchmark_dirs[case.benchmark] / 'source_info.py'
-    fuzzer_hook = fuzzer_dirs[case.fuzzer_name] / 'source_info.py'
+    benchmark_hook = case.fuzz_target.benchmark.src_dir / 'source_info.py'
+    fuzzer_hook = case.fuzzer.src_dir / 'source_info.py'
+
     return {
         'benchmark_source': run_source_hook(
             benchmark_hook,
@@ -112,12 +109,10 @@ def metadata_for_case(
     *,
     case: CampaignCase,
     environment: dict[str, object],
-    fuzzer_dirs: dict[str, Path],
-    benchmark_dirs: dict[str, Path],
 ) -> MetadataTriplet:
     '''Build comparable metadata for one campaign case.'''
     config = collect_config(case)
-    source = collect_source(case, fuzzer_dirs, benchmark_dirs)
+    source = collect_source(case)
     return MetadataTriplet(
         environment=environment,
         config=config,
@@ -139,14 +134,12 @@ def _record_for_case(
     metadata = metadata_for_case(
         case=case,
         environment=environment,
-        fuzzer_dirs=campaign_config.fuzzer_dirs,
-        benchmark_dirs=campaign_config.benchmark_dirs,
     )
     return db_metadata.MetadataRecord(
         run_id=run_id,
-        fuzzer=case.fuzzer_id,
-        benchmark=case.benchmark,
-        fuzz_target=case.fuzz_target,
+        fuzzer=case.fuzzer.id,
+        benchmark=case.fuzz_target.benchmark.name,
+        fuzz_target=case.fuzz_target.fuzz_target,
         repetitions=campaign_config.settings.repetitions,
         runtime_seconds=campaign_config.settings.time_seconds,
         environment_digest=metadata.environment_digest,

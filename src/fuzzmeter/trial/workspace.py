@@ -16,6 +16,8 @@ import zipfile
 
 from pathlib import Path
 
+from ..config import CampaignCase
+from ..config.models import seed_dir_name
 from ..docker import DockerClient, DockerRuntime
 from .models import TrialConfig, TrialLayout
 
@@ -50,17 +52,15 @@ def prepare_replay_workspace(*, run_dir: Path, cfg: TrialConfig) -> TrialLayout:
 
 def extract_seed_corpus_from_image(
     *,
-    image: str,
-    fuzzer: str,
-    benchmark: str,
-    fuzz_target: str,
+    case: CampaignCase,
     out_dir: Path,
     docker_runtime: DockerRuntime | None = None,
 ) -> Path | None:
     '''Extract a seed corpus zip from a runner image, if present.'''
     docker = DockerClient(docker_runtime)
-    seed_root = out_dir / f'{fuzzer}__{benchmark}__{fuzz_target}'
-    zip_name = f'{fuzz_target}_seed_corpus.zip'
+    image = case.images.runner
+    seed_root = out_dir / case.seed_dir_name
+    zip_name = f'{case.fuzz_target.fuzz_target}_seed_corpus.zip'
     tmp_root = seed_root.with_suffix('.tmp')
     tmp_extract_dir = tmp_root / 'corpus'
     tmp_extract_dir.mkdir(parents=True, exist_ok=True)
@@ -74,7 +74,7 @@ def extract_seed_corpus_from_image(
     except RuntimeError as exc:
         shutil.rmtree(tmp_root, ignore_errors=True)
         if 'is missing' in str(exc):
-            LOG.info('No seed corpus zip found in %s for %s/%s/%s', image, fuzzer, benchmark, fuzz_target)
+            LOG.info('No seed corpus zip found in %s for %s', image, case.seed_dir_name)
             return None
         raise
 
@@ -107,7 +107,7 @@ def extract_seed_corpus_from_image(
 
 
 def _resolve_seed_root(*, run_dir: Path, cfg: TrialConfig) -> Path | None:
-    extract_dir = run_dir / 'seed_corpora' / f'{cfg.fuzzer}__{cfg.benchmark}__{cfg.fuzz_target}' / 'corpus'
+    extract_dir = run_dir / 'seed_corpora' / seed_dir_name(cfg.case.fuzzer.id, cfg.fuzz_target.benchmark.name, cfg.fuzz_target.fuzz_target) / 'corpus'
     if extract_dir.is_dir() and any(extract_dir.iterdir()):
         return extract_dir
     return None

@@ -42,20 +42,21 @@ def run_one_trial(
     layout, host_input_corpus_dir = prepare_live_workspace(run_dir=run_dir, cfg=config)
     start_ts = int(time.time())
 
+
     with open_db(db_path) as db:
         trial_db_id = db_trials.ensure_trial_row(
             db,
             db_trials.TrialRecord(
                 run_id=run_id,
-                fuzzer=config.fuzzer,
-                benchmark=config.benchmark,
-                fuzz_target=config.fuzz_target,
+                fuzzer=config.case.fuzzer.id,
+                benchmark=config.fuzz_target.benchmark.name,
+                fuzz_target=config.fuzz_target.fuzz_target,
                 rep=config.rep_idx,
                 time_seconds=config.trial_timeout,
                 status='running',
-                fuzzer_image=config.images.runner,
-                build_config_json=json.dumps(config.build_config, sort_keys=True),
-                runtime_config_json=json.dumps(config.runtime_config, sort_keys=True),
+                fuzzer_image=config.case.images.runner,
+                build_config_json=json.dumps(config.case.build_config, sort_keys=True),
+                runtime_config_json=json.dumps(config.case.run_config, sort_keys=True),
                 start_ts=start_ts,
             ),
         )

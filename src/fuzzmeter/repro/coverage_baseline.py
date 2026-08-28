@@ -15,6 +15,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..config import CampaignCase
+from ..config.models import FuzzTarget
 from ..db import open_db
 from ..db.snapshot import SEED_BASELINE_IDX, CoverageSummary, update_agg_snapshot_coverage, upsert_agg_snapshot
 from ..docker import DockerRuntime
@@ -34,15 +36,13 @@ LOG = logging.getLogger(__name__)
 class SeedBaselineJob:
     '''Describe one prepared seed corpus coverage measurement.'''
 
-    fuzzer: str
-    benchmark: str
-    fuzz_target: str
-    input_mode: str
-    timeout_s: float
-    runner_image: str
-    coverage_image: str
+    case: CampaignCase
     snapshot_preprocess_script: Path | None
     seed_root: Path
+
+    @property
+    def fuzz_target(self) -> FuzzTarget:
+        return self.case.fuzz_target
 
 
 def measure_seed_baseline(
@@ -55,7 +55,7 @@ def measure_seed_baseline(
     jobs: int,
 ) -> None:
     '''Measure baseline coverage for one prepared seed corpus.'''
-    base_root = seed_coverage_root(run_dir, job.fuzzer, job.benchmark, job.fuzz_target)
+    base_root = seed_coverage_root(run_dir, job.case)
     snapshot_dir = base_root / '_snapshot'
     corpus_dir = snapshot_dir / 'corpus'
     shutil.rmtree(snapshot_dir, ignore_errors=True)
@@ -75,10 +75,10 @@ def measure_seed_baseline(
         input_dir=corpus_dir,
         input_files=seed_input_files,
         snapshot_preprocess=job.snapshot_preprocess_script,
-        benchmark=job.benchmark,
-        fuzz_target=job.fuzz_target,
-        fuzzer=job.fuzzer,
-        runner_image=job.runner_image,
+        benchmark=job.fuzz_target.benchmark.name,
+        fuzz_target=job.fuzz_target.fuzz_target,
+        fuzzer=job.case.fuzzer.id,
+        runner_image=job.case.images.runner,
     )
 
     state_dir = base_root / '_state'
@@ -86,16 +86,16 @@ def measure_seed_baseline(
     if not inputs:
         return
 
-    LOG.debug('Measuring seed baseline coverage for %s/%s/%s', job.fuzzer, job.benchmark, job.fuzz_target)
+    LOG.debug('Measuring seed baseline coverage for %s/%s/%s', job.case.fuzzer.id, job.fuzz_target.benchmark.name, job.fuzz_target.fuzz_target)
     batch_profdata_paths, coverage_batches = build_coverage_replay_batches(
-        image=job.coverage_image,
-        fuzz_target=job.fuzz_target,
-        input_mode=job.input_mode,
+        image=job.case.images.coverage,
+        fuzz_target=job.fuzz_target.fuzz_target,
+        input_mode=job.fuzz_target.input_mode,
         inputs=inputs,
         state_dir=state_dir,
         batch_tag='seed',
-        timeout_s=job.timeout_s * 2,
-        container_prefix=f'fm-{run_id}-cov-seed-{job.fuzzer}-{job.benchmark}-{job.fuzz_target}',
+        timeout_s=job.fuzz_target.target_timeout_s * 2,
+        container_prefix=f'fm-{run_id}-cov-seed-{job.case.fuzzer.id}-{job.fuzz_target.benchmark.name}-{job.fuzz_target.fuzz_target}',
     )
     replay_coverage_batches(
         docker_runtime=docker_runtime,
@@ -105,17 +105,15 @@ def measure_seed_baseline(
     summary = merge_coverage_outputs(
         docker_runtime=docker_runtime,
         run_dir=run_dir,
-        image=job.coverage_image,
+        case=job.case,
         out_root=base_root,
-        benchmark=job.benchmark,
-        fuzz_target=job.fuzz_target,
         state_dir=state_dir,
         work_dir=state_dir / '_tmp_seed',
         profile_inputs=batch_profdata_paths,
-        container_name=f'fm-{run_id}-cov-seed-{job.fuzzer}-{job.benchmark}-{job.fuzz_target}-merge',
+        container_name=f'fm-{run_id}-cov-seed-{job.case.fuzzer.id}-{job.fuzz_target.benchmark.name}-{job.fuzz_target.fuzz_target}-merge',
         measurement_context=coverage_measurement_context(
             batches=coverage_batches,
-            image=job.coverage_image,
+            image=job.case.images.coverage,
             snapshot_tick=SEED_BASELINE_IDX,
             repetitions=1,
         ),
@@ -127,9 +125,9 @@ def measure_seed_baseline(
         baseline_id = upsert_agg_snapshot(
             db,
             run_id=run_id,
-            fuzzer=job.fuzzer,
-            benchmark=job.benchmark,
-            fuzz_target=job.fuzz_target,
+            fuzzer=job.case.fuzzer.id,
+            benchmark=job.fuzz_target.benchmark.name,
+            fuzz_target=job.fuzz_target.fuzz_target,
             idx=SEED_BASELINE_IDX,
             ts=0,
         )
@@ -147,4 +145,4 @@ def measure_seed_baseline(
                 base_root / 'measurement-provenance.json'
             ),
         )
-    LOG.debug('Seed coverage summary for %s/%s/%s: %s', job.fuzzer, job.benchmark, job.fuzz_target, summary)
+    LOG.debug('Seed coverage summary for %s/%s/%s: %s', job.case.fuzzer.id, job.fuzz_target.benchmark.name, job.fuzz_target.fuzz_target, summary)

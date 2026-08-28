@@ -96,7 +96,7 @@ def _execute_run(parser, args):
             text=config_src,
         )
     except (OSError, TypeError, ValueError) as exc:
-        parser.error(str(exc))
+        parser.error(str(exc), exc_info=exc)
 
     os.environ['FM_OUT_SRC'] = str(out_root)
     try:

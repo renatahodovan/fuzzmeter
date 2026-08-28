@@ -18,7 +18,7 @@ from unittest.mock import patch
 from fuzzmeter.db.resource_telemetry import TelemetrySample
 from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.snapshot.resource_telemetry import ResourceTelemetryCollector
-from fuzzmeter.trial.models import TrialImages, TrialInstance, TrialLayout
+from fuzzmeter.trial.models import TrialInstance, TrialLayout
 from tests.support.trials import make_trial_config
 
 
@@ -39,7 +39,6 @@ def _active_trial(root: Path, *, db_id: int = 1) -> TrialInstance:
         ),
         trial_timeout=300,
         snapshot_preprocess=None,
-        images=TrialImages(fuzzer_name='aflplusplus', target_key='bench-target'),
     )
     layout = TrialLayout.from_config(trial_dir=root / 'trial', cfg=config)
     layout.fuzz_dir.mkdir(parents=True, exist_ok=True)

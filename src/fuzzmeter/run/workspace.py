@@ -47,13 +47,13 @@ def _write_run_entries(*, run_dir: Path, run_id: str, campaign_config: CampaignC
         json.dumps(
             [
                 {
-                    'fuzzer_id': case.fuzzer_id,
-                    'fuzzer_name': case.fuzzer_name,
-                    'fuzzer_chain': list(case.fuzzer_chain),
-                    'benchmark': case.benchmark,
-                    'fuzz_target': case.fuzz_target,
+                    'fuzzer_id': case.fuzzer.id,
+                    'fuzzer_name': case.fuzzer.name,
+                    'fuzzer_chain': [case.fuzzer.id, *(fuzzer.name for fuzzer in case.fuzzer.parents)],
+                    'benchmark': case.fuzz_target.benchmark.name,
+                    'fuzz_target': case.fuzz_target.fuzz_target,
                     'build_config': case.build_config,
-                    'runtime_config': case.runtime_config,
+                    'runtime_config': case.run_config,
                     'replay_trials': [str(path) for path in case.replay_trials],
                 }
                 for case in campaign_config.cases

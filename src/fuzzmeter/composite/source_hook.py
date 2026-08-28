@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from fuzzmeter.config.models import CampaignCase
+
 SOURCE_HOOK_TIMEOUT = 10
 SOURCE_HOOK_SCOPES = ('benchmark_source', 'fuzzer_version')
 SECRET_KEY_PARTS = ('secret', 'token', 'password', 'passwd', 'credential', 'apikey', 'api_key')
@@ -79,18 +81,18 @@ def run_source_hook(path: Path, context: dict[str, Any], scope: str) -> SourceHo
     return SourceHookResult(status='ok', data=redact_source_info(data))
 
 
-def source_hook_context(case: Any) -> dict[str, Any]:
+def source_hook_context(case: CampaignCase) -> dict[str, Any]:
     '''Build the safe context passed to a source metadata hook.'''
     return {
-        'fuzzer_id': case.fuzzer_id,
-        'fuzzer_name': case.fuzzer_name,
-        'fuzzer_chain': list(case.fuzzer_chain),
-        'benchmark': case.benchmark,
-        'fuzz_target': case.fuzz_target,
-        'input_mode': case.input_mode,
-        'target_timeout_s': case.target_timeout_s,
+        'fuzzer_id': case.fuzzer.id,
+        'fuzzer_name': case.fuzzer.name,
+        'fuzzer_chain': [fuzzer.name for fuzzer in case.fuzzer.parents],
+        'benchmark': case.fuzz_target.benchmark.name,
+        'fuzz_target': case.fuzz_target.fuzz_target,
+        'input_mode': case.fuzz_target.input_mode,
+        'target_timeout_s': case.fuzz_target.target_timeout_s,
         'build_config': redact_source_info(case.build_config),
-        'runtime_config': redact_source_info(case.runtime_config),
+        'runtime_config': redact_source_info(case.run_config),
     }
 
 

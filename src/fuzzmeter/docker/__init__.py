@@ -9,7 +9,6 @@
 
 from .bake import (
     INSTRUMENTATION_PROFILES,
-    fuzzer_local_repo_paths,
     generate_run_bake_hcl,
 )
 from .client import ContainerSpec, DockerClient, DockerTimeoutError
@@ -21,6 +20,5 @@ __all__ = [
     'DockerClient',
     'DockerRuntime',
     'DockerTimeoutError',
-    'fuzzer_local_repo_paths',
     'generate_run_bake_hcl',
 ]

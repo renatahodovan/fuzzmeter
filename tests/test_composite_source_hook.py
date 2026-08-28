@@ -12,24 +12,11 @@ from __future__ import annotations
 import tempfile
 import unittest
 
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from fuzzmeter.composite.source_hook import redact_source_info, run_source_hook, source_hook_context
-
-
-@dataclass(frozen=True)
-class _Case:
-    fuzzer_id: str = 'libfuzzer'
-    fuzzer_name: str = 'libfuzzer'
-    fuzzer_chain: tuple[str, ...] = ('libfuzzer',)
-    benchmark: str = 'zlib'
-    fuzz_target: str = 'compress'
-    input_mode: str = 'file'
-    target_timeout_s: float = 1.0
-    build_config: dict[str, Any] = field(default_factory=lambda: {'token': 'secret', 'safe': 'ok'})
-    runtime_config: dict[str, Any] = field(default_factory=dict)
+from fuzzmeter.config import Benchmark, CampaignCase
+from fuzzmeter.config.models import Fuzzer, FuzzTarget
 
 
 class CompositeSourceHookTest(unittest.TestCase):
@@ -60,7 +47,17 @@ class CompositeSourceHookTest(unittest.TestCase):
 
     def test_context_uses_redacted_configs(self) -> None:
         '''Hook context exposes safe campaign case metadata.'''
-        ctx = source_hook_context(_Case())
+        ctx = source_hook_context(
+            CampaignCase(
+                fuzzer=Fuzzer(id='libfuzzer', name='libfuzzer', src_dir=Path('/fuzzers/libfuzzer')),
+                fuzz_target=FuzzTarget(
+                    benchmark=Benchmark(name='zlib', src_dir=Path('/benchmarks/zlib'), config_path=Path('/benchmarks/zlib/benchmark.yaml')),
+                    fuzz_target='compress',
+                    input_mode='file',
+                ),
+                build_config={'token': 'secret', 'safe': 'ok'},
+            )
+        )
 
         self.assertEqual('libfuzzer', ctx['fuzzer_id'])
         self.assertEqual('libfuzzer', ctx['fuzzer_name'])

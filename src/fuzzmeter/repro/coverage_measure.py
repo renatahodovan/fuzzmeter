@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from ..config import CampaignCase
 from ..docker import DockerClient, DockerRuntime
 from .coverage_state import load_coverage_summary
 
@@ -187,10 +188,8 @@ def merge_coverage_outputs(
     *,
     docker_runtime: DockerRuntime,
     run_dir: Path,
-    image: str,
+    case: CampaignCase,
     out_root: Path,
-    benchmark: str,
-    fuzz_target: str,
     state_dir: Path,
     work_dir: Path,
     profile_inputs: list[Path],
@@ -202,11 +201,12 @@ def merge_coverage_outputs(
 ) -> dict:
     '''Merge batch profiles into one coverage output root and refresh its artifacts.'''
     docker = DockerClient(docker_runtime)
+    image = case.images.coverage
     state_dir.mkdir(parents=True, exist_ok=True)
     profdata_path = state_dir / 'merged.profdata'
     merge_profiles = _usable_profiles([profdata_path, *profile_inputs])
 
-    src_root = run_dir / 'coverage_src' / f'{benchmark}/{fuzz_target}'
+    src_root = run_dir / 'coverage_src' / case.fuzz_target.benchmark.name / case.fuzz_target.fuzz_target
     tmp_root = out_root.parent / f'.{out_root.name}.tmp'
     shutil.rmtree(tmp_root, ignore_errors=True)
     tmp_root.mkdir(parents=True, exist_ok=True)
@@ -251,7 +251,7 @@ def merge_coverage_outputs(
 
     env = {
         'FM_OUT_DIR': docker.container_path(tmp_root),
-        'FM_TARGET_NAME': fuzz_target,
+        'FM_TARGET_NAME': case.fuzz_target.fuzz_target,
         'FM_PROF_LIST': docker.container_path(prof_list_path),
         'FM_PROFDATA_PATH': docker.container_path(profdata_path),
         'FM_WORK_DIR': docker.container_path(work_dir),

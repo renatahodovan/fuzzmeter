@@ -16,11 +16,13 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from fuzzmeter.artifacts.seeds import _collect_seed_baseline_jobs
-from fuzzmeter.config import CampaignCase, CampaignConfig, CampaignSettings
+from fuzzmeter.config import Benchmark, CampaignCase, CampaignConfig, CampaignSettings
+from fuzzmeter.config.models import Fuzzer, FuzzTarget
 from fuzzmeter.db import DB
 from fuzzmeter.repro.coverage_baseline import SeedBaselineJob, measure_seed_baseline
 from fuzzmeter.repro.coverage_state import seed_coverage_root
 from tests.support.dbs import empty_run_db
+from tests.support.trials import make_campaign_case
 
 
 class CoverageBaselineTest(unittest.TestCase):
@@ -50,8 +52,8 @@ class CoverageBaselineTest(unittest.TestCase):
             )
 
         self.assertEqual(1, len(jobs))
-        self.assertEqual('full', jobs[0].fuzzer)
-        self.assertEqual(3.5, jobs[0].timeout_s)
+        self.assertEqual('full', jobs[0].case.fuzzer.id)
+        self.assertEqual(3.5, jobs[0].fuzz_target.target_timeout_s)
         self.assertEqual(Path('/preprocess.py'), jobs[0].snapshot_preprocess_script)
 
     def test_measure_seed_baseline_forwards_jobs_timeout_and_profile_paths(self) -> None:
@@ -70,13 +72,12 @@ class CoverageBaselineTest(unittest.TestCase):
             empty_run_db(db_path)
 
             job = SeedBaselineJob(
-                fuzzer='fuzzer',
-                benchmark='bench',
-                fuzz_target='target',
-                input_mode='file',
-                timeout_s=4.0,
-                runner_image='runner-image',
-                coverage_image='coverage-image',
+                case=make_campaign_case(
+                    fuzzer='fuzzer',
+                    benchmark='bench',
+                    fuzz_target='target',
+                    fuzz_target_timeout=4.0,
+                ),
                 snapshot_preprocess_script=None,
                 seed_root=seed_root,
             )
@@ -101,7 +102,7 @@ class CoverageBaselineTest(unittest.TestCase):
 
             replay_kwargs = replay_batches.call_args.kwargs
             merge_kwargs = merge_outputs.call_args.kwargs
-            base_root = seed_coverage_root(run_dir, 'fuzzer', 'bench', 'target')
+            base_root = seed_coverage_root(run_dir, job.case)
             row = _seed_baseline_row(db_path)
 
         self.assertEqual(1, prepare_inputs.call_count)
@@ -120,13 +121,13 @@ class CoverageBaselineTest(unittest.TestCase):
 
 def _case(*, fuzzer_id: str, timeout_s: float) -> CampaignCase:
     return CampaignCase(
-        fuzzer_id=fuzzer_id,
-        fuzzer_name='plain',
-        fuzzer_chain=(fuzzer_id, 'plain'),
-        benchmark='bench',
-        fuzz_target='target',
-        input_mode='file',
-        target_timeout_s=timeout_s,
+        fuzzer=Fuzzer(id=fuzzer_id, name='plain', src_dir=Path('/fuzzers/plain')),
+        fuzz_target=FuzzTarget(
+            benchmark=Benchmark(name='bench', src_dir=Path('/benchmarks/bench'), config_path=Path('/benchmarks/bench/benchmark.yaml')),
+            fuzz_target='target',
+            input_mode='file',
+            target_timeout_s=timeout_s,
+        ),
     )
 
 

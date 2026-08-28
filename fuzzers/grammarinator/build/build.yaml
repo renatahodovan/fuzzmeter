@@ -2,9 +2,10 @@ allowed_fuzz_targets:
   - jerryscript:jerry
   - sqlite3:sqlite
   - jsoncpp:jsoncpp
+local_repo_env: FM_GRAMMARINATOR_LOCAL_REPO
 source_dependencies:
   - libfuzzer
-local_repo_env: FM_GRAMMARINATOR_LOCAL_REPO
+  - blackbox
 build:
   seed_cache:
     enabled: true

@@ -14,7 +14,8 @@ fuzzers:
   - id: grafl
     parent: afl_grammarinator
     # replay_trials:
-    #   - /path/to/existing/fuzzer/outdir
+    #   lua:fuzz_lua:
+    #     - /path/to/existing/fuzzer/outdir
     runtime:
       env:
         GRAFL_MEMO_SIZE: 1000

@@ -13,18 +13,23 @@ import json
 
 from pathlib import Path
 
+from ..config import CampaignCase
 from ..db.base import DB
 from ..db.snapshot import CoverageSummary, set_snapshot_coverage_fields
 
 
-def trial_coverage_root(run_dir: Path, fuzzer: str, benchmark: str, fuzz_target: str) -> Path:
+def _case_root(run_dir: Path, root_name: str, case: CampaignCase) -> Path:
+    return run_dir / root_name / case.fuzzer.id / case.fuzz_target.benchmark.name / case.fuzz_target.fuzz_target
+
+
+def trial_coverage_root(run_dir: Path, case: CampaignCase) -> Path:
     '''Return the latest trial coverage output root for a target.'''
-    return run_dir / 'coverage' / fuzzer / benchmark / fuzz_target
+    return _case_root(run_dir, 'coverage', case)
 
 
-def seed_coverage_root(run_dir: Path, fuzzer: str, benchmark: str, fuzz_target: str) -> Path:
+def seed_coverage_root(run_dir: Path, case: CampaignCase) -> Path:
     '''Return the seed baseline coverage output root for a target.'''
-    return run_dir / 'coverage_seed' / fuzzer / benchmark / fuzz_target
+    return _case_root(run_dir, 'coverage_seed', case)
 
 
 def collect_inputs(corpus_dir: Path) -> list[Path]:

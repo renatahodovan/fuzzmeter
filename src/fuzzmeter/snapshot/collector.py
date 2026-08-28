@@ -205,16 +205,16 @@ def _prepare_trial_snapshot_inputs(
                 input_dir=input_dir,
                 input_files=new_files,
                 snapshot_preprocess=trial.config.snapshot_preprocess,
-                benchmark=trial.config.benchmark,
-                fuzz_target=trial.config.fuzz_target,
-                fuzzer=trial.config.fuzzer,
-                runner_image=trial.config.images.runner,
+                benchmark=trial.config.fuzz_target.benchmark.name,
+                fuzz_target=trial.config.fuzz_target.fuzz_target,
+                fuzzer=trial.config.case.fuzzer.id,
+                runner_image=trial.config.case.images.runner,
                 jobs=preprocess_jobs,
             )
             if trial.config.snapshot_preprocess:
                 LOG.debug(
                     '\t\tPrepared snapshot inputs for %s in %.1f seconds with %s jobs for %s',
-                    trial.config.fuzzer,
+                    trial.config.case.fuzzer.id,
                     time.time() - cur_time,
                     preprocess_jobs,
                     kind,
@@ -253,9 +253,9 @@ def _build_trial_coverage_snapshot(
         db_snapshot.copy_seed_baseline_coverage_fields(
             db,
             run_id=run_id,
-            fuzzer=trial.config.fuzzer,
-            benchmark=trial.config.benchmark,
-            fuzz_target=trial.config.fuzz_target,
+            fuzzer=trial.config.case.fuzzer.id,
+            benchmark=trial.config.fuzz_target.benchmark.name,
+            fuzz_target=trial.config.fuzz_target.fuzz_target,
             snapshot_id=snapshot_id,
         )
     else:
@@ -343,7 +343,7 @@ def _read_stats(trial: TrialInstance, *, tick_ts: int) -> dict[str, Any]:
     try:
         stats = (
             FuzzerLoader(trial.fuzzer_dirs)
-            .load(trial.config.fuzzer_impl)
+            .load(trial.config.case.fuzzer.name)
             .stats(trial.layout.trial_dir, cutoff_elapsed_s=tick_ts - trial.start_ts)
             or {}
         )
@@ -351,7 +351,7 @@ def _read_stats(trial: TrialInstance, *, tick_ts: int) -> dict[str, Any]:
     except Exception as exc:
         LOG.warning(
             'Failed to get stats from %s adapter for trial_row_id=%s: %s',
-            trial.config.fuzzer_impl,
+            trial.config.case.fuzzer.name,
             trial.db_id,
             exc,
         )
@@ -362,7 +362,7 @@ def _read_custom_metrics(trial: TrialInstance, *, snapshot_dir: Path, tick_ts: i
     try:
         metrics = (
             FuzzerLoader(trial.fuzzer_dirs)
-            .load(trial.config.fuzzer_impl)
+            .load(trial.config.case.fuzzer.name)
             .custom_metrics(
                 trial.layout.trial_dir,
                 snapshot_dir=snapshot_dir,
@@ -374,7 +374,7 @@ def _read_custom_metrics(trial: TrialInstance, *, snapshot_dir: Path, tick_ts: i
     except Exception as exc:
         LOG.warning(
             'Failed to get custom metrics from %s adapter for trial_row_id=%s: %s',
-            trial.config.fuzzer_impl,
+            trial.config.case.fuzzer.name,
             trial.db_id,
             exc,
         )

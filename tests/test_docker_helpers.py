@@ -18,9 +18,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import call, patch
 
-from fuzzmeter.config import CampaignCase, fuzzer_source_dirs
+from fuzzmeter.config.models import Benchmark, CampaignCase, Fuzzer, FuzzTarget
 from fuzzmeter.docker import DockerClient, DockerTimeoutError
-from fuzzmeter.docker.bake import _entry_args, fuzzer_local_repo_paths, generate_run_bake_hcl
+from fuzzmeter.docker.bake import _entry_args, generate_run_bake_hcl
 from fuzzmeter.docker.client import DEFAULT_DOCKER_TIMEOUT_S
 from fuzzmeter.docker.runtime import DockerRuntime
 from tests.support.bake import target_block
@@ -147,19 +147,8 @@ class DockerHelperTest(unittest.TestCase):
 
             bake_hcl = generate_run_bake_hcl(
                 campaign_cases=[
-                    CampaignCase(
-                        fuzzer_id='libfuzzer',
-                        fuzzer_name='libfuzzer',
-                        fuzzer_chain=('libfuzzer',),
-                        benchmark='bench',
-                        fuzz_target='target',
-                        input_mode='file',
-                    )
+                    _case(fuzzers_root, benchmarks_root, 'libfuzzer')
                 ],
-                fuzzer_dirs=_resource_dirs(fuzzers_root),
-                fuzzer_configs=_fuzzer_configs('libfuzzer'),
-                local_repo_paths={},
-                benchmark_dirs=_resource_dirs(benchmarks_root),
                 fuzzer_build_sources=build_sources,
                 fuzzer_run_sources=run_sources,
                 instrumentation_build_sources=instrumentation_sources,
@@ -208,19 +197,8 @@ class DockerHelperTest(unittest.TestCase):
 
             bake_hcl = generate_run_bake_hcl(
                 campaign_cases=[
-                    CampaignCase(
-                        fuzzer_id='libfuzzer',
-                        fuzzer_name='libfuzzer',
-                        fuzzer_chain=('libfuzzer',),
-                        benchmark='bench',
-                        fuzz_target='target',
-                        input_mode='file',
-                    )
+                    _case(fuzzers_root, benchmarks_root, 'libfuzzer')
                 ],
-                fuzzer_dirs=_resource_dirs(fuzzers_root),
-                fuzzer_configs=_fuzzer_configs('libfuzzer'),
-                local_repo_paths={},
-                benchmark_dirs=_resource_dirs(benchmarks_root),
                 fuzzer_build_sources=build_sources,
                 fuzzer_run_sources=run_sources,
                 instrumentation_build_sources=instrumentation_sources,
@@ -286,27 +264,9 @@ class DockerHelperTest(unittest.TestCase):
 
             bake_hcl = generate_run_bake_hcl(
                 campaign_cases=[
-                    CampaignCase(
-                        fuzzer_id='afl',
-                        fuzzer_name='afl',
-                        fuzzer_chain=('afl',),
-                        benchmark='bench',
-                        fuzz_target='target',
-                        input_mode='file',
-                    ),
-                    CampaignCase(
-                        fuzzer_id='libfuzzer',
-                        fuzzer_name='libfuzzer',
-                        fuzzer_chain=('libfuzzer',),
-                        benchmark='bench',
-                        fuzz_target='target',
-                        input_mode='file',
-                    ),
+                    _case(fuzzers_root, benchmarks_root, 'afl'),
+                    _case(fuzzers_root, benchmarks_root, 'libfuzzer'),
                 ],
-                fuzzer_dirs=_resource_dirs(fuzzers_root),
-                fuzzer_configs=_fuzzer_configs('afl', 'libfuzzer'),
-                local_repo_paths={},
-                benchmark_dirs=_resource_dirs(benchmarks_root),
                 fuzzer_build_sources=build_sources,
                 fuzzer_run_sources=run_sources,
                 instrumentation_build_sources=instrumentation_sources,
@@ -321,18 +281,18 @@ class DockerHelperTest(unittest.TestCase):
         self.assertNotIn(str(build_sources['afl'].resolve()), libfuzzer_block)
         self.assertNotIn(str(run_sources['afl'].resolve()), libfuzzer_block)
 
-    def test_fuzzer_source_dependencies_use_resolved_configs(self) -> None:
-        """Verify source dependencies are resolved from loaded fuzzer configs."""
-        source_dirs = fuzzer_source_dirs(
-            _fuzzer_configs(
-                'grammarinator',
-                source_dependencies=('libfuzzer', 'blackbox'),
-            )
-            | _fuzzer_configs('libfuzzer', 'blackbox'),
-            'grammarinator',
+    def test_fuzzer_dependencies_include_required_sources_once(self) -> None:
+        """Verify the normalized fuzzer graph provides source dependencies once."""
+        libfuzzer = Fuzzer(id='libfuzzer', name='libfuzzer', src_dir=Path('/fuzzers/libfuzzer'))
+        blackbox = Fuzzer(id='blackbox', name='blackbox', src_dir=Path('/fuzzers/blackbox'))
+        grammarinator = Fuzzer(
+            id='grammarinator',
+            name='grammarinator',
+            src_dir=Path('/fuzzers/grammarinator'),
+            source_dependencies=[libfuzzer, blackbox],
         )
 
-        self.assertEqual(['grammarinator', 'blackbox', 'libfuzzer'], source_dirs)
+        self.assertEqual(['grammarinator', 'libfuzzer', 'blackbox'], [item.name for item in grammarinator.dependencies])
 
     def test_fuzzer_builder_can_use_configured_local_checkout_context(self) -> None:
         """Verify local_repo_env can redirect a fuzzer builder to a host checkout."""
@@ -376,24 +336,9 @@ class DockerHelperTest(unittest.TestCase):
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             with patch.dict(os.environ, {'FM_TEST_LOCAL_REPO': str(local_repo)}, clear=True):
+                case = _case(fuzzers_root, benchmarks_root, 'local', local_repo_env='FM_TEST_LOCAL_REPO')
                 bake_hcl = generate_run_bake_hcl(
-                    campaign_cases=[
-                        CampaignCase(
-                            fuzzer_id='local',
-                            fuzzer_name='local',
-                            fuzzer_chain=('local',),
-                            benchmark='bench',
-                            fuzz_target='target',
-                            input_mode='file',
-                        )
-                    ],
-                    fuzzer_dirs=_resource_dirs(fuzzers_root),
-                    fuzzer_configs=_fuzzer_configs('local', local_repo_env='FM_TEST_LOCAL_REPO'),
-                    local_repo_paths=fuzzer_local_repo_paths(
-                        _fuzzer_configs('local', local_repo_env='FM_TEST_LOCAL_REPO'),
-                        ['local'],
-                    ),
-                    benchmark_dirs=_resource_dirs(benchmarks_root),
+                    campaign_cases=[case],
                     fuzzer_build_sources=build_sources,
                     fuzzer_run_sources=run_sources,
                     instrumentation_build_sources=instrumentation_sources,
@@ -450,24 +395,9 @@ class DockerHelperTest(unittest.TestCase):
                 (root_dir / name / 'Dockerfile').write_text('FROM parent_image\n', encoding='utf-8')
 
             with patch.dict(os.environ, {}, clear=True):
+                case = _case(fuzzers_root, benchmarks_root, 'local', local_repo_env='FM_TEST_LOCAL_REPO')
                 bake_hcl = generate_run_bake_hcl(
-                    campaign_cases=[
-                        CampaignCase(
-                            fuzzer_id='local',
-                            fuzzer_name='local',
-                            fuzzer_chain=('local',),
-                            benchmark='bench',
-                            fuzz_target='target',
-                            input_mode='file',
-                        )
-                    ],
-                    fuzzer_dirs=_resource_dirs(fuzzers_root),
-                    fuzzer_configs=_fuzzer_configs('local', local_repo_env='FM_TEST_LOCAL_REPO'),
-                    local_repo_paths=fuzzer_local_repo_paths(
-                        _fuzzer_configs('local', local_repo_env='FM_TEST_LOCAL_REPO'),
-                        ['local'],
-                    ),
-                    benchmark_dirs=_resource_dirs(benchmarks_root),
+                    campaign_cases=[case],
                     fuzzer_build_sources=build_sources,
                     fuzzer_run_sources=run_sources,
                     instrumentation_build_sources=instrumentation_sources,
@@ -534,23 +464,27 @@ class DockerHelperTest(unittest.TestCase):
             run.call_args.args[0],
         )
 
-def _resource_dirs(root: Path) -> dict[str, Path]:
-    return {path.name: path for path in root.iterdir() if path.is_dir()}
-
-
-def _fuzzer_configs(
-    *names: str,
-    source_dependencies: tuple[str, ...] = (),
+def _case(
+    fuzzers_root: Path,
+    benchmarks_root: Path,
+    fuzzer_name: str,
+    *,
     local_repo_env: str | None = None,
-) -> dict[str, dict[str, object]]:
-    return {
-        name: {
-            'parent': None,
-            'source_dependencies': source_dependencies,
-            'local_repo_env': local_repo_env,
-        }
-        for name in names
-    }
+) -> CampaignCase:
+    benchmark_dir = benchmarks_root / 'bench'
+    return CampaignCase(
+        fuzzer=Fuzzer(
+            id=fuzzer_name,
+            name=fuzzer_name,
+            src_dir=(fuzzers_root / fuzzer_name).resolve(),
+            local_repo_env=local_repo_env,
+        ),
+        fuzz_target=FuzzTarget(
+            benchmark=Benchmark(name='bench', src_dir=benchmark_dir.resolve(), config_path=(benchmark_dir / 'benchmark.yaml').resolve()),
+            fuzz_target='target',
+            input_mode='file',
+        ),
+    )
 
 
 if __name__ == '__main__':

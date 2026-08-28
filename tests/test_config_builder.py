@@ -21,13 +21,11 @@ from fuzzmeter.config import CampaignCase, load_campaign_config
 class ConfigBuilderTest(unittest.TestCase):
     """Verify campaign config expansion rules."""
 
-    def test_campaign_case_stores_fuzzer_identity_fields(self) -> None:
-        """Verify that a case keeps its stable and effective fuzzer names."""
+    def test_campaign_case_stores_normalized_objects(self) -> None:
+        """Verify that a case owns normalized fuzzer and target objects."""
         field_names = {field.name for field in fields(CampaignCase)}
 
-        self.assertIn('fuzzer_id', field_names)
-        self.assertIn('fuzzer_name', field_names)
-        self.assertIn('fuzzer_chain', field_names)
+        self.assertEqual({'fuzzer', 'fuzz_target', 'build_config', 'run_config', 'replay_trials'}, field_names)
 
     def test_repository_curl_fuzz_target_config_loads(self) -> None:
         """Verify that the repository curl benchmark config loads as-is."""
@@ -45,7 +43,7 @@ fuzz_targets:
 
         self.assertEqual(
             [('curl', 'curl_fuzzer', 'in_process')],
-            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+            [(case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target, case.fuzz_target.input_mode) for case in config.cases],
         )
 
     def test_repository_openssl_fuzz_target_config_loads(self) -> None:
@@ -64,7 +62,7 @@ fuzz_targets:
 
         self.assertEqual(
             [('openssl', 'x509', 'in_process')],
-            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+            [(case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target, case.fuzz_target.input_mode) for case in config.cases],
         )
 
     def test_repository_libxml2_fuzz_target_config_loads(self) -> None:
@@ -83,7 +81,7 @@ fuzz_targets:
 
         self.assertEqual(
             [('libxml2', 'reader', 'in_process')],
-            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+            [(case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target, case.fuzz_target.input_mode) for case in config.cases],
         )
 
     def test_repository_re2_fuzz_target_config_loads(self) -> None:
@@ -102,7 +100,7 @@ fuzz_targets:
 
         self.assertEqual(
             [('re2', 're2_fuzzer', 'in_process')],
-            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+            [(case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target, case.fuzz_target.input_mode) for case in config.cases],
         )
 
     def test_repository_zlib_fuzz_target_config_loads(self) -> None:
@@ -121,7 +119,7 @@ fuzz_targets:
 
         self.assertEqual(
             [('zlib', 'zlib_uncompress_fuzzer', 'in_process')],
-            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+            [(case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target, case.fuzz_target.input_mode) for case in config.cases],
         )
 
     def test_repository_harfbuzz_fuzz_target_config_loads(self) -> None:
@@ -140,7 +138,7 @@ fuzz_targets:
 
         self.assertEqual(
             [('harfbuzz', 'hb-shape-fuzzer', 'in_process')],
-            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+            [(case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target, case.fuzz_target.input_mode) for case in config.cases],
         )
 
     def test_repository_freetype2_fuzz_target_config_loads(self) -> None:
@@ -159,7 +157,7 @@ fuzz_targets:
 
         self.assertEqual(
             [('freetype2', 'ftfuzzer', 'in_process')],
-            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+            [(case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target, case.fuzz_target.input_mode) for case in config.cases],
         )
 
     def test_repository_quickjs_fuzz_target_config_loads(self) -> None:
@@ -178,7 +176,7 @@ fuzz_targets:
 
         self.assertEqual(
             [('quickjs', 'fuzz_eval', 'in_process')],
-            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+            [(case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target, case.fuzz_target.input_mode) for case in config.cases],
         )
 
     def test_repository_jsc_fuzz_target_config_loads(self) -> None:
@@ -196,7 +194,7 @@ fuzz_targets:
         )
 
         self.assertEqual(
-            [('jsc', 'jsc', 'file')], [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases]
+            [('jsc', 'jsc', 'file')], [(case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target, case.fuzz_target.input_mode) for case in config.cases]
         )
 
     def test_repository_v8_fuzz_target_config_loads(self) -> None:
@@ -214,7 +212,7 @@ fuzz_targets:
         )
 
         self.assertEqual(
-            [('v8', 'd8', 'file')], [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases]
+            [('v8', 'd8', 'file')], [(case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target, case.fuzz_target.input_mode) for case in config.cases]
         )
 
     def test_repository_spidermonkey_fuzz_target_config_loads(self) -> None:
@@ -233,7 +231,7 @@ fuzz_targets:
 
         self.assertEqual(
             [('spidermonkey', 'js', 'file')],
-            [(case.benchmark, case.fuzz_target, case.input_mode) for case in config.cases],
+            [(case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target, case.fuzz_target.input_mode) for case in config.cases],
         )
 
     def test_allowed_benchmarks_limits_fuzzer_targets(self) -> None:
@@ -263,7 +261,7 @@ fuzz_targets:
                 ('plain', 'jerryscript', 'jerry'),
                 ('plain', 'sqlite3', 'ossfuzz'),
             ],
-            [(case.fuzzer_name, case.benchmark, case.fuzz_target) for case in config.cases],
+            [(case.fuzzer.name, case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target) for case in config.cases],
         )
 
     def test_campaign_config_keeps_only_required_fuzzer_dirs(self) -> None:
@@ -292,7 +290,6 @@ fuzz_targets:
             )
 
         self.assertEqual({'base', 'blackbox', 'reporter', 'selected', 'support'}, set(config.fuzzer_dirs))
-        self.assertEqual(('support', 'blackbox'), config.fuzzer_configs['base']['source_dependencies'])
 
     def test_source_dependencies_must_be_a_list(self) -> None:
         """Verify malformed source dependency configuration fails at load time."""
@@ -319,12 +316,31 @@ fuzz_targets:
             _write_fuzzer(root, 'plain', 'source_dependencies:\n  - support\n')
             _write_benchmark(root, 'jerryscript', 'jerry')
 
-            with self.assertRaisesRegex(ValueError, "requires source dependency 'support'"):
+            with self.assertRaisesRegex(ValueError, "Fuzzer 'support' is not configured"):
                 _load_campaign_config(
                     root,
                     '''
 fuzzers:
   - plain
+fuzz_targets:
+  - jerryscript:jerry
+''',
+                )
+
+    def test_cyclic_fuzzer_dependencies_are_rejected(self) -> None:
+        """Verify incomplete fuzzer entries identify dependency cycles."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            _write_fuzzer(root, 'first', 'parent: second\n')
+            _write_fuzzer(root, 'second', 'source_dependencies:\n  - first\n')
+            _write_benchmark(root, 'jerryscript', 'jerry')
+
+            with self.assertRaisesRegex(ValueError, "Cyclic fuzzer dependency detected at 'first'"):
+                _load_campaign_config(
+                    root,
+                    '''
+fuzzers:
+  - first
 fuzz_targets:
   - jerryscript:jerry
 ''',
@@ -352,9 +368,10 @@ fuzz_targets:
 
         self.assertEqual(
             [('limited_child', 'limited_base', 'jerryscript', 'jerry')],
-            [(case.fuzzer_id, case.fuzzer_name, case.benchmark, case.fuzz_target) for case in config.cases],
+            [(case.fuzzer.id, case.fuzzer.name, case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target) for case in config.cases],
         )
-        self.assertEqual({'jerryscript'}, set(config.benchmark_dirs))
+        self.assertEqual('limited_base', config.cases[0].fuzzer.parent.name)
+        self.assertEqual({'jerryscript'}, {case.fuzz_target.benchmark.name for case in config.cases})
 
     def test_fuzzer_with_parent_keeps_its_own_implementation(self) -> None:
         """Verify a selected fuzzer remains the implementation despite having a parent."""
@@ -376,8 +393,103 @@ fuzz_targets:
 
         self.assertEqual(
             [('derived', 'derived', ('derived', 'base'))],
-            [(case.fuzzer_id, case.fuzzer_name, case.fuzzer_chain) for case in config.cases],
+            [(case.fuzzer.id, case.fuzzer.name, tuple(item.name for item in [case.fuzzer, *case.fuzzer.parents])) for case in config.cases],
         )
+
+    def test_replay_trials_are_scoped_to_the_fuzzer_and_fuzz_target_pair(self) -> None:
+        """Verify that replay trials follow the fuzz target spec and are not a fuzzer property."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            ignored, jerry, sqlite = root / 'ignored', root / 'jerry', root / 'sqlite'
+            for path in (ignored, jerry, sqlite):
+                path.mkdir()
+            _write_fuzzer(root, 'base', f'replay_trials:\n  jerryscript:jerry:\n    - {ignored}\n')
+            _write_benchmark(root, 'jerryscript', 'jerry')
+            _write_benchmark(root, 'sqlite3', 'ossfuzz')
+
+            config = _load_campaign_config(
+                root,
+                f'''
+fuzzers:
+  - id: replayed
+    parent: base
+    replay_trials:
+      jerryscript:jerry:
+        - {jerry}
+      sqlite3:ossfuzz:
+        - {sqlite}
+fuzz_targets:
+  - jerryscript:jerry
+  - sqlite3:ossfuzz
+''',
+            )
+
+        self.assertEqual(
+            [('jerryscript:jerry', (jerry,)), ('sqlite3:ossfuzz', (sqlite,))],
+            [(case.fuzz_target.spec, case.replay_trials) for case in config.cases],
+        )
+
+    def test_replay_trials_reject_unselected_fuzz_targets(self) -> None:
+        """Verify that replay trials must name a fuzz target the campaign runs."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            _write_fuzzer(root, 'plain', '')
+            _write_benchmark(root, 'jerryscript', 'jerry')
+
+            with self.assertRaisesRegex(ValueError, 'unselected fuzz targets'):
+                _load_campaign_config(
+                    root,
+                    f'''
+fuzzers:
+  - id: replayed
+    parent: plain
+    replay_trials:
+      sqlite3:ossfuzz:
+        - {root}
+fuzz_targets:
+  - jerryscript:jerry
+''',
+                )
+
+    def test_replay_trials_must_cover_every_case_with_one_directory_per_repetition(self) -> None:
+        """Verify that a run is either fully replayed with repetitions directories, or fully live."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            _write_fuzzer(root, 'plain', '')
+            _write_benchmark(root, 'jerryscript', 'jerry')
+            _write_benchmark(root, 'sqlite3', 'ossfuzz')
+            campaign = f'''
+fuzzers:
+  - id: replayed
+    parent: plain
+    replay_trials:
+      jerryscript:jerry:
+        - {root}
+{{extra}}
+run:
+  repetitions: {{repetitions}}
+fuzz_targets:
+  - jerryscript:jerry
+  - sqlite3:ossfuzz
+'''
+
+            # A live sqlite3 case cannot be mixed with a replayed jerryscript case.
+            with self.assertRaisesRegex(ValueError, 'for every campaign case, or for none'):
+                _load_campaign_config(root, campaign.format(extra='', repetitions=1))
+
+            # Every case is replayed, but one directory does not match repetitions: 2.
+            with self.assertRaisesRegex(ValueError, r'exactly run.repetitions \(2\)'):
+                _load_campaign_config(
+                    root,
+                    campaign.format(extra=f'      sqlite3:ossfuzz:\n        - {root}', repetitions=2),
+                )
+
+            config = _load_campaign_config(
+                root,
+                campaign.format(extra=f'      sqlite3:ossfuzz:\n        - {root}', repetitions=1),
+            )
+
+        self.assertEqual([(root,), (root,)], [case.replay_trials for case in config.cases])
 
     def test_target_timeout_is_stored_on_campaign_case(self) -> None:
         """Verify that target-level timeouts are stored on the campaign case."""
@@ -396,8 +508,8 @@ fuzz_targets:
 ''',
             )
 
-        self.assertEqual(10.0, config.cases[0].target_timeout_s)
-        self.assertEqual({}, config.cases[0].runtime_config)
+        self.assertEqual(10.0, config.cases[0].fuzz_target.target_timeout_s)
+        self.assertEqual({}, config.cases[0].run_config)
 
     def test_missing_target_timeout_defaults_to_one_second(self) -> None:
         """Verify that missing target timeouts default to one second."""
@@ -416,8 +528,8 @@ fuzz_targets:
 ''',
             )
 
-        self.assertEqual(1.0, config.cases[0].target_timeout_s)
-        self.assertEqual({}, config.cases[0].runtime_config)
+        self.assertEqual(1.0, config.cases[0].fuzz_target.target_timeout_s)
+        self.assertEqual({}, config.cases[0].run_config)
 
     def test_runtime_target_timeout_is_preserved_without_changing_target_timeout(self) -> None:
         """Verify that fuzzer runtime config does not replace the benchmark target timeout."""
@@ -439,8 +551,8 @@ fuzz_targets:
 ''',
             )
 
-        self.assertEqual(10.0, config.cases[0].target_timeout_s)
-        self.assertEqual({'target': {'timeout_s': 3}}, config.cases[0].runtime_config)
+        self.assertEqual(10.0, config.cases[0].fuzz_target.target_timeout_s)
+        self.assertEqual({'target': {'timeout_s': 3}}, config.cases[0].run_config)
 
     def test_snapshot_export_interval_defaults_to_one(self) -> None:
         """Verify that snapshot exports run on every tick by default."""
@@ -521,7 +633,10 @@ fuzz_targets:
 
         self.assertEqual(
             [('jerryscript', 'jerry_file', 'file', 3.0)],
-            [(case.benchmark, case.fuzz_target, case.input_mode, case.target_timeout_s) for case in config.cases],
+            [
+                (case.fuzz_target.benchmark.name, case.fuzz_target.fuzz_target, case.fuzz_target.input_mode, case.fuzz_target.target_timeout_s)
+                for case in config.cases
+            ],
         )
 
     def test_multi_target_benchmark_fuzzer_overrides_are_target_specific(self) -> None:

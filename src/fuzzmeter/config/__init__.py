@@ -7,20 +7,19 @@
 
 """Expose campaign configuration models and loading helpers."""
 
-from .builder import fuzzer_source_dirs, load_campaign_config, load_yaml
+from .builder import load_campaign_config, load_yaml
 from .models import (
+    Benchmark,
     CampaignCase,
     CampaignConfig,
     CampaignSettings,
-    target_key,
 )
 
 __all__ = [
+    'Benchmark',
     'CampaignCase',
     'CampaignConfig',
     'CampaignSettings',
-    'fuzzer_source_dirs',
     'load_campaign_config',
     'load_yaml',
-    'target_key',
 ]

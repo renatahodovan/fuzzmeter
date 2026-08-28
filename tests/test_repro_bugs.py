@@ -19,7 +19,7 @@ from unittest.mock import Mock, patch
 from fuzzmeter.db import DB
 from fuzzmeter.fuzzers.models import OutputPaths
 from fuzzmeter.repro.bugs import repro_crash_batch
-from fuzzmeter.trial.models import TrialImages, TrialInstance, TrialLayout
+from fuzzmeter.trial.models import TrialInstance, TrialLayout
 from tests.support.dbs import seeded_run_db
 from tests.support.trials import make_trial_config
 
@@ -190,7 +190,6 @@ def _trial_instance(root: Path) -> TrialInstance:
         ),
         trial_timeout=60,
         snapshot_preprocess=None,
-        images=TrialImages(fuzzer_name='fuzzer', target_key='bench-target'),
     )
     layout = TrialLayout.from_config(trial_dir=root / 'trial', cfg=config)
     return TrialInstance(

@@ -16,7 +16,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fuzzmeter.artifacts.builder import _build_images
-from fuzzmeter.config import CampaignCase, CampaignConfig, CampaignSettings
+from fuzzmeter.config import Benchmark, CampaignConfig, CampaignSettings
+from fuzzmeter.config.models import CampaignCase, Fuzzer, FuzzTarget
 from tests.support.bake import target_block
 
 
@@ -36,18 +37,8 @@ class ArtifactBuilderTest(unittest.TestCase):
                     campaign_config=CampaignConfig(
                         settings=CampaignSettings(),
                         cases=[
-                            CampaignCase(
-                                fuzzer_id='plain',
-                                fuzzer_name='plain',
-                                fuzzer_chain=('plain',),
-                                benchmark='bench',
-                                fuzz_target='target',
-                                input_mode='file',
-                            ),
+                            _case(repo_root, 'plain'),
                         ],
-                        fuzzer_dirs={'plain': repo_root / 'fuzzers' / 'plain'},
-                        fuzzer_configs=_fuzzer_configs('plain'),
-                        benchmark_dirs={'bench': repo_root / 'benchmarks' / 'bench'},
                     ),
                     run_dir=run_dir,
                 )
@@ -89,29 +80,9 @@ class ArtifactBuilderTest(unittest.TestCase):
                     campaign_config=CampaignConfig(
                         settings=CampaignSettings(),
                         cases=[
-                            CampaignCase(
-                                fuzzer_id='other',
-                                fuzzer_name='other',
-                                fuzzer_chain=('other',),
-                                benchmark='bench',
-                                fuzz_target='target',
-                                input_mode='file',
-                            ),
-                            CampaignCase(
-                                fuzzer_id='plain',
-                                fuzzer_name='plain',
-                                fuzzer_chain=('plain',),
-                                benchmark='bench',
-                                fuzz_target='target',
-                                input_mode='file',
-                            ),
+                            _case(repo_root, 'other'),
+                            _case(repo_root, 'plain'),
                         ],
-                        fuzzer_dirs={
-                            'other': repo_root / 'fuzzers' / 'other',
-                            'plain': repo_root / 'fuzzers' / 'plain',
-                        },
-                        fuzzer_configs=_fuzzer_configs('other', 'plain'),
-                        benchmark_dirs={'bench': repo_root / 'benchmarks' / 'bench'},
                     ),
                     run_dir=run_dir,
                 )
@@ -143,18 +114,8 @@ class ArtifactBuilderTest(unittest.TestCase):
                     campaign_config=CampaignConfig(
                         settings=CampaignSettings(),
                         cases=[
-                            CampaignCase(
-                                fuzzer_id='plain',
-                                fuzzer_name='plain',
-                                fuzzer_chain=('plain',),
-                                benchmark='bench',
-                                fuzz_target='target',
-                                input_mode='file',
-                            ),
+                            _case(repo_root, 'plain', local_repo_env='FM_TEST_LOCAL_REPO'),
                         ],
-                        fuzzer_dirs={'plain': repo_root / 'fuzzers' / 'plain'},
-                        fuzzer_configs=_fuzzer_configs('plain', local_repo_env='FM_TEST_LOCAL_REPO'),
-                        benchmark_dirs={'bench': repo_root / 'benchmarks' / 'bench'},
                     ),
                     run_dir=run_dir,
                 )
@@ -162,15 +123,21 @@ class ArtifactBuilderTest(unittest.TestCase):
             self.assertIn(f'--allow=fs.read={local_repo.resolve()}', run.call_args.args[0])
 
 
-def _fuzzer_configs(*names: str, local_repo_env: str | None = None) -> dict[str, dict[str, object]]:
-    return {
-        name: {
-            'parent': None,
-            'source_dependencies': (),
-            'local_repo_env': local_repo_env,
-        }
-        for name in names
-    }
+def _case(repo_root: Path, fuzzer_name: str, *, local_repo_env: str | None = None) -> CampaignCase:
+    benchmark_dir = repo_root / 'benchmarks' / 'bench'
+    return CampaignCase(
+        fuzzer=Fuzzer(
+            id=fuzzer_name,
+            name=fuzzer_name,
+            src_dir=(repo_root / 'fuzzers' / fuzzer_name).resolve(),
+            local_repo_env=local_repo_env,
+        ),
+        fuzz_target=FuzzTarget(
+            benchmark=Benchmark(name='bench', src_dir=benchmark_dir.resolve(), config_path=(benchmark_dir / 'benchmark.yaml').resolve()),
+            fuzz_target='target',
+            input_mode='file',
+        ),
+    )
 
 
 def _write_repo_sources(

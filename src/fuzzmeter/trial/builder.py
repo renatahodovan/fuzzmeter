@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..config import CampaignConfig, target_key
+from ..config import CampaignConfig
 from ..fuzzers import FuzzerLoader
-from .models import TrialConfig, TrialImages
+from .models import TrialConfig
 
 
 def plan_trials(
@@ -29,34 +29,25 @@ def plan_trials(
     configs_by_rep: dict[int, list[TrialConfig]] = {}
 
     for campaign_case in campaign_config.cases:
-        fuzzer_name = campaign_case.fuzzer_name
-        target = target_key(campaign_case.benchmark, campaign_case.fuzz_target)
+        fuzzer_name = campaign_case.fuzzer.name
+        target = campaign_case.fuzz_target.ident
         fuzzer_module = fuzzer_loader.load(fuzzer_name)
-        images = TrialImages(fuzzer_name=campaign_case.fuzzer_id, target_key=target)
         output_paths = fuzzer_module.output_paths_relative()
         replay_trials = tuple(Path(path).resolve() for path in campaign_case.replay_trials)
         rep_specs = tuple(enumerate(replay_trials)) if replay_trials else tuple((rep, None) for rep in range(rep_count))
         snapshot_preprocess = fuzzer_module.snapshot_preprocess_script()
-        target_bin = fuzz_binaries[(campaign_case.fuzzer_id, target)]
+        target_bin = fuzz_binaries[(campaign_case.fuzzer.id, target)]
 
         for rep_idx, replay_dir in rep_specs:
             config = TrialConfig(
-                fuzzer=campaign_case.fuzzer_id,
-                fuzzer_impl=fuzzer_name,
-                benchmark=campaign_case.benchmark,
-                fuzz_target=campaign_case.fuzz_target,
+                case=campaign_case,
                 fuzz_target_bin=target_bin,
-                fuzz_target_input_mode=campaign_case.input_mode,
-                fuzz_target_timeout=campaign_case.target_timeout_s,
                 rep_idx=rep_idx,
-                trial_key=f'{campaign_case.fuzzer_id}__{target}__rep{rep_idx}',
+                trial_key=f'{campaign_case.fuzzer.id}__{target}__rep{rep_idx}',
                 output_paths=output_paths,
                 trial_timeout=campaign_config.settings.time_seconds,
                 snapshot_preprocess=snapshot_preprocess,
-                images=images,
                 replay_dir=replay_dir,
-                build_config=campaign_case.build_config,
-                runtime_config=campaign_case.runtime_config,
             )
             if config.trial_key in seen_trial_keys:
                 raise RuntimeError(f'Duplicate trial key: {config.trial_key}')

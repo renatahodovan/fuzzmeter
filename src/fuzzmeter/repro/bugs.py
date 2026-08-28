@@ -69,9 +69,9 @@ def repro_crash_batch(
                 db,
                 BugRecord(
                     run_id=run_id,
-                    fuzzer=config.fuzzer,
-                    benchmark=config.benchmark,
-                    fuzz_target=config.fuzz_target,
+                    fuzzer=config.case.fuzzer.id,
+                    benchmark=config.fuzz_target.benchmark.name,
+                    fuzz_target=config.fuzz_target.fuzz_target,
                     bug_key=bug_key,
                     issue_type=metadata['issue_type'],
                     top_func=metadata['top_func'],
@@ -122,13 +122,13 @@ def _reproduce_crash_batch(
     input_list.write_text('\n'.join(crash_inputs) + '\n', encoding='utf-8')
 
     docker.run(
-        image=trial.config.images.asan,
+        image=trial.config.case.images.asan,
         name=f'fm-{docker_runtime.run_id or "run"}-crash-{tick_idx}-{trial.config.trial_key}-{batch_index:06d}',
         volumes=[docker.out_volume()],
         env={
-            'FM_TARGET_NAME': trial.config.fuzz_target,
-            'FM_INPUT_MODE': trial.config.fuzz_target_input_mode,
-            'FM_TIMEOUT_S': str(trial.config.fuzz_target_timeout * 2),
+            'FM_TARGET_NAME': trial.config.fuzz_target.fuzz_target,
+            'FM_INPUT_MODE': trial.config.fuzz_target.input_mode,
+            'FM_TIMEOUT_S': str(trial.config.fuzz_target.target_timeout_s * 2),
             'FM_CRASH_INPUT_LIST': docker.container_path(input_list),
             'FM_CRASH_OUTPUT_JSON': docker.container_path(output_json),
         },
@@ -188,7 +188,7 @@ def _classify_crash_output(
     safe_bug_key = re.sub(r'\s+', '_', bug_key.replace('/', '_').replace('\\', '_'))
     if len(safe_bug_key) > _MAX_COMPONENT:
         safe_bug_key = safe_bug_key[:_MAX_COMPONENT] + '_' + hashlib.sha1(safe_bug_key.encode()).hexdigest()[:12]
-    output_dir = repro_logs_dir / trial.config.fuzzer / trial.config.benchmark / trial.config.fuzz_target / safe_bug_key
+    output_dir = repro_logs_dir / trial.config.case.fuzzer.id / trial.config.fuzz_target.benchmark.name / trial.config.fuzz_target.fuzz_target / safe_bug_key
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / f'{safe_bug_key[:40]}.log').write_text(output, encoding='utf-8', errors='replace')
 
