@@ -38,20 +38,14 @@ class TelemetrySample:
             idx=int(row['idx']),
             ts=int(row['ts']),
             container_name=str(row['container_name']),
-            cpu_percent=_optional_float(row['cpu_percent']),
-            memory_usage_bytes=_optional_int(row['memory_usage_bytes']),
-            memory_limit_bytes=_optional_int(row['memory_limit_bytes']),
-            memory_percent=_optional_float(row['memory_percent']),
-            corpus_disk_usage_bytes=_optional_int(row['corpus_disk_usage_bytes']),
+            cpu_percent=None if row['cpu_percent'] is None else float(row['cpu_percent']),
+            memory_usage_bytes=None if row['memory_usage_bytes'] is None else int(row['memory_usage_bytes']),
+            memory_limit_bytes=None if row['memory_limit_bytes'] is None else int(row['memory_limit_bytes']),
+            memory_percent=None if row['memory_percent'] is None else float(row['memory_percent']),
+            corpus_disk_usage_bytes=(
+                None if row['corpus_disk_usage_bytes'] is None else int(row['corpus_disk_usage_bytes'])
+            ),
         )
-
-
-def _optional_int(value: Any) -> int | None:
-    return None if value is None else int(value)
-
-
-def _optional_float(value: Any) -> float | None:
-    return None if value is None else float(value)
 
 
 def upsert_resource_telemetry(db: DB, sample: TelemetrySample) -> None:

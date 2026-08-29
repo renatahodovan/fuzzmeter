@@ -25,6 +25,7 @@ from fuzzmeter.db import snapshot as db_snapshot
 from fuzzmeter.db import trials as db_trials
 from fuzzmeter.db.base import open_readonly_connection
 from fuzzmeter.db.report_views import ReportingDB
+from fuzzmeter.db.resource_telemetry import TelemetrySample, upsert_resource_telemetry
 
 
 class DatabaseBehaviorTest(unittest.TestCase):
@@ -540,6 +541,37 @@ class DatabaseBehaviorTest(unittest.TestCase):
 
         self.assertEqual(max(rows, key=lambda row: row.idx), latest[trial_id])
         self.assertEqual({}, empty)
+
+    def test_telemetry_rows_read_back_a_sample_of_an_exited_container(self) -> None:
+        '''A tick that found no container stores no metrics, and the report still reads it.'''
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / 'fuzzmeter.db'
+            with _open_test_db(db_path) as db:
+                trial_id = _ensure_trial(db)
+                upsert_resource_telemetry(
+                    db,
+                    TelemetrySample(
+                        trial_id=trial_id,
+                        idx=1,
+                        ts=100,
+                        container_name='container',
+                        cpu_percent=None,
+                        memory_usage_bytes=None,
+                        memory_limit_bytes=None,
+                        memory_percent=None,
+                        corpus_disk_usage_bytes=None,
+                    ),
+                )
+
+            with ReportingDB(db_path) as reporting_db:
+                samples = reporting_db.resource_telemetry_rows([trial_id])
+
+        self.assertEqual(1, len(samples))
+        self.assertEqual(100, samples[0].ts)
+        self.assertIsNone(samples[0].cpu_percent)
+        self.assertIsNone(samples[0].memory_usage_bytes)
+        self.assertIsNone(samples[0].corpus_disk_usage_bytes)
 
     def test_metadata_rows_are_replaceable(self) -> None:
         '''Composite descriptor rows are keyed by run, fuzzer, and target.'''
