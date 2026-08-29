@@ -10,7 +10,7 @@
 import unittest
 
 from fuzzmeter.db.bug import BugRow
-from fuzzmeter.reporting.analyzers.bug_analysis import BugAnalysis
+from fuzzmeter.reporting.analyzers import bug_analysis
 
 
 def _bug_row(**overrides):
@@ -28,9 +28,7 @@ class BugAnalysisTest(unittest.TestCase):
     '''Verify bug report analysis helpers.'''
 
     def test_collect_bugs_parses_frames_and_output(self):
-        analysis = BugAnalysis()
-
-        bugs = analysis.collect_bugs(
+        bugs = bug_analysis.collect_bugs(
             bugs=[_bug_row(bug_id=7, frames_json='["frame_a", "frame_b"]', output='assert failed\n', first_seen_ts=123)],
             bug_hits_by_bug={7: 3},
             bug_trials_by_bug={7: [5, 4, 5]},
@@ -60,9 +58,7 @@ class BugAnalysisTest(unittest.TestCase):
         )
 
     def test_collect_bugs_drops_invalid_frames_json(self):
-        analysis = BugAnalysis()
-
-        bugs = analysis.collect_bugs(
+        bugs = bug_analysis.collect_bugs(
             bugs=[_bug_row(bug_id=7, frames_json='[not-json', output='', first_seen_ts=123)],
             bug_hits_by_bug={7: 3},
             bug_trials_by_bug={7: [5]},
@@ -72,7 +68,7 @@ class BugAnalysisTest(unittest.TestCase):
         self.assertIsNone(bugs[0]['output'])
 
     def test_compute_unique_bug_table_uses_earliest_output_hits_and_last_snapshot_time(self):
-        table = BugAnalysis.compute_unique_bug_table(
+        table = bug_analysis.compute_unique_bug_table(
             {
                 'key': 'bench:target',
                 'fuzzers': [

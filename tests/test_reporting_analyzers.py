@@ -12,8 +12,7 @@ from __future__ import annotations
 import random
 import unittest
 
-from fuzzmeter.reporting.analyzers import coverage_curves, trial_analysis
-from fuzzmeter.reporting.analyzers.bug_analysis import BugAnalysis
+from fuzzmeter.reporting.analyzers import bug_analysis, coverage_curves, trial_analysis
 from fuzzmeter.reporting.metrics import median
 from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.set_comparison import pairwise_matrix, relative_containment_matrix, trial_set_comparison
@@ -166,9 +165,9 @@ class BugAnalysisBehaviorTest(unittest.TestCase):
             ]
         }
 
-        matrix = BugAnalysis.compute_unique_bug_matrix(target)
+        matrix = bug_analysis.compute_unique_bug_matrix(target)
         target['unique_bug_matrix'] = matrix
-        BugAnalysis.attach_exclusive_bug_stats(target)
+        bug_analysis.attach_exclusive_bug_stats(target)
 
         self.assertEqual([[0, 1], [0, 0]], matrix['pairwise_unique_any'])
         self.assertEqual([[0, 0], [0, 0]], matrix['pairwise_unique_all'])
@@ -217,8 +216,8 @@ class BugAnalysisBehaviorTest(unittest.TestCase):
             ]
         }
 
-        target['unique_bug_matrix'] = BugAnalysis.compute_unique_bug_matrix(target)
-        BugAnalysis.attach_exclusive_bug_stats(target)
+        target['unique_bug_matrix'] = bug_analysis.compute_unique_bug_matrix(target)
+        bug_analysis.attach_exclusive_bug_stats(target)
 
         alpha = target['fuzzers'][0]['exclusive_bugs']
         beta = target['fuzzers'][1]['exclusive_bugs']
@@ -228,7 +227,7 @@ class BugAnalysisBehaviorTest(unittest.TestCase):
         self.assertEqual((1, 'upper'), (beta['exclusive_all'], beta['exclusive_all_bound']))
 
     def test_relative_bug_matrix_and_scores_use_trial_sets(self) -> None:
-        matrix, scores = BugAnalysis.compute_rel_bug_matrix(
+        matrix, scores = bug_analysis.compute_rel_bug_matrix(
             {
                 'fuzzers': [
                     {
@@ -514,7 +513,6 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
 
     def test_create_matrices_attaches_coverage_then_bug_stats_to_shared_target(self) -> None:
         builder = _PayloadBuilder.__new__(_PayloadBuilder)
-        builder._bug_analysis = BugAnalysis()
         builder._coverage_sets_by_metric = lambda fuzzers, benchmark, fuzz_target: {
             'branches': {'alpha': {'a', 'b'}, 'beta': {'b'}}
         }
@@ -573,7 +571,6 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
 
     def test_create_matrices_uses_aggregate_relcov_fallback_when_trial_sets_missing(self) -> None:
         builder = _PayloadBuilder.__new__(_PayloadBuilder)
-        builder._bug_analysis = BugAnalysis()
         builder._coverage_sets_by_metric = lambda fuzzers, benchmark, fuzz_target: {
             'branches': {'alpha': {'a', 'b'}, 'beta': {'b', 'c'}}
         }
@@ -627,7 +624,7 @@ def _bug_exclusive_median(values: list[int]) -> float | None:
             }
         ]
     }
-    BugAnalysis.attach_exclusive_bug_stats(target)
+    bug_analysis.attach_exclusive_bug_stats(target)
     return target['fuzzers'][0]['exclusive_bugs']['median']
 
 

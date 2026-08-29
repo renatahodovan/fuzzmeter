@@ -24,8 +24,7 @@ from ..keys import (
     UNIQUE_MATRIX_KEY,
 )
 from ..set_comparison import trial_set_index
-from . import coverage_matrices
-from .bug_analysis import BugAnalysis, attach_empty_bug_matrices
+from . import bug_analysis, coverage_matrices
 
 
 def attach_target_matrices(
@@ -80,14 +79,14 @@ def attach_target_matrices(
         trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
         aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
     )
-    target[UNIQUE_BUG_TABLE_KEY] = BugAnalysis.compute_unique_bug_table(target)
-    target[UNIQUE_BUG_MATRIX_KEY] = BugAnalysis.compute_unique_bug_matrix(target)
-    target[RELBUG_MATRIX_KEY], target[RELBUG_SCORE_BY_FUZZER_KEY] = BugAnalysis.compute_rel_bug_matrix(target)
-    BugAnalysis.attach_exclusive_bug_stats(target)
+    target[UNIQUE_BUG_TABLE_KEY] = bug_analysis.compute_unique_bug_table(target)
+    target[UNIQUE_BUG_MATRIX_KEY] = bug_analysis.compute_unique_bug_matrix(target)
+    target[RELBUG_MATRIX_KEY], target[RELBUG_SCORE_BY_FUZZER_KEY] = bug_analysis.compute_rel_bug_matrix(target)
+    bug_analysis.attach_exclusive_bug_stats(target)
 
 
 def attach_empty_target_matrices(target: dict[str, Any]) -> None:
     '''Attach placeholder matrices to a target without comparable fuzzers.'''
 
     coverage_matrices.attach_empty_coverage_matrices(target)
-    attach_empty_bug_matrices(target)
+    bug_analysis.attach_empty_bug_matrices(target)

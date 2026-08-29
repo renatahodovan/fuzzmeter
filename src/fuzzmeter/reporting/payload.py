@@ -19,8 +19,7 @@ from typing import Any
 
 from ..db.fields import TRIAL_METADATA_FIELDS
 from ..db.trials import TrialRow
-from .analyzers import coverage_curves, target_matrices, trial_analysis
-from .analyzers.bug_analysis import BugAnalysis
+from .analyzers import bug_analysis, coverage_curves, target_matrices, trial_analysis
 from .analyzers.custom_metrics import attach_custom_metric_sections, has_custom_metric_sections
 from .data.coverage_data import CoverageData
 from .data.run_data import RunData
@@ -115,7 +114,6 @@ class _PayloadBuilder:
         self._data = RunData(run_dir / 'fuzzmeter.db').load(run_dir_name=run_dir.name, run_id=run_id)
         self.run_id = self._data.run_id
         self._coverage_data = CoverageData(run_dir)
-        self._bug_analysis = BugAnalysis()
         self._fuzzer_dirs = fuzzer_dirs
 
     def build(self) -> dict[str, Any]:
@@ -292,7 +290,7 @@ class _PayloadBuilder:
     def collect_bugs(self) -> list[dict[str, Any]]:
         '''Collect crash and bug rows.'''
 
-        return self._bug_analysis.collect_bugs(
+        return bug_analysis.collect_bugs(
             bugs=self._data.bugs,
             bug_hits_by_bug=self._data.bug_hits_by_bug,
             bug_trials_by_bug=self._data.bug_trials_by_bug,
