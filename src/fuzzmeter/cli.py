@@ -46,6 +46,20 @@ def _resolve_resource_dirs(
     return dirs
 
 
+def _resolve_run_dirs(values: list[list[Path]]) -> tuple[Path, ...]:
+    run_dirs: dict[str, Path] = {}
+    for value in (path for group in values for path in group):
+        run_dir = value.expanduser().resolve()
+        if not run_dir.is_dir():
+            raise NotADirectoryError(f'Run directory is not a directory: {run_dir}')
+        if not (run_dir / 'fuzzmeter.db').is_file():
+            raise FileNotFoundError(f'Run directory does not contain fuzzmeter.db: {run_dir}')
+        if run_dir.name in run_dirs:
+            raise ValueError(f'Duplicate run directory name: {run_dir.name}')
+        run_dirs[run_dir.name] = run_dir
+    return tuple(run_dirs.values())
+
+
 def _docker_command_available(*args: str) -> bool:
     try:
         result = subprocess.run(
@@ -133,22 +147,21 @@ def _execute_report(args):
 
 
 def _execute_serve(args):
-    from .web.app import app, configure_run_dirs
-
     try:
-        run_dirs = [path.expanduser().resolve() for paths in args.root for path in paths]
-        configure_run_dirs(run_dirs)
-    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError) as exc:
+        run_dirs = _resolve_run_dirs(args.root)
+    except OSError as exc:
         logger.error('Invalid run directory: %s', exc)
         return 1
     except ValueError as exc:
         logger.error('Invalid run directories: %s', exc)
         return 1
 
+    from .web.app import create_app
+
     if args.debug:
         os.environ['FM_WEB_DEBUG'] = '1'
 
-    app.run(host=args.host, port=args.port, debug=args.debug)
+    create_app(run_dirs).run(host=args.host, port=args.port, debug=args.debug)
     return 0
 
 

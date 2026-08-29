@@ -18,9 +18,7 @@ from unittest.mock import patch
 try:
     from flask import Flask
 
-    from fuzzmeter.composite import CompositeRegistry, CompositeViewStore
-    from fuzzmeter.web.app import configure_run_dirs
-    from fuzzmeter.web.routes import composite_bp, files_bp, reports_bp, runs_bp
+    from fuzzmeter.web.app import create_app
     from tests.support.dbs import measurement_run_db
 except ModuleNotFoundError as exc:
     FLASK_IMPORT_ERROR = exc
@@ -178,19 +176,13 @@ class WebRoutesTest(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         self.assertEqual(1, len(response.json['measurements']))
 
-    def test_single_run_index_redirects_and_duplicate_names_are_rejected(self) -> None:
+    def test_single_run_index_redirects(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            run_dir = root / 'run-a'
+            run_dir = Path(tmp_dir) / 'run-a'
             run_dir.mkdir(parents=True)
             (run_dir / 'fuzzmeter.db').write_text('', encoding='utf-8')
-            duplicate = root / 'other' / 'run-a'
-            duplicate.mkdir(parents=True)
-            (duplicate / 'fuzzmeter.db').write_text('', encoding='utf-8')
 
             response = _app(run_dir).test_client().get('/')
-            with self.assertRaisesRegex(ValueError, 'Duplicate run directory name: run-a'):
-                configure_run_dirs([run_dir, duplicate])
 
         self.assertEqual(302, response.status_code)
         self.assertTrue(response.location.endswith('/run/run-a'))
@@ -202,15 +194,7 @@ class WebRoutesTest(unittest.TestCase):
 
 
 def _app(*run_dirs: Path) -> Flask:
-    app = Flask(__name__)
-    app.config['RUN_DIRS_PROVIDER'] = lambda: run_dirs
-    app.config['COMPOSITE_REGISTRY'] = CompositeRegistry(run_dirs)
-    app.config['COMPOSITE_VIEW_STORE'] = CompositeViewStore()
-    app.register_blueprint(runs_bp)
-    app.register_blueprint(reports_bp)
-    app.register_blueprint(composite_bp)
-    app.register_blueprint(files_bp)
-    return app
+    return create_app(run_dirs)
 
 
 if __name__ == '__main__':

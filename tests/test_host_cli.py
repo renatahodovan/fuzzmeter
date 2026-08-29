@@ -39,7 +39,7 @@ class HostCliTest(unittest.TestCase):
                 run_dir.mkdir()
                 (run_dir / 'fuzzmeter.db').write_text('', encoding='utf-8')
 
-            with patch.object(webapp.app, 'run') as app_run:
+            with patch.object(webapp.Flask, 'run', autospec=True) as app_run:
                 self.assertEqual(
                     0,
                     cli.main([
@@ -47,10 +47,26 @@ class HostCliTest(unittest.TestCase):
                     ]),
                 )
 
-            run_dirs = (first.resolve(), second.resolve(), third.resolve())
-            self.assertEqual(run_dirs, webapp.app.config['RUN_DIRS_PROVIDER']())
-            self.assertEqual(run_dirs, webapp.app.config['COMPOSITE_REGISTRY'].run_dirs)
             app_run.assert_called_once()
+            app = app_run.call_args.args[0]
+            run_dirs = (first.resolve(), second.resolve(), third.resolve())
+            self.assertEqual(run_dirs, app.config['RUN_DIRS_PROVIDER']())
+            self.assertEqual(run_dirs, app.config['COMPOSITE_REGISTRY'].run_dirs)
+
+    def test_serve_rejects_duplicate_run_directory_names(self) -> None:
+        '''Verify run directories sharing a name are refused before the web app starts.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            first = root / 'one' / 'run'
+            second = root / 'two' / 'run'
+            for run_dir in (first, second):
+                run_dir.mkdir(parents=True)
+                (run_dir / 'fuzzmeter.db').write_text('', encoding='utf-8')
+
+            self.assertEqual(
+                1,
+                cli.main(['--log-level', 'CRITICAL', 'serve', '--root', str(first), str(second)]),
+            )
 
 
 if __name__ == '__main__':
