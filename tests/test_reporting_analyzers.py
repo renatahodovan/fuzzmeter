@@ -37,6 +37,20 @@ class TrialAnalysisTest(unittest.TestCase):
         self.assertTrue(analysis.snapshot_has_coverage({'custom_covered': 1}))
         self.assertFalse(analysis.snapshot_has_coverage({'cov_branches_covered': 1}))
 
+    def test_collect_trials_measures_running_trials_from_their_latest_snapshot(self) -> None:
+        analysis = _trial_analysis()
+
+        trials = analysis.collect_trials(
+            trial_rows=[
+                trial_row(trial_id=1, rep='0', started_ts=100, ended_ts=None, time_seconds=86400, status='running')
+            ],
+            latest_snapshots={1: {'trial_id': 1, 'snapshot_id': 11, 'idx': 2, 'ts': 160}},
+            bug_stats_by_trial={},
+            rel_to_url=lambda path: None,
+        )
+
+        self.assertEqual(60, trials[0]['elapsed_seconds'])
+
     def test_collect_trials_uses_latest_snapshot_and_clamps_elapsed_time(self) -> None:
         analysis = _trial_analysis()
 

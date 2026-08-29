@@ -342,16 +342,29 @@ class CoverageReportingTest(unittest.TestCase):
             snapshot_rows=[{'ts': 900}],
         )
 
-        overview = builder.collect_overview()
+        overview = builder.collect_overview([{'elapsed_seconds': 300}, {'elapsed_seconds': 300}])
 
         self.assertEqual(300, overview['elapsed_seconds'])
         self.assertEqual(800, overview['wall_elapsed_seconds'])
+
+    def test_overview_elapsed_reuses_the_measured_trial_runtimes(self) -> None:
+        builder = _PayloadBuilder.__new__(_PayloadBuilder)
+        builder._data = run_data_snapshot(
+            overview_raw={'created_ts': 50},
+            trial_rows=[trial_row(started_ts=100, ended_ts=None, time_seconds=86400)],
+            snapshot_rows=[{'ts': 160}],
+        )
+
+        overview = builder.collect_overview([{'elapsed_seconds': 60}])
+
+        self.assertEqual(60, overview['elapsed_seconds'])
+        self.assertEqual(60, overview['wall_elapsed_seconds'])
 
     def test_overview_surfaces_failed_snapshot_tick_count(self) -> None:
         builder = _PayloadBuilder.__new__(_PayloadBuilder)
         builder._data = run_data_snapshot(overview_raw={'created_ts': 50, 'failed_snapshot_ticks': 2})
 
-        overview = builder.collect_overview()
+        overview = builder.collect_overview([])
 
         self.assertEqual(2, overview['failed_snapshot_ticks'])
 

@@ -65,30 +65,19 @@ class _RunTimeWindow:
     wall_elapsed_seconds: int | None
 
 
-def _trial_elapsed_seconds(row: TrialRow) -> int | None:
-    '''Return how long one trial ran, capped at the runtime it was configured for.'''
-
-    measured = (
-        row.ended_ts - row.started_ts
-        if row.ended_ts is not None and row.ended_ts >= row.started_ts
-        else None
-    )
-    if measured is None:
-        return row.time_seconds if row.time_seconds > 0 else None
-    return min(measured, row.time_seconds) if row.time_seconds > 0 else measured
-
-
 def _run_time_window(
     *,
     created_ts: int | None,
     trial_rows: list[TrialRow],
     snapshot_rows: list[dict[str, Any]],
+    trial_elapsed_seconds: list[int],
 ) -> _RunTimeWindow:
     '''Derive the wall-clock window of a run from its trials and snapshots.
 
     A trial that is still running has no ``ended_ts``, so for live reports the timestamp
     of its latest snapshot is the only evidence of activity; the end of the window is
-    therefore taken over both sources.
+    therefore taken over both sources. ``trial_elapsed_seconds`` are the runtimes already
+    measured for the collected trials, which apply the same rule per trial.
     '''
 
     started_candidates = [row.started_ts for row in trial_rows]
@@ -103,11 +92,10 @@ def _run_time_window(
         if started_ts is None or last_activity_ts is None
         else last_activity_ts - started_ts
     )
-    trial_elapsed = [seconds for seconds in map(_trial_elapsed_seconds, trial_rows) if seconds is not None]
     return _RunTimeWindow(
         started_ts=started_ts,
         last_activity_ts=last_activity_ts,
-        elapsed_seconds=max(trial_elapsed, default=wall_elapsed_seconds),
+        elapsed_seconds=max(trial_elapsed_seconds, default=wall_elapsed_seconds),
         wall_elapsed_seconds=wall_elapsed_seconds,
     )
 
@@ -138,10 +126,10 @@ class _PayloadBuilder:
     def build(self) -> dict[str, Any]:
         '''Build the complete report payload.'''
 
-        LOG.info('Collect overview')
-        overview = self.collect_overview()
         LOG.info('Collect trials')
         trials = self.collect_trials()
+        LOG.info('Collect overview')
+        overview = self.collect_overview(trials)
         LOG.info('Collect timeseries')
         timeseries = self.collect_timeseries(trials)
         LOG.info('Collect bugs')
@@ -182,14 +170,19 @@ class _PayloadBuilder:
             'measurement_provenance': measurement_provenance,
         }
 
-    def collect_overview(self) -> dict[str, Any]:
-        '''Collect run-level overview metadata.'''
+    def collect_overview(self, trials: list[dict[str, Any]]) -> dict[str, Any]:
+        '''Collect run-level overview metadata from the run rows and the collected trials.'''
 
         created_ts = self._data.overview_raw.get('created_ts')
         window = _run_time_window(
             created_ts=created_ts,
             trial_rows=self._data.trial_rows,
             snapshot_rows=self._data.snapshot_rows,
+            trial_elapsed_seconds=[
+                seconds
+                for seconds in (safe_int(trial.get('elapsed_seconds')) for trial in trials)
+                if seconds is not None
+            ],
         )
         return {
             **self._data.overview_raw,
