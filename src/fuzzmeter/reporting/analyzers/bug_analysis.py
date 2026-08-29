@@ -9,11 +9,10 @@
 
 from __future__ import annotations
 
-import json
-
 from typing import Any
 
-from ..metrics import dt, median, safe_int
+from ...db.bug import BugRow
+from ..metrics import dt, median
 from ..set_comparison import novelty_scores, relative_containment_matrix, trial_set_comparison
 
 
@@ -23,41 +22,32 @@ class BugAnalysis:
     def collect_bugs(
         self,
         *,
-        bugs: list[dict[str, Any]],
+        bugs: list[BugRow],
         bug_hits_by_bug: dict[int, int],
         bug_trials_by_bug: dict[int, list[int]],
     ) -> list[dict[str, Any]]:
         '''Collect normalized bug rows with total hit counts.'''
 
-        out = [dict(row) for row in bugs]
-        for bug in out:
-            bug['first_seen_at'] = dt(safe_int(bug.get('first_seen_ts')))
-            bug['hits_total'] = int(bug_hits_by_bug.get(int(bug['bug_id']), 0))
-            bug['trial_ids'] = sorted({int(trial_id) for trial_id in bug_trials_by_bug.get(int(bug['bug_id']), [])})
-            bug['frames'] = self._parse_frames(bug.get('frames_json'))
-            bug['output'] = self._normalize_text(bug.get('output'))
-        return out
-
-    @staticmethod
-    def _normalize_text(value: Any) -> str | None:
-        if not isinstance(value, str):
-            return None
-        text = value.strip()
-        return text or None
-
-    @staticmethod
-    def _parse_frames(value: Any) -> list[str]:
-        if isinstance(value, list):
-            return [str(frame) for frame in value if str(frame).strip()]
-        if not value:
-            return []
-        try:
-            parsed = json.loads(str(value))
-        except (TypeError, json.JSONDecodeError):
-            return []
-        if not isinstance(parsed, list):
-            return []
-        return [str(frame) for frame in parsed if str(frame).strip()]
+        return [
+            {
+                'bug_id': bug.bug_id,
+                'run_id': bug.run_id,
+                'fuzzer': bug.fuzzer,
+                'benchmark': bug.benchmark,
+                'fuzz_target': bug.fuzz_target,
+                'bug_key': bug.bug_key,
+                'issue_type': bug.issue_type,
+                'top_func': bug.top_func,
+                'frames': bug.frames,
+                'output': bug.output,
+                'first_seen_ts': bug.first_seen_ts,
+                'first_seen_snapshot_id': bug.first_seen_snapshot_id,
+                'first_seen_at': dt(bug.first_seen_ts),
+                'hits_total': int(bug_hits_by_bug.get(bug.bug_id, 0)),
+                'trial_ids': sorted({int(trial_id) for trial_id in bug_trials_by_bug.get(bug.bug_id, [])}),
+            }
+            for bug in bugs
+        ]
 
     @staticmethod
     def attach_exclusive_bug_stats(target: dict[str, Any]) -> dict[str, Any]:

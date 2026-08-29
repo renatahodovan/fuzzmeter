@@ -9,7 +9,19 @@
 
 import unittest
 
+from fuzzmeter.db.bug import BugRow
 from fuzzmeter.reporting.analyzers.bug_analysis import BugAnalysis
+
+
+def _bug_row(**overrides):
+    '''Build a stored bug row with the columns a test cares about.'''
+
+    return BugRow.from_row({
+        'bug_id': 1, 'run_id': 'run', 'fuzzer': 'f', 'benchmark': 'b', 'fuzz_target': 't',
+        'bug_key': 'k', 'issue_type': None, 'top_func': None, 'frames_json': '[]',
+        'output': None, 'first_seen_ts': 0, 'first_seen_snapshot_id': 0,
+        **overrides,
+    })
 
 
 class BugAnalysisTest(unittest.TestCase):
@@ -19,14 +31,7 @@ class BugAnalysisTest(unittest.TestCase):
         analysis = BugAnalysis()
 
         bugs = analysis.collect_bugs(
-            bugs=[
-                {
-                    'bug_id': 7,
-                    'frames_json': '["frame_a", "frame_b"]',
-                    'output': 'assert failed\n',
-                    'first_seen_ts': 123,
-                }
-            ],
+            bugs=[_bug_row(bug_id=7, frames_json='["frame_a", "frame_b"]', output='assert failed\n', first_seen_ts=123)],
             bug_hits_by_bug={7: 3},
             bug_trials_by_bug={7: [5, 4, 5]},
         )
@@ -35,13 +40,20 @@ class BugAnalysisTest(unittest.TestCase):
             [
                 {
                     'bug_id': 7,
-                    'frames_json': '["frame_a", "frame_b"]',
+                    'run_id': 'run',
+                    'fuzzer': 'f',
+                    'benchmark': 'b',
+                    'fuzz_target': 't',
+                    'bug_key': 'k',
+                    'issue_type': None,
+                    'top_func': None,
+                    'frames': ['frame_a', 'frame_b'],
                     'output': 'assert failed',
                     'first_seen_ts': 123,
+                    'first_seen_snapshot_id': 0,
                     'first_seen_at': '1970-01-01 00:02:03 UTC',
                     'hits_total': 3,
                     'trial_ids': [4, 5],
-                    'frames': ['frame_a', 'frame_b'],
                 }
             ],
             bugs,
@@ -51,14 +63,7 @@ class BugAnalysisTest(unittest.TestCase):
         analysis = BugAnalysis()
 
         bugs = analysis.collect_bugs(
-            bugs=[
-                {
-                    'bug_id': 7,
-                    'frames_json': '[not-json',
-                    'output': '',
-                    'first_seen_ts': 123,
-                }
-            ],
+            bugs=[_bug_row(bug_id=7, frames_json='[not-json', output='', first_seen_ts=123)],
             bug_hits_by_bug={7: 3},
             bug_trials_by_bug={7: [5]},
         )

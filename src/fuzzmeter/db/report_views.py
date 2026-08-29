@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .base import open_readonly_connection
+from .bug import BugRow
 from .fields import TRIAL_METADATA_FIELDS
 from .snapshot import SEED_BASELINE_IDX
 
@@ -285,19 +286,22 @@ class ReportingDB:
         )
         return {int(row['trial_id']): (int(row['hits'] or 0), int(row['uniq'] or 0)) for row in rows}
 
-    def bug_rows(self, run_id: str) -> list[dict[str, Any]]:
+    def bug_rows(self, run_id: str) -> list[BugRow]:
         '''Return all stored bug rows for a run.'''
 
-        return self.rows(
-            '''
-            SELECT bug_id, run_id, fuzzer, benchmark, fuzz_target, bug_key,
-                   issue_type, top_func, frames_json, output, first_seen_ts, first_seen_snapshot_id
-            FROM bugs
-            WHERE run_id=?
-            ORDER BY benchmark, fuzz_target, fuzzer, first_seen_ts
-            ''',
-            (run_id,),
-        )
+        return [
+            BugRow.from_row(row)
+            for row in self.rows(
+                '''
+                SELECT bug_id, run_id, fuzzer, benchmark, fuzz_target, bug_key,
+                       issue_type, top_func, frames_json, output, first_seen_ts, first_seen_snapshot_id
+                FROM bugs
+                WHERE run_id=?
+                ORDER BY benchmark, fuzz_target, fuzzer, first_seen_ts
+                ''',
+                (run_id,),
+            )
+        ]
 
     def bug_hits_by_bug(self) -> dict[int, int]:
         '''Return total hit counts keyed by bug id.'''

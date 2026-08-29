@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ...db.bug import BugRow
 from ...db.report_views import ReportingDB
 
 
@@ -32,7 +33,7 @@ class RunDataSnapshot:
     bug_hits_by_snapshot: dict[int, int]
     unique_bug_delta_by_snapshot: dict[int, int]
     bug_stats_by_trial: dict[int, tuple[int, int]]
-    bugs: list[dict[str, Any]]
+    bugs: list[BugRow]
     bug_hits_by_bug: dict[int, int]
     bug_trials_by_bug: dict[int, list[int]]
 
