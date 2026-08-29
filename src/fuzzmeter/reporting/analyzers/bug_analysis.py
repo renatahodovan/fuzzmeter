@@ -20,6 +20,7 @@ from ..keys import (
 )
 from ..metrics import dt, median
 from ..set_comparison import (
+    TrialSetIndex,
     empty_trial_set_comparison,
     novelty_scores,
     relative_containment_matrix,
@@ -57,12 +58,16 @@ def collect_bugs(
     ]
 
 
-def attach_exclusive_bug_stats(target: dict[str, Any]) -> dict[str, Any]:
+def attach_exclusive_bug_stats(
+    target: dict[str, Any],
+    *,
+    fuzzers: list[str],
+    trial_bug_sets: dict[str, list[set[str] | None]],
+) -> None:
     '''Attach per-fuzzer exclusive bug totals and trial distributions to a target.'''
 
     entries = target.get('fuzzers') or []
-    fuzzers, trial_bug_sets = _trial_bug_sets(target)
-    comparison = target.get('unique_bug_matrix') or trial_set_comparison(fuzzers, trial_bug_sets)
+    comparison = target[UNIQUE_BUG_MATRIX_KEY]
     exclusive = comparison.get('exclusive') or {}
     index_by_fuzzer = {fuzzer: index for index, fuzzer in enumerate(comparison.get('fuzzers') or [])}
     unions = {
@@ -105,14 +110,17 @@ def attach_exclusive_bug_stats(target: dict[str, Any]) -> dict[str, Any]:
             'sample_size': len(trial_bug_sets.get(fuzzer, [])),
             'usable_sample_size': len(trial_counts),
         }
-    return target
 
 
-def compute_unique_bug_matrix(target: dict[str, Any]) -> dict[str, Any]:
+def compute_unique_bug_matrix(
+    *,
+    fuzzers: list[str],
+    trial_bug_sets: dict[str, list[set[str] | None]],
+    index: TrialSetIndex,
+) -> dict[str, Any]:
     '''Compute pairwise unique bug counts between fuzzers.'''
 
-    fuzzers, trial_bug_sets = _trial_bug_sets(target)
-    comparison = trial_set_comparison(fuzzers, trial_bug_sets)
+    comparison = trial_set_comparison(fuzzers, trial_bug_sets, index=index)
     return {
         **comparison,
         'format': 'int',
@@ -231,10 +239,14 @@ def compute_unique_bug_table(target: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def compute_rel_bug_matrix(target: dict[str, Any]) -> tuple[dict[str, Any], dict[str, float]]:
+def compute_rel_bug_matrix(
+    *,
+    fuzzers: list[str],
+    trial_bug_sets: dict[str, list[set[str] | None]],
+    index: TrialSetIndex,
+) -> tuple[dict[str, Any], dict[str, float]]:
     '''Compute pairwise relative bug containment and novelty-weighted bug scores.'''
 
-    fuzzers, trial_bug_sets = _trial_bug_sets(target)
     missing_any = any(not trial_bug_sets.get(fuzzer) for fuzzer in fuzzers)
     matrix = relative_containment_matrix(
         fuzzers,
@@ -243,6 +255,7 @@ def compute_rel_bug_matrix(target: dict[str, Any]) -> tuple[dict[str, Any], dict
             'Trial unique bug sets missing for one or more fuzzers; '
             'relative bug coverage may be partial.'
         ) if missing_any else None,
+        index=index,
     )
 
     return (
@@ -251,7 +264,7 @@ def compute_rel_bug_matrix(target: dict[str, Any]) -> tuple[dict[str, Any], dict
             'format': 'pct',
             'aggregation': 'per-trial median unique bug sets',
         },
-        novelty_scores(fuzzers, trial_bug_sets),
+        novelty_scores(fuzzers, trial_bug_sets, index=index),
     )
 
 
@@ -264,7 +277,7 @@ def attach_empty_bug_matrices(target: dict[str, Any]) -> None:
     target[RELBUG_SCORE_BY_FUZZER_KEY] = {}
 
 
-def _trial_bug_sets(target: dict[str, Any]) -> tuple[list[str], dict[str, list[set[str] | None]]]:
+def trial_bug_sets(target: dict[str, Any]) -> tuple[list[str], dict[str, list[set[str] | None]]]:
     '''Return ordered per-trial bug sets for every fuzzer in a target.'''
 
     fuzzers = sorted({str(entry.get('fuzzer')) for entry in target.get('fuzzers') or [] if entry.get('fuzzer')})

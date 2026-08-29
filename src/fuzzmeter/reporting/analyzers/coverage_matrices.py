@@ -69,9 +69,7 @@ def attach_empty_coverage_matrices(target: dict[str, Any]) -> None:
 def compute_unique_matrix(
     *,
     cov_metrics: tuple[str, ...],
-    trials: list[dict[str, Any]],
-    benchmark: str,
-    fuzz_target: str,
+    fuzzers: list[str],
     trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str] | None]]],
     aggregate_fallback_fuzzers_by_metric: dict[str, set[str]] | None = None,
     trial_set_indexes_by_metric: dict[str, TrialSetIndex] | None = None,
@@ -80,9 +78,7 @@ def compute_unique_matrix(
 
     by_metric = {
         metric: _compute_unique_matrix_for_metric(
-            trials=trials,
-            benchmark=benchmark,
-            fuzz_target=fuzz_target,
+            fuzzers=fuzzers,
             metric=metric,
             trial_coverage_sets=trial_coverage_sets_by_metric.get(metric, {}),
             aggregate_fallback_fuzzers=(aggregate_fallback_fuzzers_by_metric or {}).get(metric, set()),
@@ -99,9 +95,7 @@ def compute_unique_matrix(
 
 def _compute_unique_matrix_for_metric(
     *,
-    trials: list[dict[str, Any]],
-    benchmark: str,
-    fuzz_target: str,
+    fuzzers: list[str],
     metric: str,
     trial_coverage_sets: dict[str, list[set[str] | None]],
     aggregate_fallback_fuzzers: set[str],
@@ -109,17 +103,6 @@ def _compute_unique_matrix_for_metric(
 ) -> dict[str, Any]:
     '''Compute pairwise strict and non-strict coverage counts for one metric.'''
 
-    fuzzers = sorted(
-        {
-            str(trial.get('fuzzer'))
-            for trial in trials
-            if (
-                trial.get('benchmark') == benchmark
-                and trial.get('fuzz_target') == fuzz_target
-                and trial.get('fuzzer')
-            )
-        }
-    )
     fallback_fuzzers = sorted(aggregate_fallback_fuzzers)
     result = trial_set_comparison(
         fuzzers,
@@ -144,28 +127,14 @@ def _compute_unique_matrix_for_metric(
 
 def compute_branch_stat_matrices(
     *,
-    trials: list[dict[str, Any]],
-    benchmark: str,
-    fuzz_target: str,
+    fuzzers: list[str],
+    trials_by_fuzzer: dict[str, list[dict[str, Any]]],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     '''Compute pairwise branch-coverage Mann-Whitney and A12 matrices.'''
 
-    fuzzers = sorted(
-        {
-            str(trial.get('fuzzer'))
-            for trial in trials
-            if (
-                trial.get('benchmark') == benchmark
-                and trial.get('fuzz_target') == fuzz_target
-                and trial.get('fuzzer')
-            )
-        }
-    )
     distributions, missing_any = _branch_coverage_distributions(
-        trials=trials,
-        benchmark=benchmark,
-        fuzz_target=fuzz_target,
         fuzzers=fuzzers,
+        trials_by_fuzzer=trials_by_fuzzer,
     )
     note = (
         'Final branch coverage missing for one or more trials; '
@@ -272,26 +241,13 @@ def attach_exclusive_coverage_stats(
 def compute_relcov_matrix(
     *,
     cov_metrics: tuple[str, ...],
-    trials: list[dict[str, Any]],
-    benchmark: str,
-    fuzz_target: str,
+    fuzzers: list[str],
     trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str] | None]]],
     aggregate_fallback_fuzzers_by_metric: dict[str, set[str]] | None = None,
     trial_set_indexes_by_metric: dict[str, TrialSetIndex] | None = None,
 ) -> tuple[dict[str, Any], dict[str, float]]:
     '''Compute pairwise relative coverage and novelty-weighted branch scores.'''
 
-    fuzzers = sorted(
-        {
-            str(trial.get('fuzzer'))
-            for trial in trials
-            if (
-                trial.get('benchmark') == benchmark
-                and trial.get('fuzz_target') == fuzz_target
-                and trial.get('fuzzer')
-            )
-        }
-    )
     by_metric = {
         metric: _compute_relcov_matrix_for_metric(
             fuzzers=fuzzers,
@@ -384,24 +340,18 @@ def _single_metric_matrix_group(matrix: dict[str, Any]) -> dict[str, Any]:
 
 def _branch_coverage_distributions(
     *,
-    trials: list[dict[str, Any]],
-    benchmark: str,
-    fuzz_target: str,
     fuzzers: list[str],
+    trials_by_fuzzer: dict[str, list[dict[str, Any]]],
 ) -> tuple[dict[str, list[float]], bool]:
-    distributions = {fuzzer: [] for fuzzer in fuzzers}
+    distributions: dict[str, list[float]] = {fuzzer: [] for fuzzer in fuzzers}
     missing_any = False
-    for trial in trials:
-        if trial.get('benchmark') != benchmark or trial.get('fuzz_target') != fuzz_target:
-            continue
-        fuzzer = str(trial.get('fuzzer') or '')
-        if fuzzer not in distributions:
-            continue
-        value = safe_int(trial.get(f'{BRANCH_COVERAGE_METRIC}_cov'))
-        if value is None:
-            missing_any = True
-            continue
-        distributions[fuzzer].append(float(value))
+    for fuzzer in fuzzers:
+        for trial in trials_by_fuzzer.get(fuzzer, []):
+            value = safe_int(trial.get(f'{BRANCH_COVERAGE_METRIC}_cov'))
+            if value is None:
+                missing_any = True
+                continue
+            distributions[fuzzer].append(float(value))
     return distributions, missing_any
 
 

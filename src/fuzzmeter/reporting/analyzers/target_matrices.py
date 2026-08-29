@@ -30,10 +30,8 @@ from . import bug_analysis, coverage_matrices
 def attach_target_matrices(
     *,
     target: dict[str, Any],
-    trials: list[dict[str, Any]],
     fuzzers: list[str],
-    benchmark: str,
-    fuzz_target: str,
+    trials_by_fuzzer: dict[str, list[dict[str, Any]]],
     coverage_sets_by_metric: dict[str, dict[str, set[str]]],
     trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str] | None]]],
 ) -> None:
@@ -53,36 +51,41 @@ def attach_target_matrices(
     }
     target[UNIQUE_MATRIX_KEY] = coverage_matrices.compute_unique_matrix(
         cov_metrics=COV_METRICS,
-        trials=trials,
-        benchmark=benchmark,
-        fuzz_target=fuzz_target,
+        fuzzers=fuzzers,
         trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
         aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
         trial_set_indexes_by_metric=trial_set_indexes_by_metric,
     )
     target[RELCOV_MATRIX_KEY], target[RELCOV_SCORE_BY_FUZZER_KEY] = coverage_matrices.compute_relcov_matrix(
         cov_metrics=COV_METRICS,
-        trials=trials,
-        benchmark=benchmark,
-        fuzz_target=fuzz_target,
+        fuzzers=fuzzers,
         trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
         aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
         trial_set_indexes_by_metric=trial_set_indexes_by_metric,
     )
     target[BRANCH_MWU_MATRIX_KEY], target[BRANCH_A12_MATRIX_KEY] = coverage_matrices.compute_branch_stat_matrices(
-        trials=trials,
-        benchmark=benchmark,
-        fuzz_target=fuzz_target,
+        fuzzers=fuzzers,
+        trials_by_fuzzer=trials_by_fuzzer,
     )
     coverage_matrices.attach_exclusive_coverage_stats(
         target=target,
         trial_coverage_sets_by_metric=trial_coverage_sets_by_metric,
         aggregate_fallback_fuzzers_by_metric=aggregate_fallback_fuzzers_by_metric,
     )
+    bug_fuzzers, trial_bug_sets = bug_analysis.trial_bug_sets(target)
+    bug_index = trial_set_index(bug_fuzzers, trial_bug_sets)
     target[UNIQUE_BUG_TABLE_KEY] = bug_analysis.compute_unique_bug_table(target)
-    target[UNIQUE_BUG_MATRIX_KEY] = bug_analysis.compute_unique_bug_matrix(target)
-    target[RELBUG_MATRIX_KEY], target[RELBUG_SCORE_BY_FUZZER_KEY] = bug_analysis.compute_rel_bug_matrix(target)
-    bug_analysis.attach_exclusive_bug_stats(target)
+    target[UNIQUE_BUG_MATRIX_KEY] = bug_analysis.compute_unique_bug_matrix(
+        fuzzers=bug_fuzzers,
+        trial_bug_sets=trial_bug_sets,
+        index=bug_index,
+    )
+    target[RELBUG_MATRIX_KEY], target[RELBUG_SCORE_BY_FUZZER_KEY] = bug_analysis.compute_rel_bug_matrix(
+        fuzzers=bug_fuzzers,
+        trial_bug_sets=trial_bug_sets,
+        index=bug_index,
+    )
+    bug_analysis.attach_exclusive_bug_stats(target, fuzzers=bug_fuzzers, trial_bug_sets=trial_bug_sets)
 
 
 def attach_empty_target_matrices(target: dict[str, Any]) -> None:

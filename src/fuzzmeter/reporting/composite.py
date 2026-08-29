@@ -212,32 +212,23 @@ def _recompute_matrices(
         if len(fuzzers) <= 1:
             target_matrices.attach_empty_target_matrices(target)
             continue
-        benchmark = str(target.get('benchmark') or '')
-        fuzz_target = str(target.get('fuzz_target') or '')
         target_matrices.attach_target_matrices(
             target=target,
-            trials=_target_trials(target, benchmark, fuzz_target),
             fuzzers=fuzzers,
-            benchmark=benchmark,
-            fuzz_target=fuzz_target,
+            trials_by_fuzzer=_trials_by_fuzzer(target),
             coverage_sets_by_metric=_coverage_sets_by_metric(target, source_dirs),
             trial_coverage_sets_by_metric=_trial_coverage_sets_by_metric(target, source_dirs),
         )
 
 
-def _target_trials(target: dict[str, Any], benchmark: str, fuzz_target: str) -> list[dict[str, Any]]:
-    trials: list[dict[str, Any]] = []
-    for entry in target.get('fuzzers') or []:
-        fuzzer = str(entry.get('fuzzer') or '')
-        for trial in entry.get('trials') or []:
-            if not isinstance(trial, dict):
-                continue
-            copied = dict(trial)
-            copied['fuzzer'] = fuzzer
-            copied['benchmark'] = benchmark
-            copied['fuzz_target'] = fuzz_target
-            trials.append(copied)
-    return trials
+def _trials_by_fuzzer(target: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Return the trials of a merged target, grouped by the fuzzer they are shown under."""
+
+    return {
+        str(entry.get('fuzzer') or ''): list(entry.get('trials') or [])
+        for entry in target.get('fuzzers') or []
+        if entry.get('fuzzer')
+    }
 
 
 def _coverage_sets_by_metric(

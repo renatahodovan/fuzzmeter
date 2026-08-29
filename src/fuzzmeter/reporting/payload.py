@@ -180,12 +180,18 @@ class _PayloadBuilder:
         }
 
     @staticmethod
-    def _coverage_keys_from_trials(trials: list[dict[str, Any]]) -> list[tuple[str, str, str]]:
-        return sorted({
-            (str(trial.get('fuzzer')), str(trial.get('benchmark')), str(trial.get('fuzz_target')))
-            for trial in trials
-            if trial.get('fuzzer') and trial.get('benchmark') and trial.get('fuzz_target')
-        })
+    def _trials_by_target_fuzzer(
+        trials: list[dict[str, Any]],
+    ) -> dict[tuple[str, str], dict[str, list[dict[str, Any]]]]:
+        '''Group the collected trials by target and by the fuzzer that ran them.'''
+
+        grouped: dict[tuple[str, str], dict[str, list[dict[str, Any]]]] = {}
+        for trial in trials:
+            fuzzer = trial['fuzzer']
+            benchmark = trial['benchmark']
+            fuzz_target = trial['fuzz_target']
+            grouped.setdefault((benchmark, fuzz_target), {}).setdefault(fuzzer, []).append(trial)
+        return grouped
 
     def _target_coverage_inputs(
         self,
@@ -196,11 +202,16 @@ class _PayloadBuilder:
     ]:
         aggregated_coverage_by_fuzzer: dict[tuple[str, str, str], dict[str, int | None]] = {}
         seed_baseline_by_fuzzer: dict[tuple[str, str, str], dict[str, Any] | None] = {}
-        for fuzzer, benchmark, fuzz_target in self._coverage_keys_from_trials(trials):
-            key = (fuzzer, benchmark, fuzz_target)
-            aggregated_coverage_by_fuzzer[key] = self._aggregated_coverage_for_fuzzer(fuzzer, benchmark, fuzz_target)
-            baseline = self._data.seed_baselines.get(key)
-            seed_baseline_by_fuzzer[key] = None if baseline is None else asdict(baseline.coverage)
+        for (benchmark, fuzz_target), by_fuzzer in self._trials_by_target_fuzzer(trials).items():
+            for fuzzer in sorted(by_fuzzer):
+                key = (fuzzer, benchmark, fuzz_target)
+                aggregated_coverage_by_fuzzer[key] = self._aggregated_coverage_for_fuzzer(
+                    fuzzer,
+                    benchmark,
+                    fuzz_target,
+                )
+                baseline = self._data.seed_baselines.get(key)
+                seed_baseline_by_fuzzer[key] = None if baseline is None else asdict(baseline.coverage)
         return aggregated_coverage_by_fuzzer, seed_baseline_by_fuzzer
 
     def _coverage_sets_by_metric(
@@ -222,17 +233,13 @@ class _PayloadBuilder:
 
     def _trial_coverage_sets_by_metric(
         self,
-        trials: list[dict[str, Any]],
         fuzzers: list[str],
-        benchmark: str,
-        fuzz_target: str,
+        trials_by_fuzzer: dict[str, list[dict[str, Any]]],
     ) -> dict[str, dict[str, list[set[str] | None]]]:
         return {
             metric: self._coverage_data.trial_coverage_sets_by_fuzzer(
-                trials=trials,
                 fuzzers=fuzzers,
-                benchmark=benchmark,
-                fuzz_target=fuzz_target,
+                trials_by_fuzzer=trials_by_fuzzer,
                 metric=metric,
             )
             for metric in COV_METRICS
@@ -332,31 +339,22 @@ class _PayloadBuilder:
     ) -> list[dict[str, Any]]:
         '''Attach pairwise coverage and bug comparison matrices to each target.'''
 
+        trials_by_target_fuzzer = self._trials_by_target_fuzzer(trials)
         for target in targets:
-            benchmark = target.get('benchmark')
-            fuzz_target = target.get('fuzz_target')
-            fuzzers = sorted({
-                str(fuzzer.get('fuzzer') or '')
-                for fuzzer in target.get('fuzzers') or []
-                if fuzzer.get('fuzzer')
-            })
-            if not (benchmark and fuzz_target and len(fuzzers) > 1):
+            benchmark = target['benchmark']
+            fuzz_target = target['fuzz_target']
+            trials_by_fuzzer = trials_by_target_fuzzer.get((benchmark, fuzz_target), {})
+            fuzzers = sorted(trials_by_fuzzer)
+            if len(fuzzers) <= 1:
                 target_matrices.attach_empty_target_matrices(target)
                 continue
 
             target_matrices.attach_target_matrices(
                 target=target,
-                trials=trials,
                 fuzzers=fuzzers,
-                benchmark=benchmark,
-                fuzz_target=fuzz_target,
+                trials_by_fuzzer=trials_by_fuzzer,
                 coverage_sets_by_metric=self._coverage_sets_by_metric(fuzzers, benchmark, fuzz_target),
-                trial_coverage_sets_by_metric=self._trial_coverage_sets_by_metric(
-                    trials,
-                    fuzzers,
-                    benchmark,
-                    fuzz_target,
-                ),
+                trial_coverage_sets_by_metric=self._trial_coverage_sets_by_metric(fuzzers, trials_by_fuzzer),
             )
         return targets
 

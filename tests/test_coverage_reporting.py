@@ -228,14 +228,7 @@ class CoverageReportingTest(unittest.TestCase):
     def test_unique_coverage_uses_trial_variants_and_missing_bounds(self) -> None:
         group = coverage_matrices.compute_unique_matrix(
             cov_metrics=('branches',),
-            trials=[
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha'},
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha'},
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta'},
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta'},
-            ],
-            benchmark='bench',
-            fuzz_target='target',
+            fuzzers=['alpha', 'beta'],
             trial_coverage_sets_by_metric={
                 'branches': {
                     'alpha': [{'alpha-only'}, None],
@@ -295,9 +288,11 @@ class CoverageReportingTest(unittest.TestCase):
         ]
 
         branch_mwu_matrix, branch_a12_matrix = coverage_matrices.compute_branch_stat_matrices(
-            trials=trials,
-            benchmark='bench',
-            fuzz_target='target',
+            fuzzers=['alpha', 'beta'],
+            trials_by_fuzzer={
+                'alpha': [trial for trial in trials if trial['fuzzer'] == 'alpha'],
+                'beta': [trial for trial in trials if trial['fuzzer'] == 'beta'],
+            },
         )
 
         mwu = branch_mwu_matrix['by_metric']['branches']
@@ -311,13 +306,7 @@ class CoverageReportingTest(unittest.TestCase):
     def test_relcov_matrix_uses_trial_median_against_column_union(self) -> None:
         matrix_group, scores = coverage_matrices.compute_relcov_matrix(
             cov_metrics=('branches',),
-            trials=[
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha'},
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha'},
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta'},
-            ],
-            benchmark='bench',
-            fuzz_target='target',
+            fuzzers=['alpha', 'beta'],
             trial_coverage_sets_by_metric={
                 'branches': {
                     'alpha': [{'a', 'b'}, set()],

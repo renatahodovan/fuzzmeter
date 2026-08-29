@@ -87,27 +87,20 @@ class CoverageData:
     def trial_coverage_sets_by_fuzzer(
         self,
         *,
-        trials: list[dict[str, Any]],
         fuzzers: list[str],
-        benchmark: str,
-        fuzz_target: str,
+        trials_by_fuzzer: dict[str, list[dict[str, Any]]],
         metric: str,
     ) -> dict[str, list[set[str] | None]]:
         '''Return per-trial covered element sets for one target and metric.'''
 
-        out = {str(fuzzer): [] for fuzzer in fuzzers}
-        for trial in trials:
-            fuzzer = str(trial.get('fuzzer') or '')
-            if (
-                fuzzer not in out
-                or trial.get('benchmark') != benchmark
-                or trial.get('fuzz_target') != fuzz_target
-            ):
-                continue
-            coverage_path = self.coverage_sets_for_trial(trial)
-            out[fuzzer].append(
-                self.covered_elements(coverage_path, metric)
-                if coverage_path is not None
-                else None
-            )
-        return {fuzzer: sets for fuzzer, sets in out.items() if sets}
+        out: dict[str, list[set[str] | None]] = {}
+        for fuzzer in fuzzers:
+            sets = [
+                self.covered_elements(coverage_path, metric) if coverage_path is not None else None
+                for coverage_path in (
+                    self.coverage_sets_for_trial(trial) for trial in trials_by_fuzzer.get(fuzzer, [])
+                )
+            ]
+            if sets:
+                out[fuzzer] = sets
+        return out

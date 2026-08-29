@@ -104,7 +104,8 @@ class CoverageDataTest(unittest.TestCase):
             with patch('fuzzmeter.reporting.data.coverage_data.read_covered_keys') as read_covered_keys:
                 read_covered_keys.return_value = {'branch-a'}
                 result = data.trial_coverage_sets_by_fuzzer(
-                    trials=[
+                    fuzzers=['fz'],
+                    trials_by_fuzzer={'fz': [
                         {
                             'fuzzer': 'fz',
                             'benchmark': 'bench',
@@ -112,10 +113,7 @@ class CoverageDataTest(unittest.TestCase):
                             'coverage_sets_json_rel': 'coverage/fz/trial/coverage-sets.json',
                             'coverage_html_rel': None,
                         }
-                    ],
-                    fuzzers=['fz'],
-                    benchmark='bench',
-                    fuzz_target='target',
+                    ]},
                     metric='branches',
                 )
 
@@ -132,7 +130,8 @@ class CoverageDataTest(unittest.TestCase):
 
             with patch('fuzzmeter.reporting.data.coverage_data.read_covered_keys', return_value={'1'}):
                 result = data.trial_coverage_sets_by_fuzzer(
-                    trials=[
+                    fuzzers=['fz'],
+                    trials_by_fuzzer={'fz': [
                         {
                             'fuzzer': 'fz',
                             'benchmark': 'bench',
@@ -145,10 +144,7 @@ class CoverageDataTest(unittest.TestCase):
                             'fuzz_target': 'target',
                             'coverage_sets_json_rel': 'coverage/missing/coverage-sets.json',
                         },
-                    ],
-                    fuzzers=['fz'],
-                    benchmark='bench',
-                    fuzz_target='target',
+                    ]},
                     metric='branches',
                 )
 

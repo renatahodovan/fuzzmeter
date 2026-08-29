@@ -15,7 +15,12 @@ import unittest
 from fuzzmeter.reporting.analyzers import bug_analysis, coverage_curves, target_matrices, trial_analysis
 from fuzzmeter.reporting.metrics import median
 from fuzzmeter.reporting.payload import _PayloadBuilder
-from fuzzmeter.reporting.set_comparison import pairwise_matrix, relative_containment_matrix, trial_set_comparison
+from fuzzmeter.reporting.set_comparison import (
+    pairwise_matrix,
+    relative_containment_matrix,
+    trial_set_comparison,
+    trial_set_index,
+)
 from tests.support.dbs import snapshot_row, telemetry_sample, trial_row
 
 COV_METRICS = ('branches',)
@@ -172,9 +177,7 @@ class BugAnalysisBehaviorTest(unittest.TestCase):
             ]
         }
 
-        matrix = bug_analysis.compute_unique_bug_matrix(target)
-        target['unique_bug_matrix'] = matrix
-        bug_analysis.attach_exclusive_bug_stats(target)
+        matrix = _attach_bug_matrices(target)
 
         self.assertEqual([[0, 1], [0, 0]], matrix['pairwise_unique_any'])
         self.assertEqual([[0, 0], [0, 0]], matrix['pairwise_unique_all'])
@@ -223,8 +226,7 @@ class BugAnalysisBehaviorTest(unittest.TestCase):
             ]
         }
 
-        target['unique_bug_matrix'] = bug_analysis.compute_unique_bug_matrix(target)
-        bug_analysis.attach_exclusive_bug_stats(target)
+        _attach_bug_matrices(target)
 
         alpha = target['fuzzers'][0]['exclusive_bugs']
         beta = target['fuzzers'][1]['exclusive_bugs']
@@ -234,7 +236,7 @@ class BugAnalysisBehaviorTest(unittest.TestCase):
         self.assertEqual((1, 'upper'), (beta['exclusive_all'], beta['exclusive_all_bound']))
 
     def test_relative_bug_matrix_and_scores_use_trial_sets(self) -> None:
-        matrix, scores = bug_analysis.compute_rel_bug_matrix(
+        matrix, scores = _rel_bug_matrix(
             {
                 'fuzzers': [
                     {
@@ -531,7 +533,7 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         builder._coverage_sets_by_metric = lambda fuzzers, benchmark, fuzz_target: {
             'branches': {'alpha': {'a', 'b'}, 'beta': {'b'}}
         }
-        builder._trial_coverage_sets_by_metric = lambda trials, fuzzers, benchmark, fuzz_target: {
+        builder._trial_coverage_sets_by_metric = lambda fuzzers, trials_by_fuzzer: {
             'branches': {'alpha': [{'a', 'b'}], 'beta': [{'b'}]}
         }
         target = {
@@ -589,7 +591,7 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         builder._coverage_sets_by_metric = lambda fuzzers, benchmark, fuzz_target: {
             'branches': {'alpha': {'a', 'b'}, 'beta': {'b', 'c'}}
         }
-        builder._trial_coverage_sets_by_metric = lambda trials, fuzzers, benchmark, fuzz_target: {'branches': {}}
+        builder._trial_coverage_sets_by_metric = lambda fuzzers, trials_by_fuzzer: {'branches': {}}
         target = {
             'benchmark': 'bench',
             'fuzz_target': 'target',
@@ -625,6 +627,25 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         self.assertEqual(0, target['fuzzers'][0]['exclusive_coverage']['sample_size'])
 
 
+def _attach_bug_matrices(target: dict) -> dict:
+    '''Attach the bug matrices the way the target matrix pass does.'''
+
+    fuzzers, sets = bug_analysis.trial_bug_sets(target)
+    index = trial_set_index(fuzzers, sets)
+    target['unique_bug_matrix'] = bug_analysis.compute_unique_bug_matrix(
+        fuzzers=fuzzers, trial_bug_sets=sets, index=index,
+    )
+    bug_analysis.attach_exclusive_bug_stats(target, fuzzers=fuzzers, trial_bug_sets=sets)
+    return target['unique_bug_matrix']
+
+
+def _rel_bug_matrix(target: dict) -> tuple[dict, dict]:
+    fuzzers, sets = bug_analysis.trial_bug_sets(target)
+    return bug_analysis.compute_rel_bug_matrix(
+        fuzzers=fuzzers, trial_bug_sets=sets, index=trial_set_index(fuzzers, sets),
+    )
+
+
 def _bug_exclusive_median(values: list[int]) -> float | None:
     target = {
         'fuzzers': [
@@ -639,7 +660,7 @@ def _bug_exclusive_median(values: list[int]) -> float | None:
             }
         ]
     }
-    bug_analysis.attach_exclusive_bug_stats(target)
+    _attach_bug_matrices(target)
     return target['fuzzers'][0]['exclusive_bugs']['median']
 
 
