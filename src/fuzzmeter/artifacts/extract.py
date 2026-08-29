@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..config import CampaignCase, CampaignConfig
+from ..config import CampaignConfig
 from ..docker import DockerClient, DockerRuntime
 
 
@@ -22,7 +22,7 @@ def extract_fuzz_binaries(
     docker_runtime: DockerRuntime,
 ) -> dict[tuple[str, str], Path]:
     '''Extract built target binaries for a run.'''
-    built_root = Path(run_dir) / 'built_bins'
+    built_root = run_dir / 'built_bins'
     fuzz_root = built_root / 'fuzz'
     coverage_root = built_root / 'coverage'
     asan_root = built_root / 'asan'
@@ -33,31 +33,27 @@ def extract_fuzz_binaries(
     docker = DockerClient(docker_runtime)
     fuzz_binaries: dict[tuple[str, str], Path] = {}
     for case in campaign_config.cases:
-        target = case.fuzz_target.ident
-        fuzz_binaries[(case.fuzzer.id, target)] = _extract_named_binary_from_image(
+        fuzz_target_id = case.fuzz_target.ident
+        fuzz_binaries[(case.fuzzer.id, fuzz_target_id)] = _extract_named_binary_from_image(
             docker=docker,
             image=case.images.runner,
             binary_name=case.fuzz_target.fuzz_target,
-            dst_dir=fuzz_root / case.fuzzer.id / target,
+            dst_dir=fuzz_root / case.fuzzer.id / fuzz_target_id,
         )
 
-    cases_by_target: dict[str, CampaignCase] = {
-        case.fuzz_target.ident: case for case in campaign_config.cases
-    }
-
-    for target, owner_entry in cases_by_target.items():
+    for case in campaign_config.cases:
         _extract_named_binary_from_image(
             docker=docker,
-            image=owner_entry.images.coverage,
-            binary_name=owner_entry.fuzz_target.fuzz_target,
-            dst_dir=coverage_root / target,
+            image=case.images.coverage,
+            binary_name=case.fuzz_target.fuzz_target,
+            dst_dir=coverage_root / case.fuzz_target.ident,
         )
 
         _extract_named_binary_from_image(
             docker=docker,
-            image=owner_entry.images.asan,
-            binary_name=owner_entry.fuzz_target.fuzz_target,
-            dst_dir=asan_root / target,
+            image=case.images.asan,
+            binary_name=case.fuzz_target.fuzz_target,
+            dst_dir=asan_root / case.fuzz_target.ident,
         )
 
     return fuzz_binaries

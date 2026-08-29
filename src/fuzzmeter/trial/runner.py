@@ -42,7 +42,6 @@ def run_one_trial(
     layout, host_input_corpus_dir = prepare_live_workspace(run_dir=run_dir, cfg=config)
     start_ts = int(time.time())
 
-
     with open_db(db_path) as db:
         trial_db_id = db_trials.ensure_trial_row(
             db,

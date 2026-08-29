@@ -83,7 +83,6 @@ class FuzzerModule:
     def snapshot_preprocess_script(self) -> Path | None:
         getter = getattr(self._module, 'snapshot_preprocess_script', None)
         if callable(getter):
-            # with io.StringIO() as captured_stdout, redirect_stdout(captured_stdout):
             configured = getter()
             if configured is None:
                 return None

@@ -223,10 +223,9 @@ class DockerClient:
         )
         return result.stdout.strip() or None if result.returncode == 0 else None
 
-    def copy_from_image(self, *, image: str, src_path: str, dst_path: str | Path) -> None:
+    def copy_from_image(self, *, image: str, src_path: str, dst_path: Path) -> None:
         '''Copy a path from an image to the host.'''
-        dst = Path(dst_path)
-        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
 
         quoted_src_path = shlex.quote(src_path)
         probe_cmd = [
@@ -245,7 +244,7 @@ class DockerClient:
 
         container_id = self.create(image, kind='build')
         try:
-            self._run(['docker', 'cp', f'{container_id}:{src_path}', str(dst)], check=True, capture=True)
+            self._run(['docker', 'cp', f'{container_id}:{src_path}', str(dst_path)], check=True, capture=True)
         finally:
             self._run(['docker', 'rm', '-f', container_id], check=False, capture=True)
 

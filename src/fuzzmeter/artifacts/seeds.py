@@ -30,7 +30,7 @@ def prepare_seed_corpora(
     docker_runtime: DockerRuntime | None = None,
 ) -> None:
     '''Prepare configured or image-provided seed corpora for a run.'''
-    seeds_out = Path(run_dir) / 'seed_corpora'
+    seeds_out = run_dir / 'seed_corpora'
     seeds_out.mkdir(parents=True, exist_ok=True)
 
     LOG.info('Preparing shared seed corpora...')
@@ -83,7 +83,7 @@ def _collect_seed_baseline_jobs(
 ) -> list[SeedBaselineJob]:
     jobs: list[SeedBaselineJob] = []
     for case in campaign_config.cases:
-        seed_root = Path(run_dir) / 'seed_corpora' / case.seed_dir_name / 'corpus'
+        seed_root = run_dir / 'seed_corpora' / case.seed_dir_name / 'corpus'
         if not seed_root.exists() or not any(seed_root.iterdir()):
             continue
         jobs.append(
