@@ -13,12 +13,12 @@ import datetime
 import json
 import logging
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 from ..db.fields import TRIAL_METADATA_FIELDS
-from ..db.snapshot import SnapshotRow
+from ..db.snapshot import AggSnapshotRow, CoverageSummary, SnapshotRow
 from ..db.trials import TrialRow
 from .analyzers import bug_analysis, coverage_curves, target_matrices, trial_analysis
 from .analyzers.custom_metrics import attach_custom_metric_sections, has_custom_metric_sections
@@ -199,13 +199,19 @@ class _PayloadBuilder:
             return self.file_url_prefix.rstrip('/') + '/' + rel.lstrip('/')
         return '../' + rel
 
-    def _agg_snapshot_for_fuzzer(self, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, Any]:
-        return self._data.latest_agg_snapshots.get((fuzzer, benchmark, fuzz_target), {})
+    def _agg_snapshot_for_fuzzer(
+        self,
+        fuzzer: str,
+        benchmark: str,
+        fuzz_target: str,
+    ) -> AggSnapshotRow | None:
+        return self._data.latest_agg_snapshots.get((fuzzer, benchmark, fuzz_target))
 
     def _aggregated_coverage_for_fuzzer(self, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, int | None]:
         agg_snapshot = self._agg_snapshot_for_fuzzer(fuzzer, benchmark, fuzz_target)
+        measured = CoverageSummary.empty() if agg_snapshot is None else agg_snapshot.coverage
         return {
-            f'{metric}_covered': safe_int(agg_snapshot.get(f'cov_{metric}_covered'))
+            f'{metric}_covered': getattr(measured, f'cov_{metric}_covered')
             for metric in COV_METRICS
         }
 
@@ -229,7 +235,8 @@ class _PayloadBuilder:
         for fuzzer, benchmark, fuzz_target in self._coverage_keys_from_trials(trials):
             key = (fuzzer, benchmark, fuzz_target)
             aggregated_coverage_by_fuzzer[key] = self._aggregated_coverage_for_fuzzer(fuzzer, benchmark, fuzz_target)
-            seed_baseline_by_fuzzer[key] = self._data.seed_baselines.get(key)
+            baseline = self._data.seed_baselines.get(key)
+            seed_baseline_by_fuzzer[key] = None if baseline is None else asdict(baseline.coverage)
         return aggregated_coverage_by_fuzzer, seed_baseline_by_fuzzer
 
     def _coverage_sets_by_metric(
@@ -321,7 +328,9 @@ class _PayloadBuilder:
             fuzz_target = str(target.get('fuzz_target') or '')
             for fuzzer in target.get('fuzzers') or []:
                 agg_snapshot = self._agg_snapshot_for_fuzzer(str(fuzzer.get('fuzzer') or ''), benchmark, fuzz_target)
-                fuzzer['coverage_report'] = self._rel_to_url(agg_snapshot.get('coverage_html_dir'))
+                fuzzer['coverage_report'] = self._rel_to_url(
+                    None if agg_snapshot is None else agg_snapshot.coverage.coverage_html_dir
+                )
         self._attach_metadata(targets)
         return targets
 

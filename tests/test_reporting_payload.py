@@ -20,7 +20,7 @@ from typing import Any
 
 from fuzzmeter.reporting import build_payload, write_report
 from fuzzmeter.reporting.provenance import attach_measurement_provenance
-from tests.support.dbs import reporting_run_db
+from tests.support.dbs import agg_snapshot_row, reporting_run_db
 
 PAYLOAD_HASH = 'f40745c06695cf0bd1a583343a64f24361abc63363832fce34a23d9d20461b4f'
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -142,15 +142,14 @@ class ReportingPayloadTest(unittest.TestCase):
             'coverage_sets': {'freshness': 'fresh'},
         }
         snapshots = {
-            ('a', 'bench', 'target'): {
-                'measurement_provenance_json': json.dumps(base),
-            },
-            ('b', 'bench', 'target'): {
-                'measurement_provenance_json': json.dumps({
+            ('a', 'bench', 'target'): agg_snapshot_row(measurement_provenance_json=json.dumps(base)),
+            ('b', 'bench', 'target'): agg_snapshot_row(
+                fuzzer='b',
+                measurement_provenance_json=json.dumps({
                     **base,
                     'measurement': {'mode': 'batched-stateful'},
                 }),
-            },
+            ),
         }
 
         run_provenance = attach_measurement_provenance(

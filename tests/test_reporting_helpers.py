@@ -46,6 +46,7 @@ from fuzzmeter.reporting.web_payload import (
     serialize_extra_sections,
     validate_extra_sections,
 )
+from tests.support.dbs import agg_snapshot_row
 
 
 class CoverageDataTest(unittest.TestCase):
@@ -67,11 +68,11 @@ class CoverageDataTest(unittest.TestCase):
 
             self.assertEqual(
                 explicit_path.resolve(),
-                data.coverage_sets_for_snapshot(
-                    {
-                        'coverage_sets_json_rel': 'coverage/explicit/coverage-sets.json',
-                        'coverage_html_dir': 'coverage/html-root/html/index.html',
-                    }
+                data.coverage_sets_for_agg_snapshot(
+                    agg_snapshot_row(
+                        coverage_sets_json_rel='coverage/explicit/coverage-sets.json',
+                        coverage_html_dir='coverage/html-root/html/index.html',
+                    )
                 ),
             )
 
@@ -87,7 +88,9 @@ class CoverageDataTest(unittest.TestCase):
 
             self.assertEqual(
                 coverage_sets.resolve(),
-                data.coverage_sets_for_snapshot({'coverage_html_dir': 'coverage/fz/html/index.html'}),
+                data.coverage_sets_for_agg_snapshot(
+                    agg_snapshot_row(coverage_html_dir='coverage/fz/html/index.html')
+                ),
             )
 
     def test_loads_trial_sets_from_explicit_paths_without_html_reports(self) -> None:

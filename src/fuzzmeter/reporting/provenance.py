@@ -12,11 +12,13 @@ import json
 from collections import Counter
 from typing import Any
 
+from ..db.snapshot import AggSnapshotRow
+
 
 def attach_measurement_provenance(
     *,
     targets: list[dict[str, Any]],
-    agg_snapshots: dict[tuple[str, str, str], dict[str, Any]],
+    agg_snapshots: dict[tuple[str, str, str], AggSnapshotRow],
 ) -> dict[str, Any]:
     '''Attach provenance to coverage rows and return a generated run summary.'''
 
@@ -28,8 +30,8 @@ def attach_measurement_provenance(
         target_records = []
         for fuzzer in target.get('fuzzers') or []:
             name = str(fuzzer.get('fuzzer') or '')
-            row = agg_snapshots.get((name, benchmark, fuzz_target), {})
-            provenance = _parse_provenance(row.get('measurement_provenance_json'))
+            row = agg_snapshots.get((name, benchmark, fuzz_target))
+            provenance = _parse_provenance(None if row is None else row.measurement_provenance_json)
             fuzzer['measurement_provenance'] = provenance
             target_records.append((name, provenance))
             records.append(provenance)

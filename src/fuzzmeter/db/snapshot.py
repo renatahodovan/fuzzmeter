@@ -135,6 +135,36 @@ class SnapshotRow:
 
 
 @dataclass(frozen=True)
+class AggSnapshotRow:
+    """Describe one stored campaign coverage row for a fuzzer and target."""
+
+    run_id: str
+    fuzzer: str
+    benchmark: str
+    fuzz_target: str
+    idx: int
+    ts: int
+    coverage_sets_json_rel: str | None
+    measurement_provenance_json: str | None
+    coverage: CoverageSummary
+
+    @classmethod
+    def from_row(cls, row: Mapping[str, Any]) -> 'AggSnapshotRow':
+        """Build an aggregate snapshot row from its database columns."""
+        return cls(
+            run_id=str(row['run_id']),
+            fuzzer=str(row['fuzzer']),
+            benchmark=str(row['benchmark']),
+            fuzz_target=str(row['fuzz_target']),
+            idx=int(row['idx']),
+            ts=int(row['ts']),
+            coverage_sets_json_rel=row['coverage_sets_json_rel'],
+            measurement_provenance_json=row['measurement_provenance_json'],
+            coverage=CoverageSummary.from_row(dict(row)),
+        )
+
+
+@dataclass(frozen=True)
 class SnapshotRecord:
     '''Describe one trial snapshot row to persist.'''
 

@@ -17,7 +17,7 @@ from typing import Any, Sequence
 from .base import open_readonly_connection
 from .bug import BugRow
 from .fields import TRIAL_METADATA_FIELDS
-from .snapshot import SEED_BASELINE_IDX, SnapshotRow
+from .snapshot import SEED_BASELINE_IDX, AggSnapshotRow, SnapshotRow
 from .trials import TrialRow
 
 SNAPSHOT_SELECT = '''
@@ -28,6 +28,15 @@ SNAPSHOT_SELECT = '''
     s.cov_functions_covered, s.cov_functions_total,
     s.cov_regions_covered, s.cov_regions_total,
     s.coverage_html_dir, s.coverage_sets_json_rel
+'''
+
+AGG_SNAPSHOT_SELECT = '''
+    a.run_id, a.fuzzer, a.benchmark, a.fuzz_target, a.idx, a.ts,
+    a.cov_lines_covered, a.cov_lines_total,
+    a.cov_branches_covered, a.cov_branches_total,
+    a.cov_functions_covered, a.cov_functions_total,
+    a.cov_regions_covered, a.cov_regions_total,
+    a.coverage_html_dir, a.coverage_sets_json_rel, a.measurement_provenance_json
 '''
 
 
@@ -202,11 +211,11 @@ class ReportingDB:
             tuple(int(tid) for tid in trial_ids),
         )
 
-    def latest_agg_snapshots_by_fuzzer_target(self, run_id: str) -> dict[tuple[str, str, str], dict[str, Any]]:
+    def latest_agg_snapshots_by_fuzzer_target(self, run_id: str) -> dict[tuple[str, str, str], AggSnapshotRow]:
         '''Return latest campaign coverage rows keyed by fuzzer and target.'''
         rows = self.rows(
-            '''
-            SELECT a.*
+            f'''
+            SELECT {AGG_SNAPSHOT_SELECT}
             FROM agg_snapshots AS a
             JOIN (
                 SELECT fuzzer, benchmark, fuzz_target, MAX(idx) AS max_idx
@@ -223,22 +232,22 @@ class ReportingDB:
             (run_id, SEED_BASELINE_IDX, run_id),
         )
         return {
-            (str(row['fuzzer']), str(row['benchmark']), str(row['fuzz_target'])): row
+            (str(row['fuzzer']), str(row['benchmark']), str(row['fuzz_target'])): AggSnapshotRow.from_row(row)
             for row in rows
         }
 
-    def seed_baselines_by_fuzzer_target(self, run_id: str) -> dict[tuple[str, str, str], dict[str, Any]]:
+    def seed_baselines_by_fuzzer_target(self, run_id: str) -> dict[tuple[str, str, str], AggSnapshotRow]:
         '''Return seed baseline coverage rows keyed by fuzzer and target.'''
         rows = self.rows(
-            '''
-            SELECT *
-            FROM agg_snapshots
+            f'''
+            SELECT {AGG_SNAPSHOT_SELECT}
+            FROM agg_snapshots AS a
             WHERE run_id=? AND idx=?
             ''',
             (run_id, SEED_BASELINE_IDX),
         )
         return {
-            (str(row['fuzzer']), str(row['benchmark']), str(row['fuzz_target'])): row
+            (str(row['fuzzer']), str(row['benchmark']), str(row['fuzz_target'])): AggSnapshotRow.from_row(row)
             for row in rows
         }
 

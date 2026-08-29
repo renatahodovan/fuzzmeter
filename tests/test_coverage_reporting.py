@@ -34,7 +34,7 @@ from fuzzmeter.reporting.metrics import (
     vargha_delaney_a12,
 )
 from fuzzmeter.reporting.payload import _PayloadBuilder
-from tests.support.dbs import run_data_snapshot, snapshot_row, trial_row
+from tests.support.dbs import agg_snapshot_row, run_data_snapshot, snapshot_row, trial_row
 
 
 def _coverage_export(branch_line: int) -> dict:
@@ -132,12 +132,12 @@ class CoverageReportingTest(unittest.TestCase):
     def test_aggregate_scalars_use_report_counts_without_set_reconciliation(self) -> None:
         builder = _PayloadBuilder.__new__(_PayloadBuilder)
         builder._data = run_data_snapshot(latest_agg_snapshots={
-            ('fz', 'bench', 'target'): {
-                'cov_branches_covered': 3,
-                'cov_lines_covered': 4,
-                'cov_functions_covered': 5,
-                'cov_regions_covered': 6,
-            }
+            ('fz', 'bench', 'target'): agg_snapshot_row(
+                cov_branches_covered=3,
+                cov_lines_covered=4,
+                cov_functions_covered=5,
+                cov_regions_covered=6,
+            )
         })
         builder._coverage_data = Mock()
         builder._coverage_data.covered_counts.return_value = {

@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ...db.snapshot import AggSnapshotRow
 from ...repro.coverage_sets import read_covered_keys
 
 
@@ -37,17 +38,22 @@ class CoverageData:
             return candidate
         return None
 
-    def coverage_sets_for_snapshot(self, snapshot: dict[str, Any]) -> Path | None:
-        '''Return the compact coverage set artifact recorded by a snapshot row.'''
+    def coverage_sets_for_agg_snapshot(self, snapshot: AggSnapshotRow) -> Path | None:
+        '''Return the compact coverage set artifact recorded by a campaign coverage row.'''
 
-        rel_path = snapshot.get('coverage_sets_json_rel')
-        if rel_path:
-            path = self.run_dir / str(rel_path)
+        return self._coverage_sets(snapshot.coverage_sets_json_rel, snapshot.coverage.coverage_html_dir)
+
+    def coverage_sets_for_trial(self, trial: dict[str, Any]) -> Path | None:
+        '''Return the compact coverage set artifact recorded by a report trial row.'''
+
+        return self._coverage_sets(trial.get('coverage_sets_json_rel'), trial.get('coverage_html_rel'))
+
+    def _coverage_sets(self, coverage_sets_json_rel: Any, coverage_html_rel: Any) -> Path | None:
+        if coverage_sets_json_rel:
+            path = self.run_dir / str(coverage_sets_json_rel)
             if path.exists():
                 return path
-        return self.coverage_sets_from_coverage_html_rel(
-            snapshot.get('coverage_html_dir') or snapshot.get('coverage_html_rel')
-        )
+        return self.coverage_sets_from_coverage_html_rel(coverage_html_rel)
 
     def covered_elements(self, coverage_path: Path, metric: str) -> set[str] | None:
         '''Return cached covered element keys for one compact coverage set metric.'''
@@ -60,7 +66,7 @@ class CoverageData:
     def coverage_sets_by_fuzzer(
         self,
         *,
-        agg_snapshots: dict[tuple[str, str, str], dict[str, Any]],
+        agg_snapshots: dict[tuple[str, str, str], AggSnapshotRow],
         fuzzers: list[str],
         benchmark: str,
         fuzz_target: str,
@@ -70,8 +76,8 @@ class CoverageData:
 
         out: dict[str, set[str]] = {}
         for fuzzer in fuzzers:
-            snapshot = agg_snapshots.get((str(fuzzer), str(benchmark), str(fuzz_target)), {})
-            coverage_path = self.coverage_sets_for_snapshot(snapshot)
+            snapshot = agg_snapshots.get((str(fuzzer), str(benchmark), str(fuzz_target)))
+            coverage_path = None if snapshot is None else self.coverage_sets_for_agg_snapshot(snapshot)
             if coverage_path is not None:
                 values = self.covered_elements(coverage_path, metric)
                 if values is not None:
@@ -98,7 +104,7 @@ class CoverageData:
                 or trial.get('fuzz_target') != fuzz_target
             ):
                 continue
-            coverage_path = self.coverage_sets_for_snapshot(trial)
+            coverage_path = self.coverage_sets_for_trial(trial)
             out[fuzzer].append(
                 self.covered_elements(coverage_path, metric)
                 if coverage_path is not None

@@ -8,7 +8,7 @@ from typing import Any
 from fuzzmeter.db import DB, ensure_schema, open_db
 from fuzzmeter.db import metadata as db_metadata
 from fuzzmeter.db import runs as db_runs
-from fuzzmeter.db.snapshot import SnapshotRow
+from fuzzmeter.db.snapshot import AggSnapshotRow, SnapshotRow
 from fuzzmeter.db.trials import TrialRow
 from fuzzmeter.reporting.data.run_data import RunDataSnapshot
 
@@ -312,6 +312,21 @@ def snapshot_row(**overrides: Any) -> SnapshotRow:
         'snapshot_id': 1, 'trial_id': 1, 'idx': 1, 'ts': 0, 'corpus_files': 0,
         'execs_done': None, 'crashes': 0, 'hangs': 0, 'stats_json': None,
         'coverage_html_dir': None, 'coverage_sets_json_rel': None,
+        'cov_lines_covered': None, 'cov_lines_total': None,
+        'cov_branches_covered': None, 'cov_branches_total': None,
+        'cov_regions_covered': None, 'cov_regions_total': None,
+        'cov_functions_covered': None, 'cov_functions_total': None,
+        **overrides,
+    })
+
+
+def agg_snapshot_row(**overrides: Any) -> AggSnapshotRow:
+    '''Build a stored campaign coverage row with the columns a test cares about.'''
+
+    return AggSnapshotRow.from_row({
+        'run_id': 'run', 'fuzzer': 'fz', 'benchmark': 'bench', 'fuzz_target': 'target',
+        'idx': 1, 'ts': 0, 'coverage_html_dir': None, 'coverage_sets_json_rel': None,
+        'measurement_provenance_json': None,
         'cov_lines_covered': None, 'cov_lines_total': None,
         'cov_branches_covered': None, 'cov_branches_total': None,
         'cov_regions_covered': None, 'cov_regions_total': None,
