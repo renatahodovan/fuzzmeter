@@ -15,6 +15,7 @@ from typing import Any
 
 from ...db.bug import BugRow
 from ...db.report_views import ReportingDB
+from ...db.trials import TrialRow
 
 
 @dataclass(frozen=True)
@@ -23,7 +24,7 @@ class RunDataSnapshot:
 
     run_id: str
     overview_raw: dict[str, Any]
-    trial_rows: list[dict[str, Any]]
+    trial_rows: list[TrialRow]
     latest_snapshots: dict[int, dict[str, Any]]
     latest_agg_snapshots: dict[tuple[str, str, str], dict[str, Any]]
     seed_baselines: dict[tuple[str, str, str], dict[str, Any]]
@@ -56,7 +57,7 @@ class RunData:
             resolved_run_id = run_id or db.infer_run_id(run_dir_name)
             overview_raw = db.run_overview(resolved_run_id)
             trial_rows = db.trial_rows(resolved_run_id)
-            trial_ids = [int(row['trial_id']) for row in trial_rows]
+            trial_ids = [row.trial_id for row in trial_rows]
             latest_snapshots = db.latest_snapshots_by_trial(trial_ids)
             latest_agg_snapshots = db.latest_agg_snapshots_by_fuzzer_target(resolved_run_id)
             seed_baselines = db.seed_baselines_by_fuzzer_target(resolved_run_id)

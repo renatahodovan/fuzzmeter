@@ -693,8 +693,9 @@ def _open_test_db(db_path: Path | None = None) -> Iterator[DB]:
 def _ensure_trial(db: DB, *, start_ts: int = 100) -> int:
     return db_trials.ensure_trial_row(
         db,
-        db_trials.TrialRecord(
-            run_id='run',
+        run_id='run',
+        started_ts=start_ts,
+        record=db_trials.TrialRecord(
             fuzzer='fz',
             benchmark='bench',
             fuzz_target='target',
@@ -704,7 +705,6 @@ def _ensure_trial(db: DB, *, start_ts: int = 100) -> int:
             fuzzer_image='image',
             build_config_json=None,
             runtime_config_json=None,
-            start_ts=start_ts,
         ),
     )
 

@@ -9,16 +9,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from .base import DB
 
 
 @dataclass(frozen=True)
 class TrialRecord:
-    '''Describe one trial row to create or refresh.'''
+    """Describe one trial row to create or refresh."""
 
-    run_id: str
     fuzzer: str
     benchmark: str
     fuzz_target: str
@@ -28,10 +29,38 @@ class TrialRecord:
     fuzzer_image: str
     build_config_json: str | None
     runtime_config_json: str | None
-    start_ts: int
 
 
-def ensure_trial_row(db: DB, record: TrialRecord) -> int:
+@dataclass(frozen=True)
+class TrialRow(TrialRecord):
+    """Describe one stored trial row, with the state it gained once it existed."""
+
+    trial_id: int
+    jobs: int | None
+    started_ts: int | None
+    ended_ts: int | None
+
+    @classmethod
+    def from_row(cls, row: Mapping[str, Any]) -> 'TrialRow':
+        """Build a trial row from its database columns."""
+        return cls(
+            fuzzer=str(row['fuzzer']),
+            benchmark=str(row['benchmark']),
+            fuzz_target=str(row['fuzz_target']),
+            rep=int(row['rep']),
+            time_seconds=int(row['time_seconds']),
+            status=str(row['status']),
+            fuzzer_image=str(row['fuzzer_image'] or ''),
+            build_config_json=row['build_config_json'],
+            runtime_config_json=row['runtime_config_json'],
+            trial_id=int(row['trial_id']),
+            jobs=None if row['jobs'] is None else int(row['jobs']),
+            started_ts=None if row['started_ts'] is None else int(row['started_ts']),
+            ended_ts=None if row['ended_ts'] is None else int(row['ended_ts']),
+        )
+
+
+def ensure_trial_row(db: DB, *, run_id: str, record: TrialRecord, started_ts: int) -> int:
     '''Create or find one trial row and return its database id.'''
     db.exec(
         '''
@@ -42,7 +71,7 @@ def ensure_trial_row(db: DB, record: TrialRecord) -> int:
         VALUES(?,?,?,?,?,?,?,?,?,?)
         ''',
         (
-            str(record.run_id),
+            str(run_id),
             str(record.fuzzer),
             str(record.benchmark),
             str(record.fuzz_target),
@@ -57,7 +86,7 @@ def ensure_trial_row(db: DB, record: TrialRecord) -> int:
     tid = db.scalar(
         'SELECT trial_id FROM trials WHERE run_id=? AND fuzzer=? AND benchmark=? AND fuzz_target=? AND rep=?',
         (
-            str(record.run_id),
+            str(run_id),
             str(record.fuzzer),
             str(record.benchmark),
             str(record.fuzz_target),
@@ -66,7 +95,7 @@ def ensure_trial_row(db: DB, record: TrialRecord) -> int:
     )
     if tid is None:
         raise RuntimeError('Failed to create trial row')
-    db.exec('UPDATE trials SET started_ts=? WHERE trial_id=?', (int(record.start_ts), int(tid)))
+    db.exec('UPDATE trials SET started_ts=? WHERE trial_id=?', (int(started_ts), int(tid)))
     return int(tid)
 
 

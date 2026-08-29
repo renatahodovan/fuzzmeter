@@ -46,8 +46,9 @@ def run_one_trial(
     with open_db(db_path) as db:
         trial_db_id = db_trials.ensure_trial_row(
             db,
-            db_trials.TrialRecord(
-                run_id=run_id,
+            run_id=run_id,
+            started_ts=start_ts,
+            record=db_trials.TrialRecord(
                 fuzzer=config.case.fuzzer.id,
                 benchmark=config.fuzz_target.benchmark.name,
                 fuzz_target=config.fuzz_target.fuzz_target,
@@ -57,7 +58,6 @@ def run_one_trial(
                 fuzzer_image=config.case.images.runner,
                 build_config_json=json.dumps(config.case.build_config, sort_keys=True),
                 runtime_config_json=json.dumps(config.case.run_config, sort_keys=True),
-                start_ts=start_ts,
             ),
         )
 

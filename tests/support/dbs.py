@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fuzzmeter.db import DB, ensure_schema, open_db
 from fuzzmeter.db import metadata as db_metadata
 from fuzzmeter.db import runs as db_runs
+from fuzzmeter.db.trials import TrialRow
 
 
 def empty_run_db(db_path: Path) -> None:
@@ -264,3 +266,15 @@ def _insert_snapshot(
             'coverage/fz/index.html',
         ),
     )
+
+
+def trial_row(**overrides: Any) -> TrialRow:
+    '''Build a stored trial row with the columns a test cares about.'''
+
+    return TrialRow.from_row({
+        'trial_id': 1, 'fuzzer': 'fz', 'benchmark': 'bench', 'fuzz_target': 'target',
+        'rep': 0, 'time_seconds': 0, 'jobs': None, 'status': 'done',
+        'started_ts': None, 'ended_ts': None, 'fuzzer_image': 'image',
+        'build_config_json': None, 'runtime_config_json': None,
+        **overrides,
+    })

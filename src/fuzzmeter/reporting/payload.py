@@ -161,8 +161,8 @@ class _PayloadBuilder:
         created = safe_int(overview.get('created_ts'))
         overview['created_ts'] = created
         overview['created_at'] = dt(created)
-        trial_start_values = [safe_int(row.get('started_ts')) for row in self._trial_rows]
-        trial_end_values = [safe_int(row.get('ended_ts')) for row in self._trial_rows]
+        trial_start_values = [row.started_ts for row in self._trial_rows]
+        trial_end_values = [row.ended_ts for row in self._trial_rows]
         snapshot_values = [safe_int(row.get('ts')) for row in self._snapshot_rows]
         start_candidates = [value for value in trial_start_values if value is not None]
         end_candidates = [value for value in [*trial_end_values, *snapshot_values] if value is not None]
@@ -173,9 +173,9 @@ class _PayloadBuilder:
             wall_elapsed_seconds = last_activity_ts - started_ts
         elapsed_candidates: list[int] = []
         for row in self._trial_rows:
-            trial_start = safe_int(row.get('started_ts'))
-            trial_end = safe_int(row.get('ended_ts'))
-            time_seconds = safe_int(row.get('time_seconds'))
+            trial_start = row.started_ts
+            trial_end = row.ended_ts
+            time_seconds = row.time_seconds
             if trial_start is not None and trial_end is not None and trial_end >= trial_start:
                 elapsed = int(trial_end - trial_start)
                 if time_seconds is not None and time_seconds > 0:

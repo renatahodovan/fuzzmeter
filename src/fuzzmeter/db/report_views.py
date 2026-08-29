@@ -18,6 +18,7 @@ from .base import open_readonly_connection
 from .bug import BugRow
 from .fields import TRIAL_METADATA_FIELDS
 from .snapshot import SEED_BASELINE_IDX
+from .trials import TrialRow
 
 
 class ReportingDB:
@@ -113,20 +114,23 @@ class ReportingDB:
             'label': self.scalar('SELECT label FROM runs WHERE run_id=? LIMIT 1', (run_id,)),
         }
 
-    def trial_rows(self, run_id: str) -> list[dict[str, Any]]:
+    def trial_rows(self, run_id: str) -> list[TrialRow]:
         '''Return all trial rows that belong to a run.'''
 
         metadata_select = ', '.join(TRIAL_METADATA_FIELDS)
-        return self.rows(
-            f'''
-            SELECT trial_id, fuzzer, benchmark, fuzz_target, rep,
-                   time_seconds, jobs, status, started_ts, ended_ts, {metadata_select}
-            FROM trials
-            WHERE run_id=?
-            ORDER BY benchmark, fuzz_target, fuzzer, rep
-            ''',
-            (run_id,),
-        )
+        return [
+            TrialRow.from_row(row)
+            for row in self.rows(
+                f'''
+                SELECT trial_id, fuzzer, benchmark, fuzz_target, rep,
+                       time_seconds, jobs, status, started_ts, ended_ts, {metadata_select}
+                FROM trials
+                WHERE run_id=?
+                ORDER BY benchmark, fuzz_target, fuzzer, rep
+                ''',
+                (run_id,),
+            )
+        ]
 
     def latest_snapshots_by_trial(self, trial_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
         '''Return the newest snapshot row for each requested trial.'''

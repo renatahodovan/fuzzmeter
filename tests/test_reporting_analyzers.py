@@ -19,6 +19,7 @@ from fuzzmeter.reporting.keys import SNAPSHOT_COVERAGE_FIELDS
 from fuzzmeter.reporting.metrics import median
 from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.set_comparison import pairwise_matrix, relative_containment_matrix, trial_set_comparison
+from tests.support.dbs import trial_row
 
 COV_METRICS = ('branches',)
 CURVE_MAX_POINTS = 100
@@ -41,18 +42,7 @@ class TrialAnalysisTest(unittest.TestCase):
 
         trials = analysis.collect_trials(
             trial_rows=[
-                {
-                    'trial_id': 1,
-                    'fuzzer': 'fz',
-                    'benchmark': 'bench',
-                    'fuzz_target': 'target',
-                    'rep': '0',
-                    'started_ts': 100,
-                    'ended_ts': 190,
-                    'time_seconds': 50,
-                    'jobs': 1,
-                    'status': 'done',
-                }
+                trial_row(trial_id=1, rep='0', started_ts=100, ended_ts=190, time_seconds=50, jobs=1, status='done')
             ],
             latest_snapshots={
                 1: {

@@ -34,6 +34,7 @@ from fuzzmeter.reporting.metrics import (
     vargha_delaney_a12,
 )
 from fuzzmeter.reporting.payload import _PayloadBuilder
+from tests.support.dbs import trial_row
 
 
 def _coverage_export(branch_line: int) -> dict:
@@ -334,8 +335,8 @@ class CoverageReportingTest(unittest.TestCase):
         builder = _PayloadBuilder.__new__(_PayloadBuilder)
         builder._overview_raw = {'created_ts': 50}
         builder._trial_rows = [
-            {'started_ts': 100, 'ended_ts': 450, 'time_seconds': 300},
-            {'started_ts': 500, 'ended_ts': 850, 'time_seconds': 300},
+            trial_row(started_ts=100, ended_ts=450, time_seconds=300),
+            trial_row(started_ts=500, ended_ts=850, time_seconds=300),
         ]
         builder._snapshot_rows = [{'ts': 900}]
 
@@ -363,10 +364,12 @@ class CoverageReportingTest(unittest.TestCase):
                 db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
                 db.exec(
                     '''
-                    INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep, started_ts, ended_ts, status)
-                    VALUES(?,?,?,?,?,?,?,?)
+                    INSERT INTO trials(
+                      run_id, fuzzer, benchmark, fuzz_target, rep, time_seconds, started_ts, ended_ts, status
+                    )
+                    VALUES(?,?,?,?,?,?,?,?,?)
                     ''',
-                    ('run', 'fz', 'bench', 'target', 1, 1, 3, 'done'),
+                    ('run', 'fz', 'bench', 'target', 1, 2, 1, 3, 'done'),
                 )
                 trial_id = int(db.scalar('SELECT trial_id FROM trials'))
                 db.exec(

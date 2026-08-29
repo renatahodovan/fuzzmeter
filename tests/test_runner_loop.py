@@ -104,8 +104,9 @@ def _create_trial_instance(
         db.exec('INSERT OR IGNORE INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run', 1, 'config'))
         trial_db_id = db_trials.ensure_trial_row(
             db,
-            db_trials.TrialRecord(
-                run_id='run',
+            run_id='run',
+            started_ts=start_ts,
+            record=db_trials.TrialRecord(
                 fuzzer='aflplusplus',
                 benchmark='bench',
                 fuzz_target='target',
@@ -115,7 +116,6 @@ def _create_trial_instance(
                 fuzzer_image='runner',
                 build_config_json=None,
                 runtime_config_json=None,
-                start_ts=start_ts,
             ),
         )
         db.commit()
@@ -240,8 +240,9 @@ class RunnerLoopTest(unittest.TestCase):
                 trial_db_ids = [
                     db_trials.ensure_trial_row(
                         db,
-                        db_trials.TrialRecord(
-                            run_id='run',
+                        run_id='run',
+                        started_ts=100 + idx,
+                        record=db_trials.TrialRecord(
                             fuzzer=f'fuzzer_{idx}',
                             benchmark='bench',
                             fuzz_target='target',
@@ -251,7 +252,6 @@ class RunnerLoopTest(unittest.TestCase):
                             fuzzer_image='runner',
                             build_config_json=None,
                             runtime_config_json=None,
-                            start_ts=100 + idx,
                         ),
                     )
                     for idx in (1, 2)

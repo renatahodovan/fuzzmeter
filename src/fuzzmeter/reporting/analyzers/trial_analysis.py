@@ -13,6 +13,7 @@ import json
 
 from typing import Any, Callable, Dict, Optional
 
+from ...db.trials import TrialRow
 from ..metrics import dt, pct, safe_int
 
 
@@ -75,25 +76,20 @@ class TrialAnalysis:
         coverage['hangs'] = safe_int(latest.get('hangs'))
         return coverage
 
-    def _elapsed_seconds(self, row: dict[str, Any], coverage: dict[str, Any]) -> int | None:
-        started_ts = safe_int(row.get('started_ts'))
-        ended_ts = (
-            safe_int(coverage.get('last_snapshot_ts'))
-            or safe_int(row.get('ended_ts'))
-            or started_ts
-        )
+    def _elapsed_seconds(self, row: TrialRow, coverage: dict[str, Any]) -> int | None:
+        started_ts = row.started_ts
+        ended_ts = safe_int(coverage.get('last_snapshot_ts')) or row.ended_ts or started_ts
         if started_ts is None or ended_ts is None or ended_ts < started_ts:
             return None
         elapsed_seconds = int(ended_ts - started_ts)
-        time_seconds = safe_int(row.get('time_seconds'))
-        if time_seconds is not None and time_seconds > 0:
-            elapsed_seconds = min(elapsed_seconds, int(time_seconds))
+        if row.time_seconds > 0:
+            elapsed_seconds = min(elapsed_seconds, row.time_seconds)
         return elapsed_seconds
 
     def collect_trials(
         self,
         *,
-        trial_rows: list[dict[str, Any]],
+        trial_rows: list[TrialRow],
         latest_snapshots: dict[int, dict[str, Any]],
         bug_stats_by_trial: dict[int, tuple[int, int]],
         rel_to_url: Callable[[str | None], str | None],
@@ -102,7 +98,7 @@ class TrialAnalysis:
 
         trials: list[dict[str, Any]] = []
         for row in trial_rows:
-            trial_id = int(row['trial_id'])
+            trial_id = row.trial_id
             latest = self.latest_effective_snapshot_for_trial(trial_id, latest_snapshots)
             coverage_html_rel = None
             if self.snapshot_has_coverage(latest):
@@ -111,23 +107,20 @@ class TrialAnalysis:
             coverage['coverage_html'] = rel_to_url(coverage_html_rel)
             coverage['coverage_html_rel'] = coverage_html_rel
             coverage['coverage_sets_json_rel'] = latest.get('coverage_sets_json_rel')
-            started_ts = safe_int(row.get('started_ts'))
-            ended_ts = safe_int(row.get('ended_ts'))
-            time_seconds = safe_int(row.get('time_seconds'))
             bug_hits_total, unique_bugs_total = bug_stats_by_trial.get(trial_id, (0, 0))
             trial = {
                 'trial_id': trial_id,
-                'fuzzer': row.get('fuzzer'),
-                'benchmark': row.get('benchmark'),
-                'fuzz_target': row.get('fuzz_target'),
-                'rep': safe_int(row.get('rep')),
-                'time_seconds': time_seconds,
-                'jobs': safe_int(row.get('jobs')),
-                'status': row.get('status'),
-                'started_ts': started_ts,
-                'ended_ts': ended_ts,
-                'started_at': dt(started_ts),
-                'ended_at': dt(ended_ts),
+                'fuzzer': row.fuzzer,
+                'benchmark': row.benchmark,
+                'fuzz_target': row.fuzz_target,
+                'rep': row.rep,
+                'time_seconds': row.time_seconds,
+                'jobs': row.jobs,
+                'status': row.status,
+                'started_ts': row.started_ts,
+                'ended_ts': row.ended_ts,
+                'started_at': dt(row.started_ts),
+                'ended_at': dt(row.ended_ts),
                 'elapsed_seconds': self._elapsed_seconds(row, coverage),
                 'bug_hits_total': int(bug_hits_total),
                 'unique_bugs_total': int(unique_bugs_total),
@@ -159,9 +152,9 @@ class TrialAnalysis:
             if coverage.get('coverage_sets_json_rel'):
                 trial['coverage_sets_json_rel'] = coverage['coverage_sets_json_rel']
             for key in self._trial_version_fields:
-                trial[key] = row.get(key)
-            trial['build_config'] = _parse_json_text(row.get('build_config_json'))
-            trial['runtime_config'] = _parse_json_text(row.get('runtime_config_json'))
+                trial[key] = getattr(row, key)
+            trial['build_config'] = _parse_json_text(row.build_config_json)
+            trial['runtime_config'] = _parse_json_text(row.runtime_config_json)
             trials.append(trial)
         return trials
 
