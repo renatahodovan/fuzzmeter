@@ -12,10 +12,8 @@ from __future__ import annotations
 import random
 import unittest
 
-from fuzzmeter.reporting.analyzers import coverage_curves
+from fuzzmeter.reporting.analyzers import coverage_curves, trial_analysis
 from fuzzmeter.reporting.analyzers.bug_analysis import BugAnalysis
-from fuzzmeter.reporting.analyzers.trial_analysis import TrialAnalysis
-from fuzzmeter.reporting.keys import SNAPSHOT_COVERAGE_FIELDS
 from fuzzmeter.reporting.metrics import median
 from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.set_comparison import pairwise_matrix, relative_containment_matrix, trial_set_comparison
@@ -28,19 +26,14 @@ CURVE_MAX_POINTS = 100
 class TrialAnalysisTest(unittest.TestCase):
     '''Verify trial and time-series analysis behavior.'''
 
-    def test_snapshot_coverage_detection_uses_configured_fields(self) -> None:
-        analysis = TrialAnalysis(
-            snapshot_coverage_fields={'custom': ('custom_covered', 'custom_total')},
-            trial_version_fields=(),
-        )
-
-        self.assertTrue(analysis.snapshot_has_coverage({'custom_covered': 1}))
-        self.assertFalse(analysis.snapshot_has_coverage({'cov_branches_covered': 1}))
+    def test_snapshot_coverage_detection_looks_for_covered_counters(self) -> None:
+        self.assertTrue(trial_analysis.snapshot_has_coverage({'cov_branches_covered': 1}))
+        self.assertTrue(trial_analysis.snapshot_has_coverage({'cov_regions_covered': 0}))
+        self.assertFalse(trial_analysis.snapshot_has_coverage({'cov_branches_total': 4}))
+        self.assertFalse(trial_analysis.snapshot_has_coverage({'corpus_files': 1}))
 
     def test_collect_trials_measures_running_trials_from_their_latest_snapshot(self) -> None:
-        analysis = _trial_analysis()
-
-        trials = analysis.collect_trials(
+        trials = trial_analysis.collect_trials(
             trial_rows=[
                 trial_row(trial_id=1, rep='0', started_ts=100, ended_ts=None, time_seconds=86400, status='running')
             ],
@@ -52,9 +45,7 @@ class TrialAnalysisTest(unittest.TestCase):
         self.assertEqual(60, trials[0]['elapsed_seconds'])
 
     def test_collect_trials_uses_latest_snapshot_and_clamps_elapsed_time(self) -> None:
-        analysis = _trial_analysis()
-
-        trials = analysis.collect_trials(
+        trials = trial_analysis.collect_trials(
             trial_rows=[
                 trial_row(trial_id=1, rep='0', started_ts=100, ended_ts=190, time_seconds=50, jobs=1, status='done')
             ],
@@ -88,9 +79,7 @@ class TrialAnalysisTest(unittest.TestCase):
         self.assertEqual(2, trials[0]['unique_bugs_total'])
 
     def test_collect_timeseries_merges_resources_and_cumulative_bug_counts(self) -> None:
-        analysis = _trial_analysis()
-
-        timeseries = analysis.collect_timeseries(
+        timeseries = trial_analysis.collect_timeseries(
             trials=[
                 {
                     'trial_id': 1,
@@ -622,13 +611,6 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         self.assertEqual([None, None], unique['exclusive']['exclusive_all'])
         self.assertEqual('unknown', target['fuzzers'][0]['exclusive_coverage']['exclusive_all_bound'])
         self.assertEqual(0, target['fuzzers'][0]['exclusive_coverage']['sample_size'])
-
-
-def _trial_analysis() -> TrialAnalysis:
-    return TrialAnalysis(
-        snapshot_coverage_fields=SNAPSHOT_COVERAGE_FIELDS,
-        trial_version_fields=('fuzzer_image',),
-    )
 
 
 def _bug_exclusive_median(values: list[int]) -> float | None:

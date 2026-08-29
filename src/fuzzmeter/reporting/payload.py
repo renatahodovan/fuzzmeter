@@ -19,13 +19,12 @@ from typing import Any
 
 from ..db.fields import TRIAL_METADATA_FIELDS
 from ..db.trials import TrialRow
-from .analyzers import coverage_curves, target_matrices
+from .analyzers import coverage_curves, target_matrices, trial_analysis
 from .analyzers.bug_analysis import BugAnalysis
 from .analyzers.custom_metrics import attach_custom_metric_sections, has_custom_metric_sections
-from .analyzers.trial_analysis import TrialAnalysis
 from .data.coverage_data import CoverageData
 from .data.run_data import RunData
-from .keys import COV_METRICS, SNAPSHOT_COVERAGE_FIELDS
+from .keys import COV_METRICS
 from .metrics import dt, safe_int
 from .plugin_sections import attach_extra_sections
 from .provenance import attach_measurement_provenance
@@ -116,10 +115,6 @@ class _PayloadBuilder:
         self._data = RunData(run_dir / 'fuzzmeter.db').load(run_dir_name=run_dir.name, run_id=run_id)
         self.run_id = self._data.run_id
         self._coverage_data = CoverageData(run_dir)
-        self._trial_analysis = TrialAnalysis(
-            snapshot_coverage_fields=SNAPSHOT_COVERAGE_FIELDS,
-            trial_version_fields=TRIAL_METADATA_FIELDS,
-        )
         self._bug_analysis = BugAnalysis()
         self._fuzzer_dirs = fuzzer_dirs
 
@@ -276,7 +271,7 @@ class _PayloadBuilder:
     def collect_trials(self) -> list[dict[str, Any]]:
         '''Collect per-trial report rows.'''
 
-        return self._trial_analysis.collect_trials(
+        return trial_analysis.collect_trials(
             trial_rows=self._data.trial_rows,
             latest_snapshots=self._data.latest_snapshots,
             bug_stats_by_trial=self._data.bug_stats_by_trial,
@@ -286,7 +281,7 @@ class _PayloadBuilder:
     def collect_timeseries(self, trials: list[dict[str, Any]]) -> dict[str, Any]:
         '''Collect per-trial snapshot time series.'''
 
-        return self._trial_analysis.collect_timeseries(
+        return trial_analysis.collect_timeseries(
             trials=trials,
             snapshot_rows=self._data.snapshot_rows,
             resource_telemetry_rows=self._data.resource_telemetry_rows,
