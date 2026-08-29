@@ -10,14 +10,12 @@
 from __future__ import annotations
 
 import datetime
-import json
 import logging
 
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from ..db.fields import TRIAL_METADATA_FIELDS
 from ..db.snapshot import AggSnapshotRow, CoverageSummary
 from .analyzers import bug_analysis, coverage_curves, target_matrices, trial_analysis
 from .analyzers.custom_metrics import attach_custom_metric_sections, has_custom_metric_sections
@@ -285,7 +283,6 @@ class _PayloadBuilder:
             trials=trials,
             timeseries=timeseries,
             bugs=bugs,
-            trial_version_fields=TRIAL_METADATA_FIELDS,
             aggregated_coverage_by_fuzzer=aggregated_coverage_by_fuzzer,
             seed_baseline_by_fuzzer=seed_baseline_by_fuzzer,
         )
@@ -316,27 +313,16 @@ class _PayloadBuilder:
     def _metadata_by_key(self) -> dict[tuple[str, str, str], dict[str, Any]]:
         out: dict[tuple[str, str, str], dict[str, Any]] = {}
         for row in self._data.metadata_rows:
-            try:
-                metadata = json.loads(str(row.get('metadata_json') or '{}'))
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(metadata, dict):
-                continue
+            metadata = dict(row.metadata)
             digests = metadata.get('digests') if isinstance(metadata.get('digests'), dict) else {}
             digests = {
                 **digests,
-                'environment': digests.get('environment') or row.get('environment_digest'),
-                'config': digests.get('config') or row.get('config_digest'),
-                'source': digests.get('source') or row.get('source_digest'),
+                'environment': digests.get('environment') or row.environment_digest,
+                'config': digests.get('config') or row.config_digest,
+                'source': digests.get('source') or row.source_digest,
             }
             metadata['digests'] = {key: value for key, value in digests.items() if value is not None}
-            out[
-                (
-                    str(row.get('fuzzer') or ''),
-                    str(row.get('benchmark') or ''),
-                    str(row.get('fuzz_target') or ''),
-                )
-            ] = metadata
+            out[(row.fuzzer, row.benchmark, row.fuzz_target)] = metadata
         return out
 
     def create_matrices(

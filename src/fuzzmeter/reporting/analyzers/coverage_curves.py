@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any
 
 from ..keys import FINAL_DIST_KEYS
 from ..metrics import (
@@ -412,7 +412,6 @@ def collect_target_view(
     trials: list[dict[str, Any]],
     timeseries: dict[str, Any],
     bugs: list[dict[str, Any]],
-    trial_version_fields: Sequence[str],
     aggregated_coverage_by_fuzzer: dict[tuple[str, str, str], dict[str, int | None]],
     seed_baseline_by_fuzzer: dict[tuple[str, str, str], dict[str, Any] | None],
 ) -> list[dict[str, Any]]:
@@ -453,9 +452,8 @@ def collect_target_view(
             {'reps': [], 'bugs': [], 'versions': {}},
         )
         fuzzer_group['reps'].append(trial)
-        for key in trial_version_fields:
-            if trial.get(key):
-                fuzzer_group['versions'][key] = trial.get(key)
+        if trial.get('fuzzer_image'):
+            fuzzer_group['versions']['fuzzer_image'] = trial['fuzzer_image']
         merge_version_config(fuzzer_group['versions'], 'build_config', trial.get('build_config'))
         merge_version_config(fuzzer_group['versions'], 'runtime_config', trial.get('runtime_config'))
 

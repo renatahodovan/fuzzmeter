@@ -17,6 +17,7 @@ from typing import Any, Sequence
 from .base import open_readonly_connection
 from .bug import BugRow
 from .fields import TRIAL_METADATA_FIELDS
+from .metadata import MetadataRecord
 from .resource_telemetry import TelemetrySample
 from .snapshot import SEED_BASELINE_IDX, AggSnapshotRow, SnapshotRow
 from .trials import TrialRow
@@ -255,11 +256,11 @@ class ReportingDB:
             for row in rows
         }
 
-    def metadata_rows(self, run_id: str) -> list[dict[str, Any]]:
+    def metadata_rows(self, run_id: str) -> list[MetadataRecord]:
         '''Return composite metadata rows for a run.'''
 
         try:
-            return self.rows(
+            rows = self.rows(
                 '''
                 SELECT run_id, fuzzer, benchmark, fuzz_target, metadata_schema_version,
                        repetitions, runtime_seconds, environment_digest, config_digest,
@@ -272,6 +273,7 @@ class ReportingDB:
             )
         except sqlite3.OperationalError:
             return []
+        return [MetadataRecord.from_row(row) for row in rows]
 
     def bug_hits_by_snapshot(self) -> dict[int, int]:
         '''Return total bug hit counts keyed by snapshot id.'''

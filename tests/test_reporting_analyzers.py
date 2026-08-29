@@ -492,7 +492,6 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
             ],
             timeseries={'per_trial': {1: {'trial_id': 1, 'points': [{'idx': 1, 'execs_done': 10}]}}},
             bugs=[{'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'fz', 'bug_key': 'bug', 'hits_total': 2}],
-            trial_version_fields=('fuzzer_image',),
             aggregated_coverage_by_fuzzer={('fz', 'bench', 'target'): {'branches_covered': 7}},
             seed_baseline_by_fuzzer={('fz', 'bench', 'target'): {'branches_covered': 1}},
         )

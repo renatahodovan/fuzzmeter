@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import json
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from .base import DB
+from .fields import json_object
 
 CURRENT_METADATA_SCHEMA_VERSION = 1
 
@@ -35,6 +37,24 @@ class MetadataRecord:
     metadata: dict[str, Any]
     metadata_schema_version: int = CURRENT_METADATA_SCHEMA_VERSION
     created_at: int | None = None
+
+    @classmethod
+    def from_row(cls, row: Mapping[str, Any]) -> 'MetadataRecord':
+        '''Build a metadata record from its database columns.'''
+        return cls(
+            run_id=str(row['run_id']),
+            fuzzer=str(row['fuzzer']),
+            benchmark=str(row['benchmark']),
+            fuzz_target=str(row['fuzz_target']),
+            repetitions=int(row['repetitions']),
+            runtime_seconds=int(row['runtime_seconds']),
+            environment_digest=row['environment_digest'],
+            config_digest=row['config_digest'],
+            source_digest=row['source_digest'],
+            metadata=json_object(row['metadata_json']) or {},
+            metadata_schema_version=int(row['metadata_schema_version']),
+            created_at=None if row['created_at'] is None else int(row['created_at']),
+        )
 
 
 def upsert_metadata(db: DB, record: MetadataRecord) -> None:

@@ -31,7 +31,7 @@ def attach_measurement_provenance(
         for fuzzer in target.get('fuzzers') or []:
             name = str(fuzzer.get('fuzzer') or '')
             row = agg_snapshots.get((name, benchmark, fuzz_target))
-            provenance = _parse_provenance(None if row is None else row.measurement_provenance_json)
+            provenance = None if row is None else row.measurement_provenance
             fuzzer['measurement_provenance'] = provenance
             target_records.append((name, provenance))
             records.append(provenance)
@@ -74,16 +74,6 @@ def attach_measurement_provenance(
         ),
         'threats_table': _threats_table(records),
     }
-
-
-def _parse_provenance(value: Any) -> dict[str, Any] | None:
-    if isinstance(value, dict):
-        return value
-    try:
-        parsed = json.loads(str(value))
-    except (TypeError, ValueError):
-        return None
-    return parsed if isinstance(parsed, dict) else None
 
 
 def _comparison_signature(record: dict[str, Any] | None) -> str | None:

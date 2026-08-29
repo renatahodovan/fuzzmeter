@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .base import DB
+from .fields import json_object
 
 LOG = logging.getLogger(__name__)
 SEED_BASELINE_IDX = 0
@@ -96,7 +97,7 @@ class SnapshotRow:
     execs_done: int | None
     crashes: int
     hangs: int
-    stats_json: str | None
+    stats: dict[str, Any] | None
     coverage_sets_json_rel: str | None
     coverage: CoverageSummary
 
@@ -112,7 +113,7 @@ class SnapshotRow:
             execs_done=None if row['execs_done'] is None else int(row['execs_done']),
             crashes=int(row['crashes']),
             hangs=int(row['hangs']),
-            stats_json=row['stats_json'],
+            stats=json_object(row['stats_json']),
             coverage_sets_json_rel=row['coverage_sets_json_rel'],
             coverage=CoverageSummary.from_row(dict(row)),
         )
@@ -129,7 +130,7 @@ class AggSnapshotRow:
     idx: int
     ts: int
     coverage_sets_json_rel: str | None
-    measurement_provenance_json: str | None
+    measurement_provenance: dict[str, Any] | None
     coverage: CoverageSummary
 
     @classmethod
@@ -143,7 +144,7 @@ class AggSnapshotRow:
             idx=int(row['idx']),
             ts=int(row['ts']),
             coverage_sets_json_rel=row['coverage_sets_json_rel'],
-            measurement_provenance_json=row['measurement_provenance_json'],
+            measurement_provenance=json_object(row['measurement_provenance_json']),
             coverage=CoverageSummary.from_row(dict(row)),
         )
 

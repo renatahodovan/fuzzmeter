@@ -9,26 +9,13 @@
 
 from __future__ import annotations
 
-import json
-
 from typing import Any, Callable, Dict
 
-from ...db.fields import TRIAL_METADATA_FIELDS
 from ...db.resource_telemetry import TelemetrySample
 from ...db.snapshot import CoverageSummary, SnapshotRow
 from ...db.trials import TrialRow
 from ..keys import SNAPSHOT_COVERAGE_FIELDS
 from ..metrics import dt, pct, safe_int
-
-
-def _parse_json_text(value: Any) -> dict | None:
-    if not value:
-        return None
-    try:
-        parsed = json.loads(str(value))
-    except (TypeError, json.JSONDecodeError):
-        return None
-    return parsed if isinstance(parsed, dict) else None
 
 
 def snapshot_has_coverage(row: SnapshotRow) -> bool:
@@ -133,10 +120,9 @@ def collect_trials(
         }
         if coverage.get('coverage_sets_json_rel'):
             trial['coverage_sets_json_rel'] = coverage['coverage_sets_json_rel']
-        for key in TRIAL_METADATA_FIELDS:
-            trial[key] = getattr(row, key)
-        trial['build_config'] = _parse_json_text(row.build_config_json)
-        trial['runtime_config'] = _parse_json_text(row.runtime_config_json)
+        trial['fuzzer_image'] = row.fuzzer_image
+        trial['build_config'] = row.build_config
+        trial['runtime_config'] = row.runtime_config
         trials.append(trial)
     return trials
 
@@ -201,10 +187,9 @@ def collect_timeseries(
                 'unique_bugs_delta': int(unique_bug_delta_by_snapshot.get(row.snapshot_id, 0)),
             }
         )
-        stats = _parse_json_text(row.stats_json)
-        if stats:
-            point['stats'] = stats
-            execs_per_sec = _safe_float(stats.get('execs_per_sec'))
+        if row.stats:
+            point['stats'] = row.stats
+            execs_per_sec = _safe_float(row.stats.get('execs_per_sec'))
             if execs_per_sec is not None:
                 point['execs_per_sec'] = execs_per_sec
         for metric, (covered_key, total_key) in SNAPSHOT_COVERAGE_FIELDS.items():

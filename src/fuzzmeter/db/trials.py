@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .base import DB
+from .fields import json_object
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,8 @@ class TrialRow(TrialRecord):
     jobs: int | None
     started_ts: int
     ended_ts: int | None
+    build_config: dict[str, Any] | None
+    runtime_config: dict[str, Any] | None
 
     @classmethod
     def from_row(cls, row: Mapping[str, Any]) -> 'TrialRow':
@@ -57,6 +60,8 @@ class TrialRow(TrialRecord):
             jobs=None if row['jobs'] is None else int(row['jobs']),
             started_ts=int(row['started_ts']),
             ended_ts=None if row['ended_ts'] is None else int(row['ended_ts']),
+            build_config=json_object(row['build_config_json']),
+            runtime_config=json_object(row['runtime_config_json']),
         )
 
 

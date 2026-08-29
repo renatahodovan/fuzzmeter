@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from ...db.bug import BugRow
+from ...db.metadata import MetadataRecord
 from ...db.report_views import ReportingDB
 from ...db.resource_telemetry import TelemetrySample
 from ...db.snapshot import AggSnapshotRow, SnapshotRow
@@ -30,7 +31,7 @@ class RunDataSnapshot:
     latest_snapshots: dict[int, SnapshotRow]
     latest_agg_snapshots: dict[tuple[str, str, str], AggSnapshotRow]
     seed_baselines: dict[tuple[str, str, str], AggSnapshotRow]
-    metadata_rows: list[dict[str, Any]]
+    metadata_rows: list[MetadataRecord]
     snapshot_rows: list[SnapshotRow]
     resource_telemetry_rows: list[TelemetrySample]
     bug_hits_by_snapshot: dict[int, int]
