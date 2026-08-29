@@ -163,6 +163,7 @@ class DockerHelperTest(unittest.TestCase):
                 instrumentation_build_sources=instrumentation_sources,
                 docker_resources=resources_root,
                 entrypoint_resources=entrypoints_root,
+                memory_limit=None,
                 fuzzmeter_resources=runtime_root,
             )
 
@@ -213,6 +214,7 @@ class DockerHelperTest(unittest.TestCase):
                 instrumentation_build_sources=instrumentation_sources,
                 docker_resources=resources_root,
                 entrypoint_resources=entrypoints_root,
+                memory_limit=None,
                 fuzzmeter_resources=runtime_root,
             )
 
@@ -281,6 +283,7 @@ class DockerHelperTest(unittest.TestCase):
                 instrumentation_build_sources=instrumentation_sources,
                 docker_resources=resources_root,
                 entrypoint_resources=entrypoints_root,
+                memory_limit=None,
                 fuzzmeter_resources=runtime_root,
             )
 
@@ -353,7 +356,8 @@ class DockerHelperTest(unittest.TestCase):
                     instrumentation_build_sources=instrumentation_sources,
                     docker_resources=resources_root,
                     entrypoint_resources=entrypoints_root,
-                    fuzzmeter_resources=runtime_root,
+                    memory_limit=None,
+                fuzzmeter_resources=runtime_root,
                 )
 
         local_block = target_block(bake_hcl, 'fuzzer_builder_local')
@@ -412,7 +416,8 @@ class DockerHelperTest(unittest.TestCase):
                     instrumentation_build_sources=instrumentation_sources,
                     docker_resources=resources_root,
                     entrypoint_resources=entrypoints_root,
-                    fuzzmeter_resources=runtime_root,
+                    memory_limit=None,
+                fuzzmeter_resources=runtime_root,
                 )
 
         local_block = target_block(bake_hcl, 'fuzzer_builder_local')

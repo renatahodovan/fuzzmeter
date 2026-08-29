@@ -13,7 +13,6 @@ import logging
 import shutil
 import subprocess
 
-from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 
@@ -30,72 +29,9 @@ from .seeds import measure_seed_baselines, prepare_seed_corpora
 logger = logging.getLogger('fuzzmeter')
 
 
-@dataclass(frozen=True)
-class _FuzzerContexts:
-    build_by_fuzzer: dict[str, Path]
-    run_by_fuzzer: dict[str, Path]
-    instrumentation_build_by_profile: dict[str, Path]
-
-
 def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
     '''Build all docker images needed by a run.'''
-    fuzzer_contexts = _prepare_fuzzer_contexts(
-        campaign_config=campaign_config,
-        run_dir=run_dir,
-    )
-    with (
-        resources.as_file(docker_resources()) as docker_resources_path,
-        resources.as_file(entrypoint_resources()) as entrypoint_resources_path,
-    ):
-        fuzzmeter_resources_path = Path(__file__).resolve().parents[1]
-        local_repo_paths: dict[str, Path] = {}
-        for case in campaign_config.cases:
-            for fuzzer in case.fuzzer.dependencies:
-                if fuzzer.local_repo is None:
-                    continue
-                if not fuzzer.local_repo.is_dir():
-                    raise NotADirectoryError(
-                        f'Local fuzzer repository from {fuzzer.local_repo_env} '
-                        f'is not a directory: {fuzzer.local_repo}'
-                    )
-                local_repo_paths[fuzzer.name] = fuzzer.local_repo
-        bake_hcl = generate_run_bake_hcl(
-            campaign_cases=campaign_config.cases,
-            memory_limit=campaign_config.settings.memory,
-            fuzzer_build_sources=fuzzer_contexts.build_by_fuzzer,
-            fuzzer_run_sources=fuzzer_contexts.run_by_fuzzer,
-            instrumentation_build_sources=fuzzer_contexts.instrumentation_build_by_profile,
-            docker_resources=Path(docker_resources_path),
-            entrypoint_resources=Path(entrypoint_resources_path),
-            fuzzmeter_resources=fuzzmeter_resources_path,
-        )
-        bake_hcl_path = Path(run_dir) / 'bake.hcl'
-        bake_hcl_path.write_text(str(bake_hcl), encoding='utf-8')
-        info_enabled = logger.isEnabledFor(logging.INFO)
-        progress = 'auto' if info_enabled else 'plain'
-        allow_args = [
-            f'--allow=fs.read={Path(docker_resources_path).resolve()}',
-            f'--allow=fs.read={Path(entrypoint_resources_path).resolve()}',
-            f'--allow=fs.read={fuzzmeter_resources_path.resolve()}',
-            f'--allow=fs.read={(Path(run_dir) / "fuzzer_resources").resolve()}',
-            *[f'--allow=fs.read={path.resolve()}' for path in campaign_config.fuzzer_dirs.values()],
-            *[f'--allow=fs.read={path}' for path in local_repo_paths.values()],
-            *[f'--allow=fs.read={case.fuzz_target.benchmark.src_dir}' for case in campaign_config.cases],
-        ]
-
-        subprocess.run(
-            ['docker', 'buildx', 'bake', *allow_args, '--progress', progress, '-f', str(bake_hcl_path), 'fm'],
-            check=True,
-            cwd=Path(run_dir),
-        )
-
-
-def _prepare_fuzzer_contexts(
-    *,
-    campaign_config: CampaignConfig,
-    run_dir: Path,
-) -> _FuzzerContexts:
-    resources_root = Path(run_dir) / 'fuzzer_resources'
+    resources_root = run_dir / 'fuzzer_resources'
     build_root = resources_root / 'build'
     run_root = resources_root / 'run'
     instrumentation_root = resources_root / 'instrumentation'
@@ -103,18 +39,61 @@ def _prepare_fuzzer_contexts(
     for root in (build_root, run_root, instrumentation_root):
         root.mkdir(parents=True)
 
-    build_by_fuzzer: dict[str, Path] = {}
-    run_by_fuzzer: dict[str, Path] = {}
     fuzzers = {case.fuzzer.name: case.fuzzer for case in campaign_config.cases}
-    for fuzzer in fuzzers.values():
-        build_by_fuzzer[fuzzer.name] = _copy_fuzzer_context(fuzzer=fuzzer, root=build_root, phase='build')
-        run_by_fuzzer[fuzzer.name] = _copy_fuzzer_context(fuzzer=fuzzer, root=run_root, phase='run')
+    build_by_fuzzer = {
+        name: _copy_fuzzer_context(fuzzer=fuzzer, root=build_root, phase='build')
+        for name, fuzzer in fuzzers.items()
+    }
+    run_by_fuzzer = {
+        name: _copy_fuzzer_context(fuzzer=fuzzer, root=run_root, phase='run')
+        for name, fuzzer in fuzzers.items()
+    }
+    instrumentation_build_by_profile = _copy_internal_instrumentation_sources(out_root=instrumentation_root)
 
-    return _FuzzerContexts(
-        build_by_fuzzer=build_by_fuzzer,
-        run_by_fuzzer=run_by_fuzzer,
-        instrumentation_build_by_profile=_copy_internal_instrumentation_sources(out_root=instrumentation_root),
-    )
+    # as_file yields a real filesystem path for the packaged resources, extracting them to a
+    # temporary directory when fuzzmeter is not installed as plain files; docker buildx reads
+    # them while the context is open.
+    with (
+        resources.as_file(docker_resources()) as docker_resources_dir,
+        resources.as_file(entrypoint_resources()) as entrypoint_resources_dir,
+    ):
+        docker_resources_path = Path(docker_resources_dir).resolve()
+        entrypoint_resources_path = Path(entrypoint_resources_dir).resolve()
+        fuzzmeter_resources_path = Path(__file__).resolve().parents[1]
+        local_repo_paths = {
+            fuzzer.name: fuzzer.local_repo
+            for case in campaign_config.cases
+            for fuzzer in case.fuzzer.dependencies
+            if fuzzer.local_repo is not None
+        }
+        bake_hcl = generate_run_bake_hcl(
+            campaign_cases=campaign_config.cases,
+            fuzzer_build_sources=build_by_fuzzer,
+            fuzzer_run_sources=run_by_fuzzer,
+            instrumentation_build_sources=instrumentation_build_by_profile,
+            docker_resources=docker_resources_path,
+            entrypoint_resources=entrypoint_resources_path,
+            fuzzmeter_resources=fuzzmeter_resources_path,
+            memory_limit=campaign_config.settings.memory,
+        )
+        bake_hcl_path = run_dir / 'bake.hcl'
+        bake_hcl_path.write_text(bake_hcl, encoding='utf-8')
+        allow_args = [
+            f'--allow=fs.read={docker_resources_path}',
+            f'--allow=fs.read={entrypoint_resources_path}',
+            f'--allow=fs.read={fuzzmeter_resources_path}',
+            f'--allow=fs.read={run_dir / "fuzzer_resources"}',
+            *[f'--allow=fs.read={path}' for path in campaign_config.fuzzer_dirs.values()],
+            *[f'--allow=fs.read={path}' for path in local_repo_paths.values()],
+            *[f'--allow=fs.read={case.fuzz_target.benchmark.src_dir}' for case in campaign_config.cases],
+        ]
+
+        progress = 'auto' if logger.isEnabledFor(logging.INFO) else 'plain'
+        subprocess.run(
+            ['docker', 'buildx', 'bake', *allow_args, '--progress', progress, '-f', str(bake_hcl_path), 'fm'],
+            check=True,
+            cwd=Path(run_dir),
+        )
 
 
 def _copy_fuzzer_context(

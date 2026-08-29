@@ -35,13 +35,6 @@ def _escape(value: str | Path) -> str:
     return str(value).replace('\\', '\\\\').replace('"', '\\"')
 
 
-def _context_path(contexts: Mapping[str, Path], key: str, label: str) -> str:
-    try:
-        return _escape(contexts[key].resolve())
-    except KeyError as exc:
-        raise ValueError(f'Missing {label} context for {key}') from exc
-
-
 def _hcl_block(name: str, lines: list[str]) -> str:
     body = '\n'.join(f'  {line}' if line else '' for line in lines)
     return f'target "{name}" {{\n{body}\n}}'
@@ -116,13 +109,13 @@ def generate_run_bake_hcl(
     docker_resources: Path,
     entrypoint_resources: Path,
     fuzzmeter_resources: Path,
-    memory_limit: str | None = None,
+    memory_limit: str | None,
 ) -> str:
     benchmarks = {case.fuzz_target.benchmark.name: case.fuzz_target.benchmark for case in campaign_cases}
 
-    docker_resources_arg = _escape(docker_resources.resolve())
-    entrypoint_resources_arg = _escape(entrypoint_resources.resolve())
-    fuzzmeter_resources_arg = _escape(fuzzmeter_resources.resolve())
+    docker_resources_arg = _escape(docker_resources)
+    entrypoint_resources_arg = _escape(entrypoint_resources)
+    fuzzmeter_resources_arg = _escape(fuzzmeter_resources)
     campaign_dockerfile = f'{docker_resources_arg}/campaign.Dockerfile'
     extra_base_contexts = {
         'build_base': [('entrypoints', entrypoint_resources_arg), ('fuzzmeter_resources', fuzzmeter_resources_arg)],
@@ -168,10 +161,10 @@ def generate_run_bake_hcl(
         ))
 
     for profile, _ in INSTRUMENTATION_PROFILES:
-        sources = _context_path(instrumentation_build_sources, profile, 'instrumentation build')
+        sources = _escape(instrumentation_build_sources[profile])
         hcl_parts.append(_image_block(
             f'instrumentation_builder_{profile}',
-            context=f'{sources}/{profile}',
+            context=_escape(f'{sources}/{profile}'),
             dockerfile='Dockerfile',
             parent='clang_base',
         ))
@@ -193,7 +186,6 @@ def generate_run_bake_hcl(
             parent='benchmark_base',
         ))
 
-    group_targets: list[str] = []
 
     campaign_memory_limit = memory_limit or ENTRY_BUILDER_MEMORY_LIMIT
 
@@ -214,10 +206,12 @@ def generate_run_bake_hcl(
             *args,
             f'depends_on = {_hcl_str_list(depends_on)}',
         ])
+
+    group_targets: list[str] = []
     for case in campaign_cases:
-        fuzzer, target = case.fuzzer, case.fuzz_target.ident
+        fuzzer, fuzz_target_id = case.fuzzer, case.fuzz_target.ident
         runner_base = _runner_target([fuzzer, *fuzzer.parents])
-        runner_name = f'runner_{fuzzer.id}_{target}'
+        runner_name = f'runner_{fuzzer.id}_{fuzz_target_id}'
         runner_depends = [
             f'fuzzer_builder_{fuzzer.name}',
             f'benchmark_{case.fuzz_target.benchmark.name}',
@@ -236,8 +230,8 @@ def generate_run_bake_hcl(
                 '  build_base = "target:build_base"',
                 '  runtime_base = "target:runtime_base"',
                 f'  runner_base = "target:{runner_base}"',
-                f'  fuzzer_build_sources = "{_context_path(fuzzer_build_sources, fuzzer.name, "fuzzer build")}"',
-                f'  fuzzer_run_sources = "{_context_path(fuzzer_run_sources, fuzzer.name, "fuzzer run")}"',
+                f'  fuzzer_build_sources = "{fuzzer_build_sources[fuzzer.name]}"',
+                f'  fuzzer_run_sources = "{fuzzer_run_sources[fuzzer.name]}"',
             ],
             args=_entry_args(
                 fuzzer=fuzzer.name,
@@ -254,9 +248,9 @@ def generate_run_bake_hcl(
 
     target_cases = {case.fuzz_target.ident: case for case in campaign_cases}
     for internal_fuzzer, stage_name in INSTRUMENTATION_PROFILES:
-        sources = _context_path(instrumentation_build_sources, internal_fuzzer, 'instrumentation build')
-        for target, case in target_cases.items():
-            final_name = f'{stage_name}_{target}'
+        sources = _escape(instrumentation_build_sources[internal_fuzzer])
+        for fuzz_target_id, case in target_cases.items():
+            final_name = f'{stage_name}_{fuzz_target_id}'
             hcl_parts.append(campaign_block(
                 final_name,
                 stage=stage_name,
