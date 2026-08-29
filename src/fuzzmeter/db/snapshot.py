@@ -26,31 +26,15 @@ SEED_BASELINE_IDX = 0
 class CoverageSummary:
     '''Describe coverage fields stored on snapshot and aggregate rows.'''
 
-    coverage_html_dir: str | None
-    cov_lines_covered: int | None
-    cov_lines_total: int | None
-    cov_branches_covered: int | None
-    cov_branches_total: int | None
-    cov_regions_covered: int | None
-    cov_regions_total: int | None
-    cov_functions_covered: int | None
-    cov_functions_total: int | None
-
-    @classmethod
-    def empty(cls) -> 'CoverageSummary':
-        '''Create the coverage fields of a row that carries no coverage yet.'''
-
-        return cls(
-            coverage_html_dir=None,
-            cov_lines_covered=None,
-            cov_lines_total=None,
-            cov_branches_covered=None,
-            cov_branches_total=None,
-            cov_regions_covered=None,
-            cov_regions_total=None,
-            cov_functions_covered=None,
-            cov_functions_total=None,
-        )
+    coverage_html_dir: str | None = None
+    cov_lines_covered: int | None = None
+    cov_lines_total: int | None = None
+    cov_branches_covered: int | None = None
+    cov_branches_total: int | None = None
+    cov_regions_covered: int | None = None
+    cov_regions_total: int | None = None
+    cov_functions_covered: int | None = None
+    cov_functions_total: int | None = None
 
     @classmethod
     def from_mapping(cls, *, coverage_html_dir: str | None, summary: dict[str, Any]) -> 'CoverageSummary':

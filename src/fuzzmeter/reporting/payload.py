@@ -209,7 +209,7 @@ class _PayloadBuilder:
 
     def _aggregated_coverage_for_fuzzer(self, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, int | None]:
         agg_snapshot = self._agg_snapshot_for_fuzzer(fuzzer, benchmark, fuzz_target)
-        measured = CoverageSummary.empty() if agg_snapshot is None else agg_snapshot.coverage
+        measured = CoverageSummary() if agg_snapshot is None else agg_snapshot.coverage
         return {
             f'{metric}_covered': getattr(measured, f'cov_{metric}_covered')
             for metric in COV_METRICS

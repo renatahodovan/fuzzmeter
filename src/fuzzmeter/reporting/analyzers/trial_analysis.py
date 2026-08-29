@@ -43,7 +43,7 @@ def snapshot_has_coverage(row: SnapshotRow) -> bool:
 def coverage_summary_from_snapshot(latest: SnapshotRow | None) -> dict[str, Any]:
     '''Build a coverage summary from the snapshot that represents a trial, if it has one.'''
 
-    measured = CoverageSummary.empty() if latest is None else latest.coverage
+    measured = CoverageSummary() if latest is None else latest.coverage
     coverage: dict[str, Any] = {}
     for metric, (covered_key, total_key) in SNAPSHOT_COVERAGE_FIELDS.items():
         covered = getattr(measured, covered_key)
