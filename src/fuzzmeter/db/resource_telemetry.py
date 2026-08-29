@@ -60,10 +60,10 @@ def upsert_resource_telemetry(db: DB, sample: TelemetrySample) -> None:
         VALUES(?,?,?,?,?,?,?,?,?)
         ''',
         (
-            int(sample.trial_id),
-            int(sample.idx),
-            int(sample.ts),
-            str(sample.container_name),
+            sample.trial_id,
+            sample.idx,
+            sample.ts,
+            sample.container_name,
             sample.cpu_percent,
             sample.memory_usage_bytes,
             sample.memory_limit_bytes,

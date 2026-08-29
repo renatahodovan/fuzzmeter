@@ -95,7 +95,7 @@ def get_bug_id(
           FROM bugs
          WHERE run_id=? AND fuzzer=? AND benchmark=? AND fuzz_target=? AND bug_key=?
         ''',
-        (str(run_id), str(fuzzer), str(benchmark), str(fuzz_target), str(bug_key)),
+        (run_id, fuzzer, benchmark, fuzz_target, bug_key),
     )
     return int(row['bug_id']) if row else None
 
@@ -112,17 +112,17 @@ def ensure_bug(db: DB, record: BugRecord) -> int:
         ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
         ''',
         (
-            str(record.run_id),
-            str(record.fuzzer),
-            str(record.benchmark),
-            str(record.fuzz_target),
-            str(record.bug_key),
+            record.run_id,
+            record.fuzzer,
+            record.benchmark,
+            record.fuzz_target,
+            record.bug_key,
             record.issue_type,
             record.top_func,
             json.dumps(record.frames[:8]),
             record.output,
-            int(record.first_seen_ts),
-            int(record.first_seen_snapshot_id),
+            record.first_seen_ts,
+            record.first_seen_snapshot_id,
         ),
     )
     bid = get_bug_id(
@@ -135,7 +135,7 @@ def ensure_bug(db: DB, record: BugRecord) -> int:
     )
     if bid is None:
         raise RuntimeError('Failed to ensure bug row')
-    return int(bid)
+    return bid
 
 
 def upsert_bug_hits(db: DB, *, bug_id: int, snapshot_id: int, hits: int) -> None:
@@ -143,5 +143,5 @@ def upsert_bug_hits(db: DB, *, bug_id: int, snapshot_id: int, hits: int) -> None
 
     db.exec(
         'INSERT OR REPLACE INTO bug_hits(bug_id, snapshot_id, hits) VALUES(?,?,?)',
-        (int(bug_id), int(snapshot_id), int(hits)),
+        (bug_id, snapshot_id, hits),
     )

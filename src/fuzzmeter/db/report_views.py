@@ -172,7 +172,7 @@ class ReportingDB:
             ) AS m
               ON m.trial_id = s.trial_id AND m.max_idx = s.idx
             ''',
-            tuple(int(tid) for tid in trial_ids),
+            tuple(tid for tid in trial_ids),
         )
         return {int(row['trial_id']): SnapshotRow.from_row(row) for row in rows}
 

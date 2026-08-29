@@ -52,7 +52,7 @@ class TrialRow(TrialRecord):
             fuzz_target=str(row['fuzz_target']),
             rep=int(row['rep']),
             time_seconds=int(row['time_seconds']),
-            status=str(row['status']),
+            status=str(row['status'] or ''),
             fuzzer_image=str(row['fuzzer_image'] or ''),
             build_config_json=row['build_config_json'],
             runtime_config_json=row['runtime_config_json'],
@@ -76,39 +76,39 @@ def ensure_trial_row(db: DB, *, run_id: str, record: TrialRecord, started_ts: in
         VALUES(?,?,?,?,?,?,?,?,?,?,?)
         ''',
         (
-            str(run_id),
-            str(record.fuzzer),
-            str(record.benchmark),
-            str(record.fuzz_target),
-            int(record.rep),
-            int(record.time_seconds),
-            str(record.status),
-            str(record.fuzzer_image),
+            run_id,
+            record.fuzzer,
+            record.benchmark,
+            record.fuzz_target,
+            record.rep,
+            record.time_seconds,
+            record.status,
+            record.fuzzer_image,
             record.build_config_json,
             record.runtime_config_json,
-            int(started_ts),
+            started_ts,
         ),
     )
     tid = db.scalar(
         'SELECT trial_id FROM trials WHERE run_id=? AND fuzzer=? AND benchmark=? AND fuzz_target=? AND rep=?',
         (
-            str(run_id),
-            str(record.fuzzer),
-            str(record.benchmark),
-            str(record.fuzz_target),
-            int(record.rep),
+            run_id,
+            record.fuzzer,
+            record.benchmark,
+            record.fuzz_target,
+            record.rep,
         ),
     )
     if tid is None:
         raise RuntimeError('Failed to create trial row')
     # An existing row is reused on a repeated run, so refresh the start of the new attempt.
-    db.exec('UPDATE trials SET started_ts=? WHERE trial_id=?', (int(started_ts), int(tid)))
+    db.exec('UPDATE trials SET started_ts=? WHERE trial_id=?', (started_ts, int(tid)))
     return int(tid)
 
 
 def set_trial_status(db: DB, *, trial_id: int, status: str, ended_ts: int | None = None) -> None:
     '''Update the status and optional end timestamp of one trial.'''
     if ended_ts is None:
-        db.exec('UPDATE trials SET status=? WHERE trial_id=?', (str(status), int(trial_id)))
+        db.exec('UPDATE trials SET status=? WHERE trial_id=?', (status, trial_id))
     else:
-        db.exec('UPDATE trials SET status=?, ended_ts=? WHERE trial_id=?', (str(status), int(ended_ts), int(trial_id)))
+        db.exec('UPDATE trials SET status=?, ended_ts=? WHERE trial_id=?', (status, ended_ts, trial_id))

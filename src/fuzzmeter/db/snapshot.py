@@ -169,7 +169,7 @@ def insert_tick(db: DB, *, run_id: str, idx: int, ts: int) -> None:
 
     db.exec(
         'INSERT OR IGNORE INTO snapshot_ticks(run_id, idx, ts) VALUES(?,?,?)',
-        (str(run_id), int(idx), int(ts)),
+        (run_id, idx, ts),
     )
 
 
@@ -178,7 +178,7 @@ def mark_tick_completed(db: DB, *, run_id: str, idx: int) -> None:
 
     db.exec(
         "UPDATE snapshot_ticks SET status='completed', error=NULL WHERE run_id=? AND idx=?",
-        (str(run_id), int(idx)),
+        (run_id, idx),
     )
 
 
@@ -187,7 +187,7 @@ def mark_tick_failed(db: DB, *, run_id: str, idx: int, error: str) -> None:
 
     db.exec(
         "UPDATE snapshot_ticks SET status='failed', error=? WHERE run_id=? AND idx=?",
-        (str(error), str(run_id), int(idx)),
+        (error, run_id, idx),
     )
 
 
@@ -202,14 +202,14 @@ def mark_tick_aborted(db: DB, *, run_id: str, idx: int, error: str) -> None:
 
     db.exec(
         "UPDATE snapshot_ticks SET status='aborted', error=? WHERE run_id=? AND idx=?",
-        (str(error), str(run_id), int(idx)),
+        (error, run_id, idx),
     )
 
 
 def get_latest_tick_idx(db: DB, *, run_id: str) -> int:
     '''Return the latest recorded snapshot tick index for a run.'''
 
-    return int(db.scalar('SELECT COALESCE(MAX(idx), 0) FROM snapshot_ticks WHERE run_id=?', (str(run_id),)) or 0)
+    return int(db.scalar('SELECT COALESCE(MAX(idx), 0) FROM snapshot_ticks WHERE run_id=?', (run_id,)) or 0)
 
 
 def get_next_tick_idx(db: DB, *, run_id: str) -> int:
@@ -227,7 +227,7 @@ def list_ticks(db: DB, *, run_id: str) -> list[dict[str, Any]]:
          WHERE run_id=?
          ORDER BY idx
         ''',
-        (str(run_id),),
+        (run_id,),
     )
 
 
@@ -240,7 +240,7 @@ def list_trial_snapshots(db: DB, *, trial_row_id: int) -> list[dict[str, Any]]:
          WHERE trial_id=?
          ORDER BY idx
         ''',
-        (int(trial_row_id),),
+        (trial_row_id,),
     )
 
 
@@ -256,11 +256,11 @@ def save_snapshot_data(db: DB, record: SnapshotRecord) -> int:
         VALUES(?,?,?,?,?,?,?,?)
         ''',
         (
-            int(record.trial_db_id),
-            int(record.tick_idx),
-            int(record.end_ts),
-            int(record.corpus_files),
-            None if record.execs_done is None else int(record.execs_done),
+            record.trial_db_id,
+            record.tick_idx,
+            record.end_ts,
+            record.corpus_files,
+            record.execs_done,
             stats_json,
             record.crashes,
             record.hangs,
@@ -268,7 +268,7 @@ def save_snapshot_data(db: DB, record: SnapshotRecord) -> int:
     )
     sid = db.scalar(
         'SELECT snapshot_id FROM snapshots WHERE trial_id=? AND idx=?',
-        (int(record.trial_db_id), int(record.tick_idx)),
+        (record.trial_db_id, record.tick_idx),
     )
     snapshot_id = int(sid or 0)
     if record.coverage is not None and snapshot_id > 0:
@@ -287,7 +287,7 @@ def latest_trial_snapshot(db: DB, *, trial_row_id: int) -> dict[str, Any] | None
          ORDER BY idx DESC
          LIMIT 1
         ''',
-        (int(trial_row_id),),
+        (trial_row_id,),
     )
     return rows[0] if rows else None
 
@@ -320,7 +320,7 @@ def copy_previous_coverage_fields(db: DB, *, trial_row_id: int, snapshot_id: int
          ORDER BY idx DESC
          LIMIT 1
         ''',
-        (int(trial_row_id), int(snapshot_id)),
+        (trial_row_id, snapshot_id),
     )
     if not previous:
         return
@@ -366,7 +366,7 @@ def copy_seed_baseline_coverage_fields(
            AND idx=?
          LIMIT 1
         ''',
-        (str(run_id), str(fuzzer), str(benchmark), str(fuzz_target), SEED_BASELINE_IDX),
+        (run_id, fuzzer, benchmark, fuzz_target, SEED_BASELINE_IDX),
     )
     if not baseline:
         return False
@@ -451,7 +451,7 @@ def _update_snapshot_coverage(
     columns = ', '.join(f'{column}=?' for column in assignments)
     db.exec(
         f'UPDATE snapshots SET {columns} WHERE snapshot_id=?',
-        (*assignments.values(), int(snapshot_id)),
+        (*assignments.values(), snapshot_id),
     )
 
 
@@ -472,7 +472,7 @@ def upsert_agg_snapshot(
         INSERT OR IGNORE INTO agg_snapshots(run_id, fuzzer, benchmark, fuzz_target, idx, ts)
         VALUES(?,?,?,?,?,?)
         ''',
-        (str(run_id), str(fuzzer), str(benchmark), str(fuzz_target), int(idx), int(ts)),
+        (run_id, fuzzer, benchmark, fuzz_target, idx, ts),
     )
     db.exec(
         '''
@@ -480,7 +480,7 @@ def upsert_agg_snapshot(
            SET ts=?
          WHERE run_id=? AND fuzzer=? AND benchmark=? AND fuzz_target=? AND idx=?
         ''',
-        (int(ts), str(run_id), str(fuzzer), str(benchmark), str(fuzz_target), int(idx)),
+        (ts, run_id, fuzzer, benchmark, fuzz_target, idx),
     )
     sid = db.scalar(
         '''
@@ -488,7 +488,7 @@ def upsert_agg_snapshot(
           FROM agg_snapshots
          WHERE run_id=? AND fuzzer=? AND benchmark=? AND fuzz_target=? AND idx=?
         ''',
-        (str(run_id), str(fuzzer), str(benchmark), str(fuzz_target), int(idx)),
+        (run_id, fuzzer, benchmark, fuzz_target, idx),
     )
     return int(sid or 0)
 
@@ -523,7 +523,7 @@ def update_agg_snapshot_coverage(
             *coverage.values(),
             coverage_sets_json_rel,
             _provenance_json(measurement_provenance),
-            int(agg_snapshot_id),
+            agg_snapshot_id,
         ),
     )
 

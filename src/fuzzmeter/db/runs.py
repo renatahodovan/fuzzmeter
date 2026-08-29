@@ -24,5 +24,5 @@ def upsert_run(
 
     db.exec(
         'INSERT OR REPLACE INTO runs(run_id, created_ts, config_src, label) VALUES(?,?,?,?)',
-        (str(run_id), int(created_ts), str(config_src), label),
+        (run_id, created_ts, config_src, label),
     )
