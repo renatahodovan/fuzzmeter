@@ -77,7 +77,7 @@ class CompositeMeasurementKey:
 
 
 @dataclass(frozen=True)
-class MetadataTriplet:
+class MeasurementMetadata:
     '''Hold comparable environment, config, and user source metadata.'''
 
     environment: dict[str, Any] = field(default_factory=dict)
@@ -102,7 +102,7 @@ class MetadataTriplet:
         }
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> 'MetadataTriplet':
+    def from_json(cls, data: dict[str, Any]) -> 'MeasurementMetadata':
         '''Build metadata from a JSON object.'''
         digests = data.get('digests') if isinstance(data.get('digests'), dict) else {}
         return cls(
@@ -122,7 +122,7 @@ class CompositeMeasurement:
     key: CompositeMeasurementKey
     source_path: Path
     db_path: Path
-    metadata: MetadataTriplet
+    metadata: MeasurementMetadata
     runtime_seconds: int = 0
     repetitions: int = 0
     created_at: int | None = None

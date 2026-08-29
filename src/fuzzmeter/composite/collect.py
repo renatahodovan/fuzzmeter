@@ -22,7 +22,7 @@ from ..config import CampaignCase, CampaignConfig
 from ..db import metadata as db_metadata
 from ..db.base import open_db
 from .canonical import canonical_digest
-from .models import MetadataTriplet
+from .models import MeasurementMetadata
 from .source_hook import run_source_hook, source_hook_context
 
 
@@ -76,22 +76,22 @@ def collect_environment() -> dict[str, object]:
     }
 
 
-def collect_config(case: CampaignCase) -> dict[str, object]:
-    '''Return the case configuration fields used in composite comparisons.'''
-    return {
+def metadata_for_case(
+    *,
+    case: CampaignCase,
+    environment: dict[str, object],
+) -> MeasurementMetadata:
+    '''Build comparable metadata for one campaign case.'''
+    config = {
         'benchmark': case.fuzz_target.benchmark.name,
         'fuzz_target': case.fuzz_target.fuzz_target,
         'input_mode': case.fuzz_target.input_mode,
         'timeout': case.fuzz_target.target_timeout_s,
     }
 
-
-def collect_source(case: CampaignCase) -> dict[str, object]:
-    '''Collect user-defined benchmark and fuzzer source metadata hook results.'''
     benchmark_hook = case.fuzz_target.benchmark.src_dir / 'source_info.py'
     fuzzer_hook = case.fuzzer.src_dir / 'source_info.py'
-
-    return {
+    source = {
         'benchmark_source': run_source_hook(
             benchmark_hook,
             source_hook_context(case),
@@ -104,16 +104,7 @@ def collect_source(case: CampaignCase) -> dict[str, object]:
         ).to_json(),
     }
 
-
-def metadata_for_case(
-    *,
-    case: CampaignCase,
-    environment: dict[str, object],
-) -> MetadataTriplet:
-    '''Build comparable metadata for one campaign case.'''
-    config = collect_config(case)
-    source = collect_source(case)
-    return MetadataTriplet(
+    return MeasurementMetadata(
         environment=environment,
         config=config,
         source=source,

@@ -11,13 +11,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from .models import COMPATIBLE, INCOMPATIBLE, RISKY, CompatibilityIssue, CompatibilityResult, MetadataTriplet
+from .models import COMPATIBLE, INCOMPATIBLE, RISKY, CompatibilityIssue, CompatibilityResult, MeasurementMetadata
 
 TARGET_CONFIG_KEYS = {'benchmark', 'fuzz_target', 'input_mode', 'timeout'}
 BENCHMARK_SOURCE_SCOPE = 'benchmark_source'
 
 
-def compare_metadata(reference: MetadataTriplet, candidate: MetadataTriplet) -> CompatibilityResult:
+def compare_metadata(reference: MeasurementMetadata, candidate: MeasurementMetadata) -> CompatibilityResult:
     '''Compare two metadata triplets and return user-facing risk signals.'''
     issues: list[CompatibilityIssue] = []
     config_diff = diff_config(reference.config, candidate.config)
@@ -81,7 +81,7 @@ def compare_metadata(reference: MetadataTriplet, candidate: MetadataTriplet) -> 
     )
 
 
-def diff_environment(reference: MetadataTriplet, candidate: MetadataTriplet) -> dict[str, Any]:
+def diff_environment(reference: MeasurementMetadata, candidate: MeasurementMetadata) -> dict[str, Any]:
     '''Return a field-level environment diff.'''
     if (
         reference.environment_digest

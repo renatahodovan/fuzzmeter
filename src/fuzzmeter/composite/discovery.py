@@ -22,7 +22,7 @@ from .models import (
     CompositeMeasurement,
     CompositeMeasurementKey,
     CompositeSource,
-    MetadataTriplet,
+    MeasurementMetadata,
 )
 
 LOG = logging.getLogger(__name__)
@@ -97,9 +97,9 @@ def read_measurements(db_path: Path, source_id: str) -> list[CompositeMeasuremen
 
 
 def _record_to_measurement(record: db_metadata.MetadataRecord, db_path: Path, source_id: str) -> CompositeMeasurement:
-    metadata = MetadataTriplet.from_json(record.metadata)
+    metadata = MeasurementMetadata.from_json(record.metadata)
     if not metadata.environment_digest:
-        metadata = MetadataTriplet(
+        metadata = MeasurementMetadata(
             environment=metadata.environment,
             config=metadata.config,
             source=metadata.source,

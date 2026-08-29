@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fuzzmeter.composite import CompositeMeasurement, CompositeMeasurementKey, MetadataTriplet
+from fuzzmeter.composite import CompositeMeasurement, CompositeMeasurementKey, MeasurementMetadata
 
 
 def make_measurement(**overrides: Any) -> CompositeMeasurement:
@@ -18,7 +18,7 @@ def make_measurement(**overrides: Any) -> CompositeMeasurement:
     source_path = overrides.pop('source_path', Path('/runs') / source_id)
     metadata = overrides.pop('metadata', None)
     if metadata is None:
-        metadata = MetadataTriplet(
+        metadata = MeasurementMetadata(
             environment=overrides.pop('environment', {}),
             config=overrides.pop(
                 'config',

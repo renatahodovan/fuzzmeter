@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fuzzmeter.composite import canonical_digest
-from fuzzmeter.composite.collect import collect_config, collect_environment, metadata_for_case
+from fuzzmeter.composite.collect import collect_environment, metadata_for_case
 from fuzzmeter.config import Benchmark, CampaignCase
 from fuzzmeter.config.models import Fuzzer, FuzzTarget
 
@@ -34,7 +34,7 @@ class CompositeCollectorTest(unittest.TestCase):
                 'input_mode': 'file',
                 'timeout': 2.0,
             },
-            collect_config(case),
+            metadata_for_case(case=case, environment={}).config,
         )
 
     def test_metadata_without_hooks_has_stable_digests_and_missing_source(self) -> None:

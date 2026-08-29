@@ -28,7 +28,7 @@ from .models import (
     CompositeSource,
     CompositeView,
     CompositeViewExpired,
-    MetadataTriplet,
+    MeasurementMetadata,
 )
 from .registry import CompositeRegistry, CompositeViewStore, selection_from_key
 
@@ -50,7 +50,7 @@ __all__ = [
     'CompositeView',
     'CompositeViewExpired',
     'CompositeViewStore',
-    'MetadataTriplet',
+    'MeasurementMetadata',
     'canonical_digest',
     'canonical_json',
     'canonical_value',

@@ -19,7 +19,7 @@ from fuzzmeter.composite import (
     INCOMPATIBLE,
     RISKY,
     CompositeMeasurement,
-    MetadataTriplet,
+    MeasurementMetadata,
     compare_metadata,
 )
 from fuzzmeter.composite.registry import selection_from_key
@@ -211,8 +211,8 @@ def _metadata(
     environment: dict | None = None,
     config: dict | None = None,
     source: dict | None = None,
-) -> MetadataTriplet:
-    return MetadataTriplet(
+) -> MeasurementMetadata:
+    return MeasurementMetadata(
         environment=environment or {'host': {'kernel': '6.8'}},
         config=config or {'benchmark': 'zlib', 'fuzz_target': 'compress', 'input_mode': 'file', 'timeout': 1.0},
         source=source
