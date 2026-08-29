@@ -86,9 +86,6 @@ def prepare_snapshot_inputs(
     jobs: int | None = None,
 ) -> list[Path]:
     '''Copy snapshot inputs and optionally run the snapshot preprocess hook on them.'''
-    if not input_files:
-        return []
-
     copied = _copy_snapshot_inputs(input_dir=input_dir, input_files=input_files)
     if snapshot_preprocess is None:
         return copied

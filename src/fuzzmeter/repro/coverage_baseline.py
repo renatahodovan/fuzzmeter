@@ -68,6 +68,8 @@ def measure_seed_baseline(
         )
         for src in sorted(path for path in job.seed_root.rglob('*') if path.is_file())
     ]
+    if not seed_input_files:
+        return
 
     prepare_snapshot_inputs(
         docker_runtime=docker_runtime,
