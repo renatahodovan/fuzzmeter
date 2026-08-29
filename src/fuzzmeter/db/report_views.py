@@ -17,8 +17,18 @@ from typing import Any, Sequence
 from .base import open_readonly_connection
 from .bug import BugRow
 from .fields import TRIAL_METADATA_FIELDS
-from .snapshot import SEED_BASELINE_IDX
+from .snapshot import SEED_BASELINE_IDX, SnapshotRow
 from .trials import TrialRow
+
+SNAPSHOT_SELECT = '''
+    s.snapshot_id, s.trial_id, s.idx, s.ts, s.corpus_files, s.execs_done, s.stats_json,
+    s.crashes, s.hangs,
+    s.cov_lines_covered, s.cov_lines_total,
+    s.cov_branches_covered, s.cov_branches_total,
+    s.cov_functions_covered, s.cov_functions_total,
+    s.cov_regions_covered, s.cov_regions_total,
+    s.coverage_html_dir, s.coverage_sets_json_rel
+'''
 
 
 class ReportingDB:
@@ -133,7 +143,7 @@ class ReportingDB:
             )
         ]
 
-    def latest_snapshots_by_trial(self, trial_ids: Sequence[int]) -> dict[int, dict[str, Any]]:
+    def latest_snapshots_by_trial(self, trial_ids: Sequence[int]) -> dict[int, SnapshotRow]:
         '''Return the newest snapshot row for each requested trial.'''
 
         if not trial_ids:
@@ -141,7 +151,7 @@ class ReportingDB:
         placeholders = ','.join('?' for _ in trial_ids)
         rows = self.rows(
             f'''
-            SELECT s.*
+            SELECT {SNAPSHOT_SELECT}
             FROM snapshots AS s
             JOIN (
                 SELECT trial_id, MAX(idx) AS max_idx
@@ -153,29 +163,26 @@ class ReportingDB:
             ''',
             tuple(int(tid) for tid in trial_ids),
         )
-        return {int(row['trial_id']): row for row in rows}
+        return {int(row['trial_id']): SnapshotRow.from_row(row) for row in rows}
 
-    def snapshot_rows(self, trial_ids: Sequence[int]) -> list[dict[str, Any]]:
+    def snapshot_rows(self, trial_ids: Sequence[int]) -> list[SnapshotRow]:
         '''Return all snapshot rows for the requested trials.'''
 
         if not trial_ids:
             return []
         placeholders = ','.join('?' for _ in trial_ids)
-        return self.rows(
-            f'''
-            SELECT snapshot_id, trial_id, idx, ts, corpus_files, execs_done, stats_json,
-                   crashes, hangs,
-                   cov_lines_covered, cov_lines_total,
-                   cov_branches_covered, cov_branches_total,
-                   cov_functions_covered, cov_functions_total,
-                   cov_regions_covered, cov_regions_total,
-                   coverage_html_dir, coverage_sets_json_rel
-            FROM snapshots
-            WHERE trial_id IN ({placeholders})
-            ORDER BY trial_id, idx
-            ''',
-            tuple(int(tid) for tid in trial_ids),
-        )
+        return [
+            SnapshotRow.from_row(row)
+            for row in self.rows(
+                f'''
+                SELECT {SNAPSHOT_SELECT}
+                FROM snapshots AS s
+                WHERE trial_id IN ({placeholders})
+                ORDER BY trial_id, idx
+                ''',
+                tuple(int(tid) for tid in trial_ids),
+            )
+        ]
 
     def resource_telemetry_rows(self, trial_ids: Sequence[int]) -> list[dict[str, Any]]:
         '''Return resource telemetry rows for report time series.'''

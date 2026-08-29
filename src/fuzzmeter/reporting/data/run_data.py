@@ -15,6 +15,7 @@ from typing import Any
 
 from ...db.bug import BugRow
 from ...db.report_views import ReportingDB
+from ...db.snapshot import SnapshotRow
 from ...db.trials import TrialRow
 
 
@@ -25,11 +26,11 @@ class RunDataSnapshot:
     run_id: str
     overview_raw: dict[str, Any]
     trial_rows: list[TrialRow]
-    latest_snapshots: dict[int, dict[str, Any]]
+    latest_snapshots: dict[int, SnapshotRow]
     latest_agg_snapshots: dict[tuple[str, str, str], dict[str, Any]]
     seed_baselines: dict[tuple[str, str, str], dict[str, Any]]
     metadata_rows: list[dict[str, Any]]
-    snapshot_rows: list[dict[str, Any]]
+    snapshot_rows: list[SnapshotRow]
     resource_telemetry_rows: list[dict[str, Any]]
     bug_hits_by_snapshot: dict[int, int]
     unique_bug_delta_by_snapshot: dict[int, int]

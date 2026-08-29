@@ -8,6 +8,7 @@ from typing import Any
 from fuzzmeter.db import DB, ensure_schema, open_db
 from fuzzmeter.db import metadata as db_metadata
 from fuzzmeter.db import runs as db_runs
+from fuzzmeter.db.snapshot import SnapshotRow
 from fuzzmeter.db.trials import TrialRow
 from fuzzmeter.reporting.data.run_data import RunDataSnapshot
 
@@ -300,5 +301,20 @@ def run_data_snapshot(**overrides: Any) -> RunDataSnapshot:
         'bugs': [],
         'bug_hits_by_bug': {},
         'bug_trials_by_bug': {},
+        **overrides,
+    })
+
+
+def snapshot_row(**overrides: Any) -> SnapshotRow:
+    '''Build a stored snapshot row with the columns a test cares about.'''
+
+    return SnapshotRow.from_row({
+        'snapshot_id': 1, 'trial_id': 1, 'idx': 1, 'ts': 0, 'corpus_files': 0,
+        'execs_done': None, 'crashes': 0, 'hangs': 0, 'stats_json': None,
+        'coverage_html_dir': None, 'coverage_sets_json_rel': None,
+        'cov_lines_covered': None, 'cov_lines_total': None,
+        'cov_branches_covered': None, 'cov_branches_total': None,
+        'cov_regions_covered': None, 'cov_regions_total': None,
+        'cov_functions_covered': None, 'cov_functions_total': None,
         **overrides,
     })

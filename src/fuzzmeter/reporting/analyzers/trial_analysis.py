@@ -14,6 +14,7 @@ import json
 from typing import Any, Callable, Dict, Optional
 
 from ...db.fields import TRIAL_METADATA_FIELDS
+from ...db.snapshot import CoverageSummary, SnapshotRow
 from ...db.trials import TrialRow
 from ..keys import SNAPSHOT_COVERAGE_FIELDS
 from ..metrics import dt, pct, safe_int
@@ -29,33 +30,35 @@ def _parse_json_text(value: Any) -> dict | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def snapshot_has_coverage(row: dict[str, Any]) -> bool:
+def snapshot_has_coverage(row: SnapshotRow) -> bool:
     '''Return whether a snapshot row contains coverage counters.'''
 
     return any(
-        safe_int(row.get(covered_key)) is not None
+        getattr(row.coverage, covered_key) is not None
         for covered_key, _ in SNAPSHOT_COVERAGE_FIELDS.values()
     )
 
 
-def coverage_summary_from_snapshot(latest: dict[str, Any]) -> dict[str, Any]:
-    '''Build a coverage summary from a snapshot row.'''
+def coverage_summary_from_snapshot(latest: SnapshotRow | None) -> dict[str, Any]:
+    '''Build a coverage summary from the snapshot that represents a trial, if it has one.'''
 
+    measured = CoverageSummary.empty() if latest is None else latest.coverage
     coverage: dict[str, Any] = {}
     for metric, (covered_key, total_key) in SNAPSHOT_COVERAGE_FIELDS.items():
-        covered = safe_int(latest.get(covered_key))
-        total = safe_int(latest.get(total_key))
+        covered = getattr(measured, covered_key)
+        total = getattr(measured, total_key)
         coverage[f'{metric}_covered'] = covered
         coverage[f'{metric}_total'] = total
         coverage[f'{metric}_pct'] = pct(covered, total)
-    coverage['last_snapshot_idx'] = safe_int(latest.get('idx'))
-    coverage['last_snapshot_ts'] = safe_int(latest.get('ts'))
+    coverage['last_snapshot_idx'] = None if latest is None else latest.idx
+    coverage['last_snapshot_ts'] = None if latest is None else latest.ts
     coverage['last_snapshot_at'] = dt(coverage['last_snapshot_ts'])
-    coverage['corpus_files_delta'] = safe_int(latest.get('corpus_files'))
-    coverage['corpus_files_total'] = safe_int(latest.get('corpus_files'))
-    coverage['execs_done'] = safe_int(latest.get('execs_done'))
-    coverage['crashes'] = safe_int(latest.get('crashes'))
-    coverage['hangs'] = safe_int(latest.get('hangs'))
+    corpus_files = None if latest is None else latest.corpus_files
+    coverage['corpus_files_delta'] = corpus_files
+    coverage['corpus_files_total'] = corpus_files
+    coverage['execs_done'] = None if latest is None else latest.execs_done
+    coverage['crashes'] = None if latest is None else latest.crashes
+    coverage['hangs'] = None if latest is None else latest.hangs
     return coverage
 
 
@@ -73,7 +76,7 @@ def _elapsed_seconds(row: TrialRow, coverage: dict[str, Any]) -> int | None:
 def collect_trials(
     *,
     trial_rows: list[TrialRow],
-    latest_snapshots: dict[int, dict[str, Any]],
+    latest_snapshots: dict[int, SnapshotRow],
     bug_stats_by_trial: dict[int, tuple[int, int]],
     rel_to_url: Callable[[str | None], str | None],
 ) -> list[dict[str, Any]]:
@@ -82,14 +85,14 @@ def collect_trials(
     trials: list[dict[str, Any]] = []
     for row in trial_rows:
         trial_id = row.trial_id
-        latest = latest_snapshots.get(trial_id, {})
+        latest = latest_snapshots.get(trial_id)
         coverage_html_rel = None
-        if snapshot_has_coverage(latest):
-            coverage_html_rel = latest.get('coverage_html_dir')
+        if latest is not None and snapshot_has_coverage(latest):
+            coverage_html_rel = latest.coverage.coverage_html_dir
         coverage = coverage_summary_from_snapshot(latest)
         coverage['coverage_html'] = rel_to_url(coverage_html_rel)
         coverage['coverage_html_rel'] = coverage_html_rel
-        coverage['coverage_sets_json_rel'] = latest.get('coverage_sets_json_rel')
+        coverage['coverage_sets_json_rel'] = None if latest is None else latest.coverage_sets_json_rel
         bug_hits_total, unique_bugs_total = bug_stats_by_trial.get(trial_id, (0, 0))
         trial = {
             'trial_id': trial_id,
@@ -145,7 +148,7 @@ def collect_trials(
 def collect_timeseries(
     *,
     trials: list[dict[str, Any]],
-    snapshot_rows: list[dict[str, Any]],
+    snapshot_rows: list[SnapshotRow],
     resource_telemetry_rows: list[dict[str, Any]],
     bug_hits_by_snapshot: dict[int, int],
     unique_bug_delta_by_snapshot: dict[int, int],
@@ -192,46 +195,43 @@ def collect_timeseries(
         return point
 
     for row in snapshot_rows:
-        trial_key = str(int(row['trial_id']))
-        idx = safe_int(row.get('idx'))
-        point = ensure_point(trial_key, idx, safe_int(row.get('ts')))
+        point = ensure_point(str(row.trial_id), row.idx, row.ts)
         if point is None:
             continue
-        snapshot_id = int(row['snapshot_id'])
         point.update(
             {
-                'corpus_files_delta': safe_int(row.get('corpus_files')),
-                'corpus_files_total': safe_int(row.get('corpus_files')),
-                'execs_done': safe_int(row.get('execs_done')),
-                'crashes': safe_int(row.get('crashes')),
-                'hangs': safe_int(row.get('hangs')),
-                'bug_hits': int(bug_hits_by_snapshot.get(snapshot_id, 0)),
-                'unique_bugs_delta': int(unique_bug_delta_by_snapshot.get(snapshot_id, 0)),
+                'corpus_files_delta': row.corpus_files,
+                'corpus_files_total': row.corpus_files,
+                'execs_done': row.execs_done,
+                'crashes': row.crashes,
+                'hangs': row.hangs,
+                'bug_hits': int(bug_hits_by_snapshot.get(row.snapshot_id, 0)),
+                'unique_bugs_delta': int(unique_bug_delta_by_snapshot.get(row.snapshot_id, 0)),
             }
         )
-        stats = _parse_json_text(row.get('stats_json'))
+        stats = _parse_json_text(row.stats_json)
         if stats:
             point['stats'] = stats
             execs_per_sec = _safe_float(stats.get('execs_per_sec'))
             if execs_per_sec is not None:
                 point['execs_per_sec'] = execs_per_sec
         for metric, (covered_key, total_key) in SNAPSHOT_COVERAGE_FIELDS.items():
-            point[f'{metric}_cov'] = safe_int(row.get(covered_key))
-            point[f'{metric}_total'] = safe_int(row.get(total_key))
+            point[f'{metric}_cov'] = getattr(row.coverage, covered_key)
+            point[f'{metric}_total'] = getattr(row.coverage, total_key)
 
-    for row in resource_telemetry_rows:
-        trial_key = str(int(row['trial_id']))
-        idx = safe_int(row.get('idx'))
-        point = ensure_point(trial_key, idx, safe_int(row.get('ts')))
+    for sample in resource_telemetry_rows:
+        trial_key = str(int(sample['trial_id']))
+        idx = safe_int(sample.get('idx'))
+        point = ensure_point(trial_key, idx, safe_int(sample.get('ts')))
         if point is None:
             continue
-        memory_bytes = safe_int(row.get('memory_usage_bytes'))
-        disk_bytes = safe_int(row.get('corpus_disk_usage_bytes'))
-        point['resource_cpu_percent'] = row.get('cpu_percent')
-        point['resource_memory_percent'] = row.get('memory_percent')
+        memory_bytes = safe_int(sample.get('memory_usage_bytes'))
+        disk_bytes = safe_int(sample.get('corpus_disk_usage_bytes'))
+        point['resource_cpu_percent'] = sample.get('cpu_percent')
+        point['resource_memory_percent'] = sample.get('memory_percent')
         point['resource_memory_bytes'] = memory_bytes
         point['resource_memory_mib'] = (memory_bytes / (1024 * 1024)) if memory_bytes is not None else None
-        point['resource_memory_limit_bytes'] = safe_int(row.get('memory_limit_bytes'))
+        point['resource_memory_limit_bytes'] = safe_int(sample.get('memory_limit_bytes'))
         point['resource_corpus_disk_bytes'] = disk_bytes
         point['resource_corpus_disk_mib'] = (disk_bytes / (1024 * 1024)) if disk_bytes is not None else None
 

@@ -538,7 +538,7 @@ class DatabaseBehaviorTest(unittest.TestCase):
                 latest = reporting_db.latest_snapshots_by_trial([trial_id])
                 empty = reporting_db.latest_snapshots_by_trial([trial_id + 1])
 
-        self.assertEqual(max(rows, key=lambda row: int(row['idx'])), latest[trial_id])
+        self.assertEqual(max(rows, key=lambda row: row.idx), latest[trial_id])
         self.assertEqual({}, empty)
 
     def test_metadata_rows_are_replaceable(self) -> None:

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,6 +35,22 @@ class CoverageSummary:
     cov_regions_total: int | None
     cov_functions_covered: int | None
     cov_functions_total: int | None
+
+    @classmethod
+    def empty(cls) -> 'CoverageSummary':
+        '''Create the coverage fields of a row that carries no coverage yet.'''
+
+        return cls(
+            coverage_html_dir=None,
+            cov_lines_covered=None,
+            cov_lines_total=None,
+            cov_branches_covered=None,
+            cov_branches_total=None,
+            cov_regions_covered=None,
+            cov_regions_total=None,
+            cov_functions_covered=None,
+            cov_functions_total=None,
+        )
 
     @classmethod
     def from_mapping(cls, *, coverage_html_dir: str | None, summary: dict[str, Any]) -> 'CoverageSummary':
@@ -80,6 +97,40 @@ class CoverageSummary:
             self.cov_regions_total,
             self.cov_functions_covered,
             self.cov_functions_total,
+        )
+
+
+@dataclass(frozen=True)
+class SnapshotRow:
+    """Describe one stored snapshot row, with the state it gained once it existed."""
+
+    snapshot_id: int
+    trial_id: int
+    idx: int
+    ts: int
+    corpus_files: int
+    execs_done: int | None
+    crashes: int
+    hangs: int
+    stats_json: str | None
+    coverage_sets_json_rel: str | None
+    coverage: CoverageSummary
+
+    @classmethod
+    def from_row(cls, row: Mapping[str, Any]) -> 'SnapshotRow':
+        """Build a snapshot row from its database columns."""
+        return cls(
+            snapshot_id=int(row['snapshot_id']),
+            trial_id=int(row['trial_id']),
+            idx=int(row['idx']),
+            ts=int(row['ts']),
+            corpus_files=int(row['corpus_files']),
+            execs_done=None if row['execs_done'] is None else int(row['execs_done']),
+            crashes=int(row['crashes']),
+            hangs=int(row['hangs']),
+            stats_json=row['stats_json'],
+            coverage_sets_json_rel=row['coverage_sets_json_rel'],
+            coverage=CoverageSummary.from_row(dict(row)),
         )
 
 

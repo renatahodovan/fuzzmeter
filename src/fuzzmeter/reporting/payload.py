@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from ..db.fields import TRIAL_METADATA_FIELDS
+from ..db.snapshot import SnapshotRow
 from ..db.trials import TrialRow
 from .analyzers import bug_analysis, coverage_curves, target_matrices, trial_analysis
 from .analyzers.custom_metrics import attach_custom_metric_sections, has_custom_metric_sections
@@ -67,7 +68,7 @@ def _run_time_window(
     *,
     created_ts: int | None,
     trial_rows: list[TrialRow],
-    snapshot_rows: list[dict[str, Any]],
+    snapshot_rows: list[SnapshotRow],
     trial_elapsed_seconds: list[int],
 ) -> _RunTimeWindow:
     '''Derive the wall-clock window of a run from its trials and snapshots.
@@ -81,7 +82,7 @@ def _run_time_window(
     started_candidates = [row.started_ts for row in trial_rows]
     activity_candidates = [
         *(row.ended_ts for row in trial_rows if row.ended_ts is not None),
-        *(ts for ts in (safe_int(row.get('ts')) for row in snapshot_rows) if ts is not None),
+        *(row.ts for row in snapshot_rows),
     ]
     started_ts = min(started_candidates, default=created_ts)
     last_activity_ts = max(activity_candidates, default=started_ts)

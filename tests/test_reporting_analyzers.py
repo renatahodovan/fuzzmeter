@@ -16,7 +16,7 @@ from fuzzmeter.reporting.analyzers import bug_analysis, coverage_curves, trial_a
 from fuzzmeter.reporting.metrics import median
 from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.set_comparison import pairwise_matrix, relative_containment_matrix, trial_set_comparison
-from tests.support.dbs import trial_row
+from tests.support.dbs import snapshot_row, trial_row
 
 COV_METRICS = ('branches',)
 CURVE_MAX_POINTS = 100
@@ -26,22 +26,37 @@ class TrialAnalysisTest(unittest.TestCase):
     '''Verify trial and time-series analysis behavior.'''
 
     def test_snapshot_coverage_detection_looks_for_covered_counters(self) -> None:
-        self.assertTrue(trial_analysis.snapshot_has_coverage({'cov_branches_covered': 1}))
-        self.assertTrue(trial_analysis.snapshot_has_coverage({'cov_regions_covered': 0}))
-        self.assertFalse(trial_analysis.snapshot_has_coverage({'cov_branches_total': 4}))
-        self.assertFalse(trial_analysis.snapshot_has_coverage({'corpus_files': 1}))
+        self.assertTrue(trial_analysis.snapshot_has_coverage(snapshot_row(cov_branches_covered=1)))
+        self.assertTrue(trial_analysis.snapshot_has_coverage(snapshot_row(cov_regions_covered=0)))
+        self.assertFalse(trial_analysis.snapshot_has_coverage(snapshot_row(cov_branches_total=4)))
+        self.assertFalse(trial_analysis.snapshot_has_coverage(snapshot_row(corpus_files=1)))
 
     def test_collect_trials_measures_running_trials_from_their_latest_snapshot(self) -> None:
         trials = trial_analysis.collect_trials(
             trial_rows=[
                 trial_row(trial_id=1, rep='0', started_ts=100, ended_ts=None, time_seconds=86400, status='running')
             ],
-            latest_snapshots={1: {'trial_id': 1, 'snapshot_id': 11, 'idx': 2, 'ts': 160}},
+            latest_snapshots={1: snapshot_row(snapshot_id=11, idx=2, ts=160)},
             bug_stats_by_trial={},
             rel_to_url=lambda path: None,
         )
 
         self.assertEqual(60, trials[0]['elapsed_seconds'])
+
+    def test_collect_trials_reports_a_trial_that_has_no_snapshot_yet(self) -> None:
+        trials = trial_analysis.collect_trials(
+            trial_rows=[trial_row(trial_id=1, started_ts=100, ended_ts=None, time_seconds=50, status='running')],
+            latest_snapshots={},
+            bug_stats_by_trial={},
+            rel_to_url=lambda path: f'url:{path}' if path else None,
+        )
+
+        self.assertIsNone(trials[0]['branches_cov'])
+        self.assertIsNone(trials[0]['branches_pct'])
+        self.assertIsNone(trials[0]['last_snapshot_ts'])
+        self.assertIsNone(trials[0]['corpus_files_total'])
+        self.assertIsNone(trials[0]['coverage_html'])
+        self.assertEqual(0, trials[0]['elapsed_seconds'])
 
     def test_collect_trials_uses_latest_snapshot_and_clamps_elapsed_time(self) -> None:
         trials = trial_analysis.collect_trials(
@@ -49,20 +64,18 @@ class TrialAnalysisTest(unittest.TestCase):
                 trial_row(trial_id=1, rep='0', started_ts=100, ended_ts=190, time_seconds=50, jobs=1, status='done')
             ],
             latest_snapshots={
-                1: {
-                    'trial_id': 1,
-                    'snapshot_id': 11,
-                    'idx': 2,
-                    'ts': 180,
-                    'corpus_files': 4,
-                    'execs_done': 50,
-                    'crashes': 1,
-                    'hangs': 0,
-                    'coverage_html_dir': 'coverage/index.html',
-                    'coverage_sets_json_rel': 'coverage/coverage-sets.json',
-                    'cov_branches_covered': 2,
-                    'cov_branches_total': 4,
-                }
+                1: snapshot_row(
+                    snapshot_id=11,
+                    idx=2,
+                    ts=180,
+                    corpus_files=4,
+                    execs_done=50,
+                    crashes=1,
+                    coverage_html_dir='coverage/index.html',
+                    coverage_sets_json_rel='coverage/coverage-sets.json',
+                    cov_branches_covered=2,
+                    cov_branches_total=4,
+                )
             },
             bug_stats_by_trial={1: (3, 2)},
             rel_to_url=lambda path: f'url:{path}' if path else None,
@@ -90,31 +103,27 @@ class TrialAnalysisTest(unittest.TestCase):
                 }
             ],
             snapshot_rows=[
-                {
-                    'trial_id': 1,
-                    'snapshot_id': 10,
-                    'idx': 1,
-                    'ts': 120,
-                    'corpus_files': 2,
-                    'execs_done': 10,
-                    'crashes': 1,
-                    'hangs': 0,
-                    'stats_json': '{"execs_per_sec": "5.5"}',
-                    'cov_branches_covered': 1,
-                    'cov_branches_total': 2,
-                },
-                {
-                    'trial_id': 1,
-                    'snapshot_id': 11,
-                    'idx': 2,
-                    'ts': 180,
-                    'corpus_files': 4,
-                    'execs_done': 30,
-                    'crashes': 2,
-                    'hangs': 0,
-                    'cov_branches_covered': 2,
-                    'cov_branches_total': 4,
-                },
+                snapshot_row(
+                    snapshot_id=10,
+                    idx=1,
+                    ts=120,
+                    corpus_files=2,
+                    execs_done=10,
+                    crashes=1,
+                    stats_json='{"execs_per_sec": "5.5"}',
+                    cov_branches_covered=1,
+                    cov_branches_total=2,
+                ),
+                snapshot_row(
+                    snapshot_id=11,
+                    idx=2,
+                    ts=180,
+                    corpus_files=4,
+                    execs_done=30,
+                    crashes=2,
+                    cov_branches_covered=2,
+                    cov_branches_total=4,
+                ),
             ],
             resource_telemetry_rows=[
                 {

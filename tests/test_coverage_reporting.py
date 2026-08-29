@@ -34,7 +34,7 @@ from fuzzmeter.reporting.metrics import (
     vargha_delaney_a12,
 )
 from fuzzmeter.reporting.payload import _PayloadBuilder
-from tests.support.dbs import run_data_snapshot, trial_row
+from tests.support.dbs import run_data_snapshot, snapshot_row, trial_row
 
 
 def _coverage_export(branch_line: int) -> dict:
@@ -339,7 +339,7 @@ class CoverageReportingTest(unittest.TestCase):
                 trial_row(started_ts=100, ended_ts=450, time_seconds=300),
                 trial_row(started_ts=500, ended_ts=850, time_seconds=300),
             ],
-            snapshot_rows=[{'ts': 900}],
+            snapshot_rows=[snapshot_row(ts=900)],
         )
 
         overview = builder.collect_overview([{'elapsed_seconds': 300}, {'elapsed_seconds': 300}])
@@ -352,7 +352,7 @@ class CoverageReportingTest(unittest.TestCase):
         builder._data = run_data_snapshot(
             overview_raw={'created_ts': 50},
             trial_rows=[trial_row(started_ts=100, ended_ts=None, time_seconds=86400)],
-            snapshot_rows=[{'ts': 160}],
+            snapshot_rows=[snapshot_row(ts=160)],
         )
 
         overview = builder.collect_overview([{'elapsed_seconds': 60}])
