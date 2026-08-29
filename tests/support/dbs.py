@@ -9,6 +9,7 @@ from fuzzmeter.db import DB, ensure_schema, open_db
 from fuzzmeter.db import metadata as db_metadata
 from fuzzmeter.db import runs as db_runs
 from fuzzmeter.db.trials import TrialRow
+from fuzzmeter.reporting.data.run_data import RunDataSnapshot
 
 
 def empty_run_db(db_path: Path) -> None:
@@ -276,5 +277,28 @@ def trial_row(**overrides: Any) -> TrialRow:
         'rep': 0, 'time_seconds': 0, 'jobs': None, 'status': 'done',
         'started_ts': None, 'ended_ts': None, 'fuzzer_image': 'image',
         'build_config_json': None, 'runtime_config_json': None,
+        **overrides,
+    })
+
+
+def run_data_snapshot(**overrides: Any) -> RunDataSnapshot:
+    '''Build a loaded run snapshot with only the rows a test cares about.'''
+
+    return RunDataSnapshot(**{
+        'run_id': 'run',
+        'overview_raw': {},
+        'trial_rows': [],
+        'latest_snapshots': {},
+        'latest_agg_snapshots': {},
+        'seed_baselines': {},
+        'metadata_rows': [],
+        'snapshot_rows': [],
+        'resource_telemetry_rows': [],
+        'bug_hits_by_snapshot': {},
+        'unique_bug_delta_by_snapshot': {},
+        'bug_stats_by_trial': {},
+        'bugs': [],
+        'bug_hits_by_bug': {},
+        'bug_trials_by_bug': {},
         **overrides,
     })

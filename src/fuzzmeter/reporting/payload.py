@@ -66,22 +66,8 @@ class _PayloadBuilder:
     ):
         self.run_dir = run_dir
         self.file_url_prefix = file_url_prefix
-        loaded = RunData(run_dir / 'fuzzmeter.db').load(run_dir_name=run_dir.name, run_id=run_id)
-        self.run_id = loaded.run_id
-        self._overview_raw = loaded.overview_raw
-        self._trial_rows = loaded.trial_rows
-        self._latest_snapshots = loaded.latest_snapshots
-        self._latest_agg_snapshots = loaded.latest_agg_snapshots
-        self._seed_baselines = loaded.seed_baselines
-        self._metadata_rows = loaded.metadata_rows
-        self._snapshot_rows = loaded.snapshot_rows
-        self._resource_telemetry_rows = loaded.resource_telemetry_rows
-        self._bug_hits_by_snapshot = loaded.bug_hits_by_snapshot
-        self._unique_bug_delta_by_snapshot = loaded.unique_bug_delta_by_snapshot
-        self._bug_stats_by_trial = loaded.bug_stats_by_trial
-        self._bugs = loaded.bugs
-        self._bug_hits_by_bug = loaded.bug_hits_by_bug
-        self._bug_trials_by_bug = loaded.bug_trials_by_bug
+        self._data = RunData(run_dir / 'fuzzmeter.db').load(run_dir_name=run_dir.name, run_id=run_id)
+        self.run_id = self._data.run_id
         self._coverage_data = CoverageData(run_dir)
         self._trial_analysis = TrialAnalysis(
             snapshot_coverage_fields=SNAPSHOT_COVERAGE_FIELDS,
@@ -109,7 +95,7 @@ class _PayloadBuilder:
         targets = self.create_matrices(targets, trials)
         measurement_provenance = attach_measurement_provenance(
             targets=targets,
-            agg_snapshots=self._latest_agg_snapshots,
+            agg_snapshots=self._data.latest_agg_snapshots,
         )
 
         if self._fuzzer_dirs is not None and not has_custom_metric_sections(targets):
@@ -140,13 +126,13 @@ class _PayloadBuilder:
     def collect_overview(self) -> dict[str, Any]:
         '''Collect run-level overview metadata.'''
 
-        overview = dict(self._overview_raw)
+        overview = dict(self._data.overview_raw)
         created = safe_int(overview.get('created_ts'))
         overview['created_ts'] = created
         overview['created_at'] = dt(created)
-        trial_start_values = [row.started_ts for row in self._trial_rows]
-        trial_end_values = [row.ended_ts for row in self._trial_rows]
-        snapshot_values = [safe_int(row.get('ts')) for row in self._snapshot_rows]
+        trial_start_values = [row.started_ts for row in self._data.trial_rows]
+        trial_end_values = [row.ended_ts for row in self._data.trial_rows]
+        snapshot_values = [safe_int(row.get('ts')) for row in self._data.snapshot_rows]
         start_candidates = [value for value in trial_start_values if value is not None]
         end_candidates = [value for value in [*trial_end_values, *snapshot_values] if value is not None]
         started_ts = min(start_candidates) if start_candidates else created
@@ -155,7 +141,7 @@ class _PayloadBuilder:
         if started_ts is not None and last_activity_ts is not None:
             wall_elapsed_seconds = last_activity_ts - started_ts
         elapsed_candidates: list[int] = []
-        for row in self._trial_rows:
+        for row in self._data.trial_rows:
             trial_start = row.started_ts
             trial_end = row.ended_ts
             time_seconds = row.time_seconds
@@ -186,7 +172,7 @@ class _PayloadBuilder:
         return '../' + rel
 
     def _agg_snapshot_for_fuzzer(self, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, Any]:
-        return self._latest_agg_snapshots.get((str(fuzzer), str(benchmark), str(fuzz_target)), {})
+        return self._data.latest_agg_snapshots.get((str(fuzzer), str(benchmark), str(fuzz_target)), {})
 
     def _aggregated_coverage_for_fuzzer(self, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, int | None]:
         agg_snapshot = self._agg_snapshot_for_fuzzer(fuzzer, benchmark, fuzz_target)
@@ -215,7 +201,7 @@ class _PayloadBuilder:
         for fuzzer, benchmark, fuzz_target in self._coverage_keys_from_trials(trials):
             key = (fuzzer, benchmark, fuzz_target)
             aggregated_coverage_by_fuzzer[key] = self._aggregated_coverage_for_fuzzer(fuzzer, benchmark, fuzz_target)
-            seed_baseline_by_fuzzer[key] = self._seed_baselines.get(key)
+            seed_baseline_by_fuzzer[key] = self._data.seed_baselines.get(key)
         return aggregated_coverage_by_fuzzer, seed_baseline_by_fuzzer
 
     def _coverage_sets_by_metric(
@@ -226,7 +212,7 @@ class _PayloadBuilder:
     ) -> dict[str, dict[str, set[str]]]:
         return {
             metric: self._coverage_data.coverage_sets_by_fuzzer(
-                agg_snapshots=self._latest_agg_snapshots,
+                agg_snapshots=self._data.latest_agg_snapshots,
                 fuzzers=fuzzers,
                 benchmark=benchmark,
                 fuzz_target=fuzz_target,
@@ -257,9 +243,9 @@ class _PayloadBuilder:
         '''Collect per-trial report rows.'''
 
         return self._trial_analysis.collect_trials(
-            trial_rows=self._trial_rows,
-            latest_snapshots=self._latest_snapshots,
-            bug_stats_by_trial=self._bug_stats_by_trial,
+            trial_rows=self._data.trial_rows,
+            latest_snapshots=self._data.latest_snapshots,
+            bug_stats_by_trial=self._data.bug_stats_by_trial,
             rel_to_url=self._rel_to_url,
         )
 
@@ -268,19 +254,19 @@ class _PayloadBuilder:
 
         return self._trial_analysis.collect_timeseries(
             trials=trials,
-            snapshot_rows=self._snapshot_rows,
-            resource_telemetry_rows=self._resource_telemetry_rows,
-            bug_hits_by_snapshot=self._bug_hits_by_snapshot,
-            unique_bug_delta_by_snapshot=self._unique_bug_delta_by_snapshot,
+            snapshot_rows=self._data.snapshot_rows,
+            resource_telemetry_rows=self._data.resource_telemetry_rows,
+            bug_hits_by_snapshot=self._data.bug_hits_by_snapshot,
+            unique_bug_delta_by_snapshot=self._data.unique_bug_delta_by_snapshot,
         )
 
     def collect_bugs(self) -> list[dict[str, Any]]:
         '''Collect crash and bug rows.'''
 
         return self._bug_analysis.collect_bugs(
-            bugs=self._bugs,
-            bug_hits_by_bug=self._bug_hits_by_bug,
-            bug_trials_by_bug=self._bug_trials_by_bug,
+            bugs=self._data.bugs,
+            bug_hits_by_bug=self._data.bug_hits_by_bug,
+            bug_trials_by_bug=self._data.bug_trials_by_bug,
         )
 
     def collect_target_view(
@@ -326,7 +312,7 @@ class _PayloadBuilder:
 
     def _metadata_by_key(self) -> dict[tuple[str, str, str], dict[str, Any]]:
         out: dict[tuple[str, str, str], dict[str, Any]] = {}
-        for row in self._metadata_rows:
+        for row in self._data.metadata_rows:
             try:
                 metadata = json.loads(str(row.get('metadata_json') or '{}'))
             except json.JSONDecodeError:

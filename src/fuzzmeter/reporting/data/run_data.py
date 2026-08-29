@@ -55,35 +55,22 @@ class RunData:
 
         with self.open() as db:
             resolved_run_id = run_id or db.infer_run_id(run_dir_name)
-            overview_raw = db.run_overview(resolved_run_id)
             trial_rows = db.trial_rows(resolved_run_id)
             trial_ids = [row.trial_id for row in trial_rows]
-            latest_snapshots = db.latest_snapshots_by_trial(trial_ids)
-            latest_agg_snapshots = db.latest_agg_snapshots_by_fuzzer_target(resolved_run_id)
-            seed_baselines = db.seed_baselines_by_fuzzer_target(resolved_run_id)
-            metadata_rows = db.metadata_rows(resolved_run_id)
-            snapshot_rows = db.snapshot_rows(trial_ids)
-            resource_telemetry_rows = db.resource_telemetry_rows(trial_ids)
-            bug_hits_by_snapshot = db.bug_hits_by_snapshot()
-            unique_bug_delta_by_snapshot = db.unique_bug_delta_by_snapshot()
-            bug_stats_by_trial = db.bug_stats_by_trial(resolved_run_id)
-            bugs = db.bug_rows(resolved_run_id)
-            bug_hits_by_bug = db.bug_hits_by_bug()
-            bug_trials_by_bug = db.bug_trials_by_bug()
-        return RunDataSnapshot(
-            run_id=resolved_run_id,
-            overview_raw=overview_raw,
-            trial_rows=trial_rows,
-            latest_snapshots=latest_snapshots,
-            latest_agg_snapshots=latest_agg_snapshots,
-            seed_baselines=seed_baselines,
-            metadata_rows=metadata_rows,
-            snapshot_rows=snapshot_rows,
-            resource_telemetry_rows=resource_telemetry_rows,
-            bug_hits_by_snapshot=bug_hits_by_snapshot,
-            unique_bug_delta_by_snapshot=unique_bug_delta_by_snapshot,
-            bug_stats_by_trial=bug_stats_by_trial,
-            bugs=bugs,
-            bug_hits_by_bug=bug_hits_by_bug,
-            bug_trials_by_bug=bug_trials_by_bug,
-        )
+            return RunDataSnapshot(
+                run_id=resolved_run_id,
+                overview_raw=db.run_overview(resolved_run_id),
+                trial_rows=trial_rows,
+                latest_snapshots=db.latest_snapshots_by_trial(trial_ids),
+                latest_agg_snapshots=db.latest_agg_snapshots_by_fuzzer_target(resolved_run_id),
+                seed_baselines=db.seed_baselines_by_fuzzer_target(resolved_run_id),
+                metadata_rows=db.metadata_rows(resolved_run_id),
+                snapshot_rows=db.snapshot_rows(trial_ids),
+                resource_telemetry_rows=db.resource_telemetry_rows(trial_ids),
+                bug_hits_by_snapshot=db.bug_hits_by_snapshot(),
+                unique_bug_delta_by_snapshot=db.unique_bug_delta_by_snapshot(),
+                bug_stats_by_trial=db.bug_stats_by_trial(resolved_run_id),
+                bugs=db.bug_rows(resolved_run_id),
+                bug_hits_by_bug=db.bug_hits_by_bug(),
+                bug_trials_by_bug=db.bug_trials_by_bug(),
+            )

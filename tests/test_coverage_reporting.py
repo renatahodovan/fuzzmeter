@@ -34,7 +34,7 @@ from fuzzmeter.reporting.metrics import (
     vargha_delaney_a12,
 )
 from fuzzmeter.reporting.payload import _PayloadBuilder
-from tests.support.dbs import trial_row
+from tests.support.dbs import run_data_snapshot, trial_row
 
 
 def _coverage_export(branch_line: int) -> dict:
@@ -131,14 +131,14 @@ class CoverageReportingTest(unittest.TestCase):
 
     def test_aggregate_scalars_use_report_counts_without_set_reconciliation(self) -> None:
         builder = _PayloadBuilder.__new__(_PayloadBuilder)
-        builder._latest_agg_snapshots = {
+        builder._data = run_data_snapshot(latest_agg_snapshots={
             ('fz', 'bench', 'target'): {
                 'cov_branches_covered': 3,
                 'cov_lines_covered': 4,
                 'cov_functions_covered': 5,
                 'cov_regions_covered': 6,
             }
-        }
+        })
         builder._coverage_data = Mock()
         builder._coverage_data.covered_counts.return_value = {
             'branches_covered': 99,
@@ -333,12 +333,14 @@ class CoverageReportingTest(unittest.TestCase):
 
     def test_overview_elapsed_uses_trial_time_not_snapshot_wall_time(self) -> None:
         builder = _PayloadBuilder.__new__(_PayloadBuilder)
-        builder._overview_raw = {'created_ts': 50}
-        builder._trial_rows = [
-            trial_row(started_ts=100, ended_ts=450, time_seconds=300),
-            trial_row(started_ts=500, ended_ts=850, time_seconds=300),
-        ]
-        builder._snapshot_rows = [{'ts': 900}]
+        builder._data = run_data_snapshot(
+            overview_raw={'created_ts': 50},
+            trial_rows=[
+                trial_row(started_ts=100, ended_ts=450, time_seconds=300),
+                trial_row(started_ts=500, ended_ts=850, time_seconds=300),
+            ],
+            snapshot_rows=[{'ts': 900}],
+        )
 
         overview = builder.collect_overview()
 
@@ -347,9 +349,7 @@ class CoverageReportingTest(unittest.TestCase):
 
     def test_overview_surfaces_failed_snapshot_tick_count(self) -> None:
         builder = _PayloadBuilder.__new__(_PayloadBuilder)
-        builder._overview_raw = {'created_ts': 50, 'failed_snapshot_ticks': 2}
-        builder._trial_rows = []
-        builder._snapshot_rows = []
+        builder._data = run_data_snapshot(overview_raw={'created_ts': 50, 'failed_snapshot_ticks': 2})
 
         overview = builder.collect_overview()
 
