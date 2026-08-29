@@ -13,13 +13,12 @@ import datetime
 import json
 import logging
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from ..db.fields import TRIAL_METADATA_FIELDS
-from ..db.snapshot import AggSnapshotRow, CoverageSummary, SnapshotRow
-from ..db.trials import TrialRow
+from ..db.snapshot import AggSnapshotRow, CoverageSummary
 from .analyzers import bug_analysis, coverage_curves, target_matrices, trial_analysis
 from .analyzers.custom_metrics import attach_custom_metric_sections, has_custom_metric_sections
 from .data.coverage_data import CoverageData
@@ -52,51 +51,6 @@ def format_duration(seconds: int | None) -> str | None:
     if secs or not parts:
         parts.append(f'{secs}s')
     return ' '.join(parts)
-
-
-@dataclass(frozen=True)
-class _RunTimeWindow:
-    '''Hold the wall-clock window of a run and the runtime of its longest trial.'''
-
-    started_ts: int | None
-    last_activity_ts: int | None
-    elapsed_seconds: int | None
-    wall_elapsed_seconds: int | None
-
-
-def _run_time_window(
-    *,
-    created_ts: int | None,
-    trial_rows: list[TrialRow],
-    snapshot_rows: list[SnapshotRow],
-    trial_elapsed_seconds: list[int],
-) -> _RunTimeWindow:
-    '''Derive the wall-clock window of a run from its trials and snapshots.
-
-    A trial that is still running has no ``ended_ts``, so for live reports the timestamp
-    of its latest snapshot is the only evidence of activity; the end of the window is
-    therefore taken over both sources. ``trial_elapsed_seconds`` are the runtimes already
-    measured for the collected trials, which apply the same rule per trial.
-    '''
-
-    started_candidates = [row.started_ts for row in trial_rows]
-    activity_candidates = [
-        *(row.ended_ts for row in trial_rows if row.ended_ts is not None),
-        *(row.ts for row in snapshot_rows),
-    ]
-    started_ts = min(started_candidates, default=created_ts)
-    last_activity_ts = max(activity_candidates, default=started_ts)
-    wall_elapsed_seconds = (
-        None
-        if started_ts is None or last_activity_ts is None
-        else last_activity_ts - started_ts
-    )
-    return _RunTimeWindow(
-        started_ts=started_ts,
-        last_activity_ts=last_activity_ts,
-        elapsed_seconds=max(trial_elapsed_seconds, default=wall_elapsed_seconds),
-        wall_elapsed_seconds=wall_elapsed_seconds,
-    )
 
 
 class _PayloadBuilder:
@@ -168,27 +122,42 @@ class _PayloadBuilder:
         '''Collect run-level overview metadata from the run rows and the collected trials.'''
 
         created_ts = self._data.overview_raw.get('created_ts')
-        window = _run_time_window(
-            created_ts=created_ts,
-            trial_rows=self._data.trial_rows,
-            snapshot_rows=self._data.snapshot_rows,
-            trial_elapsed_seconds=[
-                seconds
-                for seconds in (safe_int(trial.get('elapsed_seconds')) for trial in trials)
-                if seconds is not None
-            ],
+
+        trial_rows = self._data.trial_rows
+        snapshot_rows = self._data.snapshot_rows
+        started_candidates = [row.started_ts for row in trial_rows]
+        # A running trial has no ended_ts, so in a live report the timestamp of its latest
+        # snapshot is the only evidence that the run is still going.
+        activity_candidates = [
+            *(row.ended_ts for row in trial_rows if row.ended_ts is not None),
+            *(row.ts for row in snapshot_rows),
+        ]
+        started_ts = min(started_candidates, default=created_ts)
+        last_activity_ts = max(activity_candidates, default=started_ts)
+        wall_elapsed_seconds = (
+            None
+            if started_ts is None or last_activity_ts is None
+            else last_activity_ts - started_ts
         )
+
+        trial_elapsed_seconds = [
+            seconds
+            for seconds in (safe_int(trial.get('elapsed_seconds')) for trial in trials)
+            if seconds is not None
+        ]
+        elapsed_seconds = max(trial_elapsed_seconds, default=wall_elapsed_seconds)
+
         return {
             **self._data.overview_raw,
             'created_at': dt(created_ts),
-            'started_ts': window.started_ts,
-            'started_at': dt(window.started_ts),
-            'last_activity_ts': window.last_activity_ts,
-            'last_activity_at': dt(window.last_activity_ts),
-            'elapsed_seconds': window.elapsed_seconds,
-            'elapsed_human': format_duration(window.elapsed_seconds),
-            'wall_elapsed_seconds': window.wall_elapsed_seconds,
-            'wall_elapsed_human': format_duration(window.wall_elapsed_seconds),
+            'started_ts': started_ts,
+            'started_at': dt(started_ts),
+            'last_activity_ts': last_activity_ts,
+            'last_activity_at': dt(last_activity_ts),
+            'elapsed_seconds': elapsed_seconds,
+            'elapsed_human': format_duration(elapsed_seconds),
+            'wall_elapsed_seconds': wall_elapsed_seconds,
+            'wall_elapsed_human': format_duration(wall_elapsed_seconds),
         }
 
     def _rel_to_url(self, relpath: str | None) -> str | None:
