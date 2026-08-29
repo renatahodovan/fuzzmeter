@@ -12,7 +12,7 @@ from __future__ import annotations
 import random
 import unittest
 
-from fuzzmeter.reporting.analyzers import bug_analysis, coverage_curves, trial_analysis
+from fuzzmeter.reporting.analyzers import bug_analysis, coverage_curves, target_matrices, trial_analysis
 from fuzzmeter.reporting.metrics import median
 from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.set_comparison import pairwise_matrix, relative_containment_matrix, trial_set_comparison
@@ -517,6 +517,15 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
             fuzzer['versions'],
         )
         self.assertEqual('bug', fuzzer['bugs'][0]['bug_key'])
+
+    def test_empty_target_matrices_are_separate_objects(self) -> None:
+        target: dict = {}
+
+        target_matrices.attach_empty_target_matrices(target)
+
+        groups = [target['unique_matrix'], target['relcov_matrix'],
+                  target['branch_mwu_matrix'], target['branch_a12_matrix']]
+        self.assertEqual(4, len({id(group) for group in groups}))
 
     def test_create_matrices_attaches_coverage_then_bug_stats_to_shared_target(self) -> None:
         builder = _PayloadBuilder.__new__(_PayloadBuilder)

@@ -61,11 +61,8 @@ def with_aggregate_trial_fallback(
 def attach_empty_coverage_matrices(target: dict[str, Any]) -> None:
     '''Attach placeholder coverage matrices to a target without comparable fuzzers.'''
 
-    empty_metric_group = {'by_metric': {}, 'has_data': False, 'available_metrics': []}
-    target[UNIQUE_MATRIX_KEY] = empty_metric_group
-    target[RELCOV_MATRIX_KEY] = empty_metric_group
-    target[BRANCH_MWU_MATRIX_KEY] = empty_metric_group
-    target[BRANCH_A12_MATRIX_KEY] = empty_metric_group
+    for key in (UNIQUE_MATRIX_KEY, RELCOV_MATRIX_KEY, BRANCH_MWU_MATRIX_KEY, BRANCH_A12_MATRIX_KEY):
+        target[key] = {'by_metric': {}, 'has_data': False, 'available_metrics': []}
     target[RELCOV_SCORE_BY_FUZZER_KEY] = {}
 
 
