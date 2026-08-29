@@ -25,7 +25,7 @@ from ..db import trials as db_trials
 from ..docker import DockerRuntime
 from ..snapshot import ReplaySnapshotScheduler, SnapshotScheduler
 from ..trial.builder import plan_trials
-from ..trial.models import TrialConfig
+from ..trial.models import ReplayTrialConfig, TrialConfig
 from ..trial.replay import prepare_replay_trial
 from ..trial.runner import run_one_trial
 from .shutdown import RunShutdown, cleanup_containers
@@ -99,7 +99,7 @@ def run_experiment(
             campaign_config=campaign_config,
             fuzz_binaries=fuzz_binaries,
         )
-        replay_trial_configs = [cfg for cfg in trial_configs if cfg.replay_dir is not None]
+        replay_trial_configs = [cfg for cfg in trial_configs if isinstance(cfg, ReplayTrialConfig)]
 
         if replay_trial_configs:
             if len(replay_trial_configs) != len(trial_configs):
@@ -231,7 +231,7 @@ def _run_replay_experiment(
     run_dir: Path,
     run_id: str,
     docker_runtime: DockerRuntime,
-    trial_configs: list[TrialConfig],
+    trial_configs: list[ReplayTrialConfig],
 ) -> Path:
     prep_jobs = min(campaign_config.settings.parallel_jobs, len(trial_configs))
     snap_jobs = max(campaign_config.settings.snapshot_jobs or campaign_config.settings.parallel_jobs, 1)

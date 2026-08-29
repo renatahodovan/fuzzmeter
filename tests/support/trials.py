@@ -14,7 +14,7 @@ from typing import Any
 
 from fuzzmeter.config.models import Benchmark, CampaignCase, Fuzzer, FuzzTarget
 from fuzzmeter.fuzzers.models import OutputPaths
-from fuzzmeter.trial.models import TrialConfig
+from fuzzmeter.trial.models import ReplayTrialConfig, TrialConfig
 
 CASE_DEFAULTS = {
     'fuzzer': 'aflplusplus',
@@ -66,7 +66,9 @@ def make_trial_config(**overrides: Any) -> TrialConfig:
         ),
         'trial_timeout': 300,
         'snapshot_preprocess': None,
-        'replay_dir': None,
     }
     values.update(overrides)
-    return TrialConfig(**values)
+    replay_dir = values.pop('replay_dir', None)
+    if replay_dir is None:
+        return TrialConfig(**values)
+    return ReplayTrialConfig(**values, replay_dir=replay_dir)

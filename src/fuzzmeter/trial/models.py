@@ -32,11 +32,17 @@ class TrialConfig:
     output_paths: OutputPaths
     trial_timeout: int
     snapshot_preprocess: Path | None
-    replay_dir: Path | None = None
 
     @property
     def fuzz_target(self) -> FuzzTarget:
         return self.case.fuzz_target
+
+
+@dataclass(frozen=True)
+class ReplayTrialConfig(TrialConfig):
+    '''Describe a trial that replays a recorded fuzzing directory instead of fuzzing.'''
+
+    replay_dir: Path
 
 
 @dataclass(frozen=True)

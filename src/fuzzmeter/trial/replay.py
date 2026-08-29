@@ -17,7 +17,7 @@ from pathlib import Path
 from ..db import open_db
 from ..db import trials as db_trials
 from ..docker import DockerRuntime
-from .models import ReplayTrialInstance, TrialConfig
+from .models import ReplayTrialConfig, ReplayTrialInstance
 from .workspace import prepare_replay_workspace
 
 LOG = logging.getLogger(__name__)
@@ -29,11 +29,10 @@ def prepare_replay_trial(
     docker_runtime: DockerRuntime,
     run_dir: Path,
     run_id: str,
-    cfg: TrialConfig,
+    cfg: ReplayTrialConfig,
 ) -> ReplayTrialInstance:
     '''Prepare one replay trial workspace and detect its replay time range.'''
     layout = prepare_replay_workspace(run_dir=run_dir, cfg=cfg)
-    assert cfg.replay_dir is not None, 'Replay directory must be set for a replayed campaign.'
     LOG.info('Linking replay source from %s to %s', cfg.replay_dir, layout.fuzz_dir)
     layout.fuzz_dir.symlink_to(cfg.replay_dir, target_is_directory=True)
 
