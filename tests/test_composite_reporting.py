@@ -108,7 +108,6 @@ class CompositeReportingTest(unittest.TestCase):
         self.assertEqual(['fresh', 'historical'], [source['origin'] for source in payload['sources']])
         self.assertNotIn('source', payload['sources'][0])
         self.assertEqual(first.key.as_id(), payload['sources'][0]['selection_id'])
-        self.assertEqual(['run-a:1', 'run-b:1'], [trial['trial_id'] for trial in payload['trials']])
         self.assertTrue(payload['targets'][0]['relbug_matrix']['has_data'] is False)
 
     def test_missing_source_fuzzer_is_reported_as_skipped_source(self) -> None:

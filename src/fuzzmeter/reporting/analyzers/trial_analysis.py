@@ -51,12 +51,9 @@ def coverage_summary_from_snapshot(latest: SnapshotRow | None) -> dict[str, Any]
         coverage[f'{metric}_covered'] = covered
         coverage[f'{metric}_total'] = total
         coverage[f'{metric}_pct'] = pct(covered, total)
-    coverage['last_snapshot_idx'] = None if latest is None else latest.idx
     coverage['last_snapshot_ts'] = None if latest is None else latest.ts
     coverage['last_snapshot_at'] = dt(coverage['last_snapshot_ts'])
-    corpus_files = None if latest is None else latest.corpus_files
-    coverage['corpus_files_delta'] = corpus_files
-    coverage['corpus_files_total'] = corpus_files
+    coverage['corpus_files_total'] = None if latest is None else latest.corpus_files
     coverage['execs_done'] = None if latest is None else latest.execs_done
     coverage['crashes'] = None if latest is None else latest.crashes
     coverage['hangs'] = None if latest is None else latest.hangs
@@ -123,10 +120,8 @@ def collect_trials(
             **{
                 key: coverage.get(key)
                 for key in (
-                    'last_snapshot_idx',
                     'last_snapshot_ts',
                     'last_snapshot_at',
-                    'corpus_files_delta',
                     'corpus_files_total',
                     'execs_done',
                     'crashes',
@@ -198,7 +193,6 @@ def collect_timeseries(
             continue
         point.update(
             {
-                'corpus_files_delta': row.corpus_files,
                 'corpus_files_total': row.corpus_files,
                 'execs_done': row.execs_done,
                 'crashes': row.crashes,
@@ -225,10 +219,7 @@ def collect_timeseries(
         disk_bytes = sample.corpus_disk_usage_bytes
         point['resource_cpu_percent'] = sample.cpu_percent
         point['resource_memory_percent'] = sample.memory_percent
-        point['resource_memory_bytes'] = memory_bytes
         point['resource_memory_mib'] = (memory_bytes / (1024 * 1024)) if memory_bytes is not None else None
-        point['resource_memory_limit_bytes'] = sample.memory_limit_bytes
-        point['resource_corpus_disk_bytes'] = disk_bytes
         point['resource_corpus_disk_mib'] = (disk_bytes / (1024 * 1024)) if disk_bytes is not None else None
 
     for entry in per_trial.values():

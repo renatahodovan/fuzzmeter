@@ -22,7 +22,7 @@ from fuzzmeter.reporting import build_payload, write_report
 from fuzzmeter.reporting.provenance import attach_measurement_provenance
 from tests.support.dbs import agg_snapshot_row, reporting_run_db
 
-PAYLOAD_HASH = 'f40745c06695cf0bd1a583343a64f24361abc63363832fce34a23d9d20461b4f'
+PAYLOAD_HASH = 'f20b40a8aa4299c222f426c7b0f59de86eef14dbc20212b5f91dacf445e5861d'
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _BUNDLE_SMOKE_SCRIPT = r'''
 import fs from 'node:fs';
@@ -111,6 +111,15 @@ vm.runInNewContext(bundle, sandbox, { filename: process.argv[1] });
 
 class ReportingPayloadTest(unittest.TestCase):
     """Verify full report payload stability for a deterministic run fixture."""
+
+    def test_payload_carries_only_the_sections_the_report_reads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            reporting_run_db(run_dir)
+
+            payload = build_payload(run_dir, run_id='run')
+
+        self.assertEqual(['meta', 'overview', 'targets', 'measurement_provenance'], list(payload))
 
     def test_build_payload_matches_stable_snapshot_hash(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

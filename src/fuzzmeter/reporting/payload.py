@@ -112,9 +112,6 @@ class _PayloadBuilder:
             },
             'overview': overview,
             'targets': targets,
-            'trials': trials,
-            'timeseries': timeseries,
-            'bugs': bugs,
             'measurement_provenance': measurement_provenance,
         }
 

@@ -60,9 +60,6 @@ def _empty_payload() -> dict[str, Any]:
         'overview': {'run_id': 'composite'},
         'sources': [],
         'targets': [],
-        'trials': [],
-        'timeseries': {},
-        'bugs': [],
     }
 
 
@@ -122,8 +119,6 @@ def _merge_measurement(
     entry = copy.deepcopy(source_fuzzer)
     _mark_origin(entry, selection, measurement, display_fuzzer)
     target.setdefault('fuzzers', []).append(entry)
-    _append_trials(payload, run_payload, selection, measurement, display_fuzzer)
-    _append_bugs(payload, run_payload, selection, measurement, display_fuzzer)
     _append_source(payload, selection, measurement, display_fuzzer)
     return True
 
@@ -157,44 +152,6 @@ def _mark_origin(
                 item['source_id'] = measurement.key.source_id
                 item['source_run_id'] = measurement.key.run_id
                 item['source_fuzzer'] = original_fuzzer
-
-
-def _append_trials(
-    payload: dict[str, Any],
-    run_payload: dict[str, Any],
-    selection: CompositeSelection,
-    measurement: CompositeMeasurement,
-    display_fuzzer: str,
-) -> None:
-    for trial in run_payload.get('trials') or []:
-        if not _matches_measurement_row(trial, measurement):
-            continue
-        copied = copy.deepcopy(trial)
-        copied['trial_id'] = _prefixed_id(measurement.key.source_id, copied.get('trial_id'))
-        copied['fuzzer'] = display_fuzzer
-        copied['origin'] = selection.origin
-        copied['source_id'] = measurement.key.source_id
-        copied['source_run_id'] = measurement.key.run_id
-        payload['trials'].append(copied)
-
-
-def _append_bugs(
-    payload: dict[str, Any],
-    run_payload: dict[str, Any],
-    selection: CompositeSelection,
-    measurement: CompositeMeasurement,
-    display_fuzzer: str,
-) -> None:
-    for bug in run_payload.get('bugs') or []:
-        if not _matches_measurement_row(bug, measurement):
-            continue
-        copied = copy.deepcopy(bug)
-        copied['bug_id'] = _prefixed_id(measurement.key.source_id, copied.get('bug_id'))
-        copied['fuzzer'] = display_fuzzer
-        copied['origin'] = selection.origin
-        copied['source_id'] = measurement.key.source_id
-        copied['source_run_id'] = measurement.key.run_id
-        payload['bugs'].append(copied)
 
 
 def _append_source(
@@ -243,14 +200,6 @@ def _append_skipped_source(
             'status': 'skipped',
             'error': error,
         }
-    )
-
-
-def _matches_measurement_row(row: dict[str, Any], measurement: CompositeMeasurement) -> bool:
-    return (
-        str(row.get('fuzzer') or '') == measurement.key.fuzzer
-        and str(row.get('benchmark') or '') == measurement.key.benchmark
-        and str(row.get('fuzz_target') or '') == measurement.key.fuzz_target
     )
 
 
@@ -367,7 +316,3 @@ def _find_fuzzer(target: dict[str, Any], fuzzer: str) -> dict[str, Any] | None:
         if str(entry.get('fuzzer') or '') == fuzzer:
             return entry
     return None
-
-
-def _prefixed_id(source_id: str, value: Any) -> str:
-    return f'{source_id}:{value}'

@@ -135,13 +135,7 @@ def compute_unique_bug_table(target: dict[str, Any]) -> dict[str, Any]:
         for trial in trials
         if isinstance(trial.get('started_ts'), int)
     ]
-    planned_duration_candidates = [
-        int(trial.get('time_seconds'))
-        for trial in trials
-        if isinstance(trial.get('time_seconds'), int) and int(trial.get('time_seconds')) > 0
-    ]
     target_started_ts = min(started_candidates) if started_candidates else None
-    planned_duration_seconds = max(planned_duration_candidates) if planned_duration_candidates else None
 
     bugs_by_key: dict[str, dict[str, Any]] = {}
     for entry in target.get('fuzzers') or []:
@@ -232,7 +226,6 @@ def compute_unique_bug_table(target: dict[str, Any]) -> dict[str, Any]:
         'rows': rows,
         'has_data': bool(rows),
         'last_snapshot_elapsed_seconds': last_snapshot_elapsed_seconds or max_elapsed_seconds,
-        'planned_duration_seconds': planned_duration_seconds,
         'started_ts': target_started_ts,
         'max_elapsed_seconds': max_elapsed_seconds,
     }
