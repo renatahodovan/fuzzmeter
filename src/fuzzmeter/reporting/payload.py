@@ -13,10 +13,12 @@ import datetime
 import json
 import logging
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from ..db.fields import TRIAL_METADATA_FIELDS
+from ..db.trials import TrialRow
 from .analyzers import coverage_curves, target_matrices
 from .analyzers.bug_analysis import BugAnalysis
 from .analyzers.custom_metrics import attach_custom_metric_sections, has_custom_metric_sections
@@ -51,6 +53,63 @@ def format_duration(seconds: int | None) -> str | None:
     if secs or not parts:
         parts.append(f'{secs}s')
     return ' '.join(parts)
+
+
+@dataclass(frozen=True)
+class _RunTimeWindow:
+    '''Hold the wall-clock window of a run and the runtime of its longest trial.'''
+
+    started_ts: int | None
+    last_activity_ts: int | None
+    elapsed_seconds: int | None
+    wall_elapsed_seconds: int | None
+
+
+def _trial_elapsed_seconds(row: TrialRow) -> int | None:
+    '''Return how long one trial ran, capped at the runtime it was configured for.'''
+
+    measured = (
+        row.ended_ts - row.started_ts
+        if row.started_ts is not None and row.ended_ts is not None and row.ended_ts >= row.started_ts
+        else None
+    )
+    if measured is None:
+        return row.time_seconds if row.time_seconds > 0 else None
+    return min(measured, row.time_seconds) if row.time_seconds > 0 else measured
+
+
+def _run_time_window(
+    *,
+    created_ts: int | None,
+    trial_rows: list[TrialRow],
+    snapshot_rows: list[dict[str, Any]],
+) -> _RunTimeWindow:
+    '''Derive the wall-clock window of a run from its trials and snapshots.
+
+    A trial that is still running has no ``ended_ts``, so for live reports the timestamp
+    of its latest snapshot is the only evidence of activity; the end of the window is
+    therefore taken over both sources.
+    '''
+
+    started_candidates = [row.started_ts for row in trial_rows if row.started_ts is not None]
+    activity_candidates = [
+        *(row.ended_ts for row in trial_rows if row.ended_ts is not None),
+        *(ts for ts in (safe_int(row.get('ts')) for row in snapshot_rows) if ts is not None),
+    ]
+    started_ts = min(started_candidates, default=created_ts)
+    last_activity_ts = max(activity_candidates, default=started_ts)
+    wall_elapsed_seconds = (
+        None
+        if started_ts is None or last_activity_ts is None
+        else last_activity_ts - started_ts
+    )
+    trial_elapsed = [seconds for seconds in map(_trial_elapsed_seconds, trial_rows) if seconds is not None]
+    return _RunTimeWindow(
+        started_ts=started_ts,
+        last_activity_ts=last_activity_ts,
+        elapsed_seconds=max(trial_elapsed, default=wall_elapsed_seconds),
+        wall_elapsed_seconds=wall_elapsed_seconds,
+    )
 
 
 class _PayloadBuilder:
@@ -126,42 +185,24 @@ class _PayloadBuilder:
     def collect_overview(self) -> dict[str, Any]:
         '''Collect run-level overview metadata.'''
 
-        overview = dict(self._data.overview_raw)
-        created = safe_int(overview.get('created_ts'))
-        overview['created_ts'] = created
-        overview['created_at'] = dt(created)
-        trial_start_values = [row.started_ts for row in self._data.trial_rows]
-        trial_end_values = [row.ended_ts for row in self._data.trial_rows]
-        snapshot_values = [safe_int(row.get('ts')) for row in self._data.snapshot_rows]
-        start_candidates = [value for value in trial_start_values if value is not None]
-        end_candidates = [value for value in [*trial_end_values, *snapshot_values] if value is not None]
-        started_ts = min(start_candidates) if start_candidates else created
-        last_activity_ts = max(end_candidates) if end_candidates else started_ts
-        wall_elapsed_seconds = None
-        if started_ts is not None and last_activity_ts is not None:
-            wall_elapsed_seconds = last_activity_ts - started_ts
-        elapsed_candidates: list[int] = []
-        for row in self._data.trial_rows:
-            trial_start = row.started_ts
-            trial_end = row.ended_ts
-            time_seconds = row.time_seconds
-            if trial_start is not None and trial_end is not None and trial_end >= trial_start:
-                elapsed = int(trial_end - trial_start)
-                if time_seconds is not None and time_seconds > 0:
-                    elapsed = min(elapsed, int(time_seconds))
-                elapsed_candidates.append(elapsed)
-            elif time_seconds is not None and time_seconds > 0:
-                elapsed_candidates.append(int(time_seconds))
-        elapsed_seconds = max(elapsed_candidates) if elapsed_candidates else wall_elapsed_seconds
-        overview['started_ts'] = started_ts
-        overview['started_at'] = dt(started_ts)
-        overview['last_activity_ts'] = last_activity_ts
-        overview['last_activity_at'] = dt(last_activity_ts)
-        overview['elapsed_seconds'] = elapsed_seconds
-        overview['elapsed_human'] = format_duration(elapsed_seconds)
-        overview['wall_elapsed_seconds'] = wall_elapsed_seconds
-        overview['wall_elapsed_human'] = format_duration(wall_elapsed_seconds)
-        return overview
+        created_ts = self._data.overview_raw.get('created_ts')
+        window = _run_time_window(
+            created_ts=created_ts,
+            trial_rows=self._data.trial_rows,
+            snapshot_rows=self._data.snapshot_rows,
+        )
+        return {
+            **self._data.overview_raw,
+            'created_at': dt(created_ts),
+            'started_ts': window.started_ts,
+            'started_at': dt(window.started_ts),
+            'last_activity_ts': window.last_activity_ts,
+            'last_activity_at': dt(window.last_activity_ts),
+            'elapsed_seconds': window.elapsed_seconds,
+            'elapsed_human': format_duration(window.elapsed_seconds),
+            'wall_elapsed_seconds': window.wall_elapsed_seconds,
+            'wall_elapsed_human': format_duration(window.wall_elapsed_seconds),
+        }
 
     def _rel_to_url(self, relpath: str | None) -> str | None:
         if not relpath:
@@ -172,7 +213,7 @@ class _PayloadBuilder:
         return '../' + rel
 
     def _agg_snapshot_for_fuzzer(self, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, Any]:
-        return self._data.latest_agg_snapshots.get((str(fuzzer), str(benchmark), str(fuzz_target)), {})
+        return self._data.latest_agg_snapshots.get((fuzzer, benchmark, fuzz_target), {})
 
     def _aggregated_coverage_for_fuzzer(self, fuzzer: str, benchmark: str, fuzz_target: str) -> dict[str, int | None]:
         agg_snapshot = self._agg_snapshot_for_fuzzer(fuzzer, benchmark, fuzz_target)
