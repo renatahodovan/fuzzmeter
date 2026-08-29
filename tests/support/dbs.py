@@ -8,6 +8,7 @@ from typing import Any
 from fuzzmeter.db import DB, ensure_schema, open_db
 from fuzzmeter.db import metadata as db_metadata
 from fuzzmeter.db import runs as db_runs
+from fuzzmeter.db.resource_telemetry import TelemetrySample
 from fuzzmeter.db.snapshot import AggSnapshotRow, SnapshotRow
 from fuzzmeter.db.trials import TrialRow
 from fuzzmeter.reporting.data.run_data import RunDataSnapshot
@@ -331,5 +332,16 @@ def agg_snapshot_row(**overrides: Any) -> AggSnapshotRow:
         'cov_branches_covered': None, 'cov_branches_total': None,
         'cov_regions_covered': None, 'cov_regions_total': None,
         'cov_functions_covered': None, 'cov_functions_total': None,
+        **overrides,
+    })
+
+
+def telemetry_sample(**overrides: Any) -> TelemetrySample:
+    '''Build a stored resource telemetry sample with the columns a test cares about.'''
+
+    return TelemetrySample.from_row({
+        'trial_id': 1, 'idx': 1, 'ts': 0, 'container_name': 'c',
+        'cpu_percent': None, 'memory_usage_bytes': None, 'memory_limit_bytes': None,
+        'memory_percent': None, 'corpus_disk_usage_bytes': None,
         **overrides,
     })

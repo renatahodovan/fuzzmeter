@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import json
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict
 
 from ...db.fields import TRIAL_METADATA_FIELDS
+from ...db.resource_telemetry import TelemetrySample
 from ...db.snapshot import CoverageSummary, SnapshotRow
 from ...db.trials import TrialRow
 from ..keys import SNAPSHOT_COVERAGE_FIELDS
@@ -149,7 +150,7 @@ def collect_timeseries(
     *,
     trials: list[dict[str, Any]],
     snapshot_rows: list[SnapshotRow],
-    resource_telemetry_rows: list[dict[str, Any]],
+    resource_telemetry_rows: list[TelemetrySample],
     bug_hits_by_snapshot: dict[int, int],
     unique_bug_delta_by_snapshot: dict[int, int],
 ) -> dict[str, Any]:
@@ -177,9 +178,7 @@ def collect_timeseries(
     }
     point_by_trial_idx: Dict[str, Dict[int, Dict[str, Any]]] = {trial_key: {} for trial_key in per_trial}
 
-    def ensure_point(trial_key: str, idx: Optional[int], ts: Optional[int] = None) -> Dict[str, Any] | None:
-        if idx is None:
-            return None
+    def ensure_point(trial_key: str, idx: int, ts: int) -> Dict[str, Any] | None:
         entry = per_trial.get(trial_key)
         if not entry:
             return None
@@ -189,9 +188,8 @@ def collect_timeseries(
             point = {'idx': idx}
             point_map[idx] = point
             entry['points'].append(point)
-        if ts is not None:
-            point.setdefault('ts', ts)
-            point.setdefault('t', dt(ts))
+        point.setdefault('ts', ts)
+        point.setdefault('t', dt(ts))
         return point
 
     for row in snapshot_rows:
@@ -220,18 +218,16 @@ def collect_timeseries(
             point[f'{metric}_total'] = getattr(row.coverage, total_key)
 
     for sample in resource_telemetry_rows:
-        trial_key = str(int(sample['trial_id']))
-        idx = safe_int(sample.get('idx'))
-        point = ensure_point(trial_key, idx, safe_int(sample.get('ts')))
+        point = ensure_point(str(sample.trial_id), sample.idx, sample.ts)
         if point is None:
             continue
-        memory_bytes = safe_int(sample.get('memory_usage_bytes'))
-        disk_bytes = safe_int(sample.get('corpus_disk_usage_bytes'))
-        point['resource_cpu_percent'] = sample.get('cpu_percent')
-        point['resource_memory_percent'] = sample.get('memory_percent')
+        memory_bytes = sample.memory_usage_bytes
+        disk_bytes = sample.corpus_disk_usage_bytes
+        point['resource_cpu_percent'] = sample.cpu_percent
+        point['resource_memory_percent'] = sample.memory_percent
         point['resource_memory_bytes'] = memory_bytes
         point['resource_memory_mib'] = (memory_bytes / (1024 * 1024)) if memory_bytes is not None else None
-        point['resource_memory_limit_bytes'] = safe_int(sample.get('memory_limit_bytes'))
+        point['resource_memory_limit_bytes'] = sample.memory_limit_bytes
         point['resource_corpus_disk_bytes'] = disk_bytes
         point['resource_corpus_disk_mib'] = (disk_bytes / (1024 * 1024)) if disk_bytes is not None else None
 

@@ -17,6 +17,7 @@ from typing import Any, Sequence
 from .base import open_readonly_connection
 from .bug import BugRow
 from .fields import TRIAL_METADATA_FIELDS
+from .resource_telemetry import TelemetrySample
 from .snapshot import SEED_BASELINE_IDX, AggSnapshotRow, SnapshotRow
 from .trials import TrialRow
 
@@ -193,23 +194,26 @@ class ReportingDB:
             )
         ]
 
-    def resource_telemetry_rows(self, trial_ids: Sequence[int]) -> list[dict[str, Any]]:
+    def resource_telemetry_rows(self, trial_ids: Sequence[int]) -> list[TelemetrySample]:
         '''Return resource telemetry rows for report time series.'''
 
         if not trial_ids:
             return []
         placeholders = ','.join('?' for _ in trial_ids)
-        return self.rows(
-            f'''
-            SELECT trial_id, idx, ts, container_name,
-                   cpu_percent, memory_usage_bytes, memory_limit_bytes, memory_percent,
-                   corpus_disk_usage_bytes
-            FROM resource_telemetry
-            WHERE trial_id IN ({placeholders})
-            ORDER BY trial_id, idx
-            ''',
-            tuple(int(tid) for tid in trial_ids),
-        )
+        return [
+            TelemetrySample.from_row(row)
+            for row in self.rows(
+                f'''
+                SELECT trial_id, idx, ts, container_name,
+                       cpu_percent, memory_usage_bytes, memory_limit_bytes, memory_percent,
+                       corpus_disk_usage_bytes
+                FROM resource_telemetry
+                WHERE trial_id IN ({placeholders})
+                ORDER BY trial_id, idx
+                ''',
+                tuple(int(tid) for tid in trial_ids),
+            )
+        ]
 
     def latest_agg_snapshots_by_fuzzer_target(self, run_id: str) -> dict[tuple[str, str, str], AggSnapshotRow]:
         '''Return latest campaign coverage rows keyed by fuzzer and target.'''

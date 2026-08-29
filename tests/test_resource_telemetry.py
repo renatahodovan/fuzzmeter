@@ -80,7 +80,7 @@ class ResourceTelemetryTest(unittest.TestCase):
         upsert.assert_called_once_with(
             None,
             TelemetrySample(
-                trial_row_id=trial.db_id,
+                trial_id=trial.db_id,
                 idx=1,
                 ts=100,
                 container_name='container',
@@ -107,7 +107,7 @@ class ResourceTelemetryTest(unittest.TestCase):
         upsert.assert_called_once_with(
             None,
             TelemetrySample(
-                trial_row_id=trial.db_id,
+                trial_id=trial.db_id,
                 idx=1,
                 ts=100,
                 container_name='container',

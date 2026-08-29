@@ -16,7 +16,7 @@ from fuzzmeter.reporting.analyzers import bug_analysis, coverage_curves, trial_a
 from fuzzmeter.reporting.metrics import median
 from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.set_comparison import pairwise_matrix, relative_containment_matrix, trial_set_comparison
-from tests.support.dbs import snapshot_row, trial_row
+from tests.support.dbs import snapshot_row, telemetry_sample, trial_row
 
 COV_METRICS = ('branches',)
 CURVE_MAX_POINTS = 100
@@ -126,16 +126,14 @@ class TrialAnalysisTest(unittest.TestCase):
                 ),
             ],
             resource_telemetry_rows=[
-                {
-                    'trial_id': 1,
-                    'idx': 1,
-                    'ts': 121,
-                    'cpu_percent': 12.5,
-                    'memory_percent': 25.0,
-                    'memory_usage_bytes': 2 * 1024 * 1024,
-                    'memory_limit_bytes': 8 * 1024 * 1024,
-                    'corpus_disk_usage_bytes': 3 * 1024 * 1024,
-                }
+                telemetry_sample(
+                    ts=121,
+                    cpu_percent=12.5,
+                    memory_percent=25.0,
+                    memory_usage_bytes=2 * 1024 * 1024,
+                    memory_limit_bytes=8 * 1024 * 1024,
+                    corpus_disk_usage_bytes=3 * 1024 * 1024,
+                )
             ],
             bug_hits_by_snapshot={10: 2, 11: 3},
             unique_bug_delta_by_snapshot={10: 1},

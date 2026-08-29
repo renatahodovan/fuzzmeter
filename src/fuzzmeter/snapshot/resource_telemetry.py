@@ -82,7 +82,7 @@ class ResourceTelemetryCollector:
             db_resource_telemetry.upsert_resource_telemetry(
                 db,
                 db_resource_telemetry.TelemetrySample(
-                    trial_row_id=trial.db_id,
+                    trial_id=trial.db_id,
                     idx=tick_idx,
                     ts=ts,
                     container_name=trial.container_name,
