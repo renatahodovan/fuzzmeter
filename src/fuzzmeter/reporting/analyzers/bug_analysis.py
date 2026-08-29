@@ -12,8 +12,19 @@ from __future__ import annotations
 from typing import Any
 
 from ...db.bug import BugRow
+from ..keys import (
+    RELBUG_MATRIX_KEY,
+    RELBUG_SCORE_BY_FUZZER_KEY,
+    UNIQUE_BUG_MATRIX_KEY,
+    UNIQUE_BUG_TABLE_KEY,
+)
 from ..metrics import dt, median
-from ..set_comparison import novelty_scores, relative_containment_matrix, trial_set_comparison
+from ..set_comparison import (
+    empty_trial_set_comparison,
+    novelty_scores,
+    relative_containment_matrix,
+    trial_set_comparison,
+)
 
 
 class BugAnalysis:
@@ -253,6 +264,15 @@ class BugAnalysis:
             },
             novelty_scores(fuzzers, trial_bug_sets),
         )
+
+
+def attach_empty_bug_matrices(target: dict[str, Any]) -> None:
+    '''Attach placeholder bug matrices to a target without comparable fuzzers.'''
+
+    target[UNIQUE_BUG_TABLE_KEY] = {'fuzzers': [], 'rows': [], 'has_data': False}
+    target[UNIQUE_BUG_MATRIX_KEY] = empty_trial_set_comparison()
+    target[RELBUG_MATRIX_KEY] = {'fuzzers': [], 'matrix': [], 'max_value': 0, 'has_data': False}
+    target[RELBUG_SCORE_BY_FUZZER_KEY] = {}
 
 
 def _trial_bug_sets(target: dict[str, Any]) -> tuple[list[str], dict[str, list[set[str] | None]]]:

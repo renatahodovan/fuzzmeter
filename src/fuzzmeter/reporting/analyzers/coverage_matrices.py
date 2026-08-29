@@ -11,7 +11,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..keys import BRANCH_COVERAGE_METRIC
+from ..keys import (
+    BRANCH_A12_MATRIX_KEY,
+    BRANCH_COVERAGE_METRIC,
+    BRANCH_MWU_MATRIX_KEY,
+    RELCOV_MATRIX_KEY,
+    RELCOV_SCORE_BY_FUZZER_KEY,
+    UNIQUE_MATRIX_KEY,
+)
 from ..metrics import mann_whitney_u_pvalue, median, safe_int, vargha_delaney_a12
 from ..set_comparison import (
     TrialSetIndex,
@@ -20,6 +27,46 @@ from ..set_comparison import (
     relative_containment_matrix,
     trial_set_comparison,
 )
+
+
+def with_aggregate_trial_fallback(
+    *,
+    cov_metrics: tuple[str, ...],
+    trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str] | None]]],
+    coverage_sets_by_metric: dict[str, dict[str, set[str]]],
+    fuzzers: list[str],
+) -> tuple[dict[str, dict[str, list[set[str] | None]]], dict[str, set[str]]]:
+    '''Use final aggregate coverage sets when trial compact sets are unavailable.'''
+
+    out: dict[str, dict[str, list[set[str] | None]]] = {}
+    fallback_fuzzers_by_metric: dict[str, set[str]] = {}
+    for metric in cov_metrics:
+        trial_sets = trial_coverage_sets_by_metric.get(metric, {})
+        aggregate_sets = coverage_sets_by_metric.get(metric, {})
+        merged = {
+            fuzzer: [set(value) if value is not None else None for value in values]
+            for fuzzer, values in trial_sets.items()
+        }
+        for fuzzer in fuzzers:
+            if any(value is not None for value in merged.get(fuzzer, [])):
+                continue
+            aggregate_set = aggregate_sets.get(fuzzer)
+            if aggregate_set is not None:
+                merged[fuzzer] = [set(aggregate_set)]
+                fallback_fuzzers_by_metric.setdefault(metric, set()).add(fuzzer)
+        out[metric] = merged
+    return out, fallback_fuzzers_by_metric
+
+
+def attach_empty_coverage_matrices(target: dict[str, Any]) -> None:
+    '''Attach placeholder coverage matrices to a target without comparable fuzzers.'''
+
+    empty_metric_group = {'by_metric': {}, 'has_data': False, 'available_metrics': []}
+    target[UNIQUE_MATRIX_KEY] = empty_metric_group
+    target[RELCOV_MATRIX_KEY] = empty_metric_group
+    target[BRANCH_MWU_MATRIX_KEY] = empty_metric_group
+    target[BRANCH_A12_MATRIX_KEY] = empty_metric_group
+    target[RELCOV_SCORE_BY_FUZZER_KEY] = {}
 
 
 def compute_unique_matrix(
