@@ -19,7 +19,7 @@ from ..keys import (
     RELCOV_SCORE_BY_FUZZER_KEY,
     UNIQUE_MATRIX_KEY,
 )
-from ..metrics import mann_whitney_u_pvalue, median, safe_int, vargha_delaney_a12
+from ..metrics import mann_whitney_u_pvalue, median, vargha_delaney_a12
 from ..set_comparison import (
     TrialSetIndex,
     novelty_scores,
@@ -128,13 +128,18 @@ def _compute_unique_matrix_for_metric(
 def compute_branch_stat_matrices(
     *,
     fuzzers: list[str],
-    trials_by_fuzzer: dict[str, list[dict[str, Any]]],
+    branch_coverage_by_fuzzer: dict[str, list[int | None]],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     '''Compute pairwise branch-coverage Mann-Whitney and A12 matrices.'''
 
-    distributions, missing_any = _branch_coverage_distributions(
-        fuzzers=fuzzers,
-        trials_by_fuzzer=trials_by_fuzzer,
+    distributions = {
+        fuzzer: [float(value) for value in branch_coverage_by_fuzzer.get(fuzzer, []) if value is not None]
+        for fuzzer in fuzzers
+    }
+    missing_any = any(
+        value is None
+        for fuzzer in fuzzers
+        for value in branch_coverage_by_fuzzer.get(fuzzer, [])
     )
     note = (
         'Final branch coverage missing for one or more trials; '
@@ -336,23 +341,6 @@ def _single_metric_matrix_group(matrix: dict[str, Any]) -> dict[str, Any]:
         'has_data': bool(matrix.get('has_data')),
         'available_metrics': [BRANCH_COVERAGE_METRIC] if matrix.get('has_data') else [],
     }
-
-
-def _branch_coverage_distributions(
-    *,
-    fuzzers: list[str],
-    trials_by_fuzzer: dict[str, list[dict[str, Any]]],
-) -> tuple[dict[str, list[float]], bool]:
-    distributions: dict[str, list[float]] = {fuzzer: [] for fuzzer in fuzzers}
-    missing_any = False
-    for fuzzer in fuzzers:
-        for trial in trials_by_fuzzer.get(fuzzer, []):
-            value = safe_int(trial.get(f'{BRANCH_COVERAGE_METRIC}_cov'))
-            if value is None:
-                missing_any = True
-                continue
-            distributions[fuzzer].append(float(value))
-    return distributions, missing_any
 
 
 def _relcov_scores(

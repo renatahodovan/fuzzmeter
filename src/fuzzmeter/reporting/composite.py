@@ -19,7 +19,7 @@ from ..composite import CompositeMeasurement, CompositeSelection
 from .analyzers import target_matrices
 from .data.coverage_data import CoverageData
 from .keys import COV_METRICS
-from .metrics import dt
+from .metrics import dt, safe_int
 from .payload import build_payload
 
 
@@ -215,17 +215,19 @@ def _recompute_matrices(
         target_matrices.attach_target_matrices(
             target=target,
             fuzzers=fuzzers,
-            trials_by_fuzzer=_trials_by_fuzzer(target),
+            branch_coverage_by_fuzzer=_branch_coverage_by_fuzzer(target),
             coverage_sets_by_metric=_coverage_sets_by_metric(target, source_dirs),
             trial_coverage_sets_by_metric=_trial_coverage_sets_by_metric(target, source_dirs),
         )
 
 
-def _trials_by_fuzzer(target: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
-    """Return the trials of a merged target, grouped by the fuzzer they are shown under."""
+def _branch_coverage_by_fuzzer(target: dict[str, Any]) -> dict[str, list[int | None]]:
+    """Return the final branch coverage of every merged trial, by the fuzzer it is shown under."""
 
     return {
-        str(entry.get('fuzzer') or ''): list(entry.get('trials') or [])
+        str(entry.get('fuzzer') or ''): [
+            safe_int(trial.get('branches_cov')) for trial in entry.get('trials') or []
+        ]
         for entry in target.get('fuzzers') or []
         if entry.get('fuzzer')
     }

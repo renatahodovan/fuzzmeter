@@ -14,6 +14,7 @@ from typing import Any
 
 from ...db.snapshot import AggSnapshotRow
 from ...repro.coverage_sets import read_covered_keys
+from ..analyzers.trial_analysis import TrialReport
 
 
 class CoverageData:
@@ -43,10 +44,10 @@ class CoverageData:
 
         return self._coverage_sets(snapshot.coverage_sets_json_rel, snapshot.coverage.coverage_html_dir)
 
-    def coverage_sets_for_trial(self, trial: dict[str, Any]) -> Path | None:
-        '''Return the compact coverage set artifact recorded by a report trial row.'''
+    def coverage_sets_for_trial(self, trial: TrialReport) -> Path | None:
+        '''Return the compact coverage set artifact recorded by a report trial.'''
 
-        return self._coverage_sets(trial.get('coverage_sets_json_rel'), trial.get('coverage_html_rel'))
+        return self._coverage_sets(trial.coverage_sets_json_rel, trial.coverage_html_rel)
 
     def _coverage_sets(self, coverage_sets_json_rel: Any, coverage_html_rel: Any) -> Path | None:
         if coverage_sets_json_rel:
@@ -88,7 +89,7 @@ class CoverageData:
         self,
         *,
         fuzzers: list[str],
-        trials_by_fuzzer: dict[str, list[dict[str, Any]]],
+        trials_by_fuzzer: dict[str, list[TrialReport]],
         metric: str,
     ) -> dict[str, list[set[str] | None]]:
         '''Return per-trial covered element sets for one target and metric.'''

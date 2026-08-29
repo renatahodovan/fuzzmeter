@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from ..config.models import read_run_config
+from .analyzers.trial_analysis import TrialReport
 from .metrics import safe_int
 from .plugin_api import ExtraSection, ReportingContext
 from .plugins.loader import ReportingPluginLoader
@@ -29,7 +30,7 @@ def attach_extra_sections(
     run_dir: Path,
     run_id: str,
     targets: list[dict[str, Any]],
-    trials: list[dict[str, Any]],
+    trials: list[TrialReport],
     timeseries: dict[str, Any],
     bugs: list[dict[str, Any]],
 ) -> None:
@@ -38,7 +39,7 @@ def attach_extra_sections(
     loader = ReportingPluginLoader(fuzzer_dirs)
     fuzzer_candidates_by_name, fuzzer_base_by_name = read_run_config(Path(run_dir))
     trial_snapshot_index = _build_trial_snapshot_index(run_dir)
-    trials_by_target_fuzzer = _group_by_target_fuzzer(trials)
+    trials_by_target_fuzzer = _trials_by_target_fuzzer(trials)
     bugs_by_target_fuzzer = _group_by_target_fuzzer(bugs)
 
     for target in targets:
@@ -155,18 +156,17 @@ def _build_reporting_context(
     benchmark: str,
     fuzz_target: str,
     fuzzer: str,
-    reps: Sequence[dict[str, Any]],
+    reps: Sequence[TrialReport],
     bugs: Sequence[dict[str, Any]],
     timeseries: dict[str, Any],
     snapshot_dirs_by_trial: dict[int, list[Path]],
 ) -> ReportingContext:
     timeseries_by_trial: dict[int, dict[str, Any]] = {}
     for trial in reps:
-        trial_id = int(trial.get('trial_id') or 0)
-        timeseries_entry = (timeseries.get('per_trial') or {}).get(str(trial_id))
+        timeseries_entry = (timeseries.get('per_trial') or {}).get(str(trial.trial_id))
         if not timeseries_entry:
-            timeseries_entry = {'trial_id': trial_id, 'points': []}
-        timeseries_by_trial[trial_id] = timeseries_entry
+            timeseries_entry = {'trial_id': trial.trial_id, 'points': []}
+        timeseries_by_trial[trial.trial_id] = timeseries_entry
     return ReportingContext(
         run_id=run_id,
         run_dir=run_dir,
@@ -181,33 +181,26 @@ def _build_reporting_context(
 
 
 def _snapshot_dirs_by_trial(
-    reps: Sequence[dict[str, Any]],
+    reps: Sequence[TrialReport],
     trial_snapshot_index: dict[tuple[str, str, int], list[Path]],
     plugin_candidates: Sequence[str],
     base_name: str | None,
 ) -> dict[int, list[Path]]:
-    out: dict[int, list[Path]] = {}
-    for trial in reps:
-        trial_id = int(trial.get('trial_id') or 0)
-        out[trial_id] = _trial_snapshot_dirs(trial, trial_snapshot_index, plugin_candidates, base_name)
-    return out
+    return {
+        trial.trial_id: _trial_snapshot_dirs(trial, trial_snapshot_index, plugin_candidates, base_name)
+        for trial in reps
+    }
 
 
 def _trial_snapshot_dirs(
-    trial: dict[str, Any],
+    trial: TrialReport,
     trial_snapshot_index: dict[tuple[str, str, int], list[Path]],
     plugin_candidates: Sequence[str],
     base_name: str | None,
 ) -> list[Path]:
-    fuzzer = str(trial.get('fuzzer') or '')
-    benchmark = str(trial.get('benchmark') or '')
-    fuzz_target = str(trial.get('fuzz_target') or '')
-    rep = safe_int(trial.get('rep'))
-    target_id = f'{benchmark}-{fuzz_target}'.replace('/', '_')
-    if not fuzzer or rep is None:
-        return []
-    for candidate in dedupe([fuzzer, base_name, *plugin_candidates]):
-        snapshots = trial_snapshot_index.get((candidate, target_id, rep))
+    target_id = f'{trial.benchmark}-{trial.fuzz_target}'.replace('/', '_')
+    for candidate in dedupe([trial.fuzzer, base_name, *plugin_candidates]):
+        snapshots = trial_snapshot_index.get((candidate, target_id, trial.rep))
         if snapshots:
             return list(snapshots)
     return []
@@ -245,6 +238,13 @@ def _build_trial_snapshot_index(run_dir: Path) -> dict[tuple[str, str, int], lis
         snap_dirs = [path.resolve() for path in sorted(snapshots_root.glob('snap_*')) if path.is_dir()]
         out[(fuzzer, target_id, rep)] = snap_dirs
     return out
+
+
+def _trials_by_target_fuzzer(trials: Sequence[TrialReport]) -> dict[tuple[str, str, str], list[TrialReport]]:
+    grouped: dict[tuple[str, str, str], list[TrialReport]] = {}
+    for trial in trials:
+        grouped.setdefault((trial.benchmark, trial.fuzz_target, trial.fuzzer), []).append(trial)
+    return grouped
 
 
 def _group_by_target_fuzzer(rows: Sequence[dict[str, Any]]) -> dict[tuple[str, str, str], list[dict[str, Any]]]:

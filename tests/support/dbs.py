@@ -11,6 +11,7 @@ from fuzzmeter.db import runs as db_runs
 from fuzzmeter.db.resource_telemetry import TelemetrySample
 from fuzzmeter.db.snapshot import AggSnapshotRow, SnapshotRow
 from fuzzmeter.db.trials import TrialRow
+from fuzzmeter.reporting.analyzers.trial_analysis import TrialReport
 from fuzzmeter.reporting.data.run_data import RunDataSnapshot
 
 
@@ -345,3 +346,22 @@ def telemetry_sample(**overrides: Any) -> TelemetrySample:
         'memory_percent': None, 'corpus_disk_usage_bytes': None,
         **overrides,
     })
+
+
+def trial_report(**overrides: Any) -> TrialReport:
+    '''Build the report view of a trial with the fields a test cares about.'''
+
+    fields: dict[str, Any] = {
+        'trial_id': 1, 'fuzzer': 'fz', 'benchmark': 'bench', 'fuzz_target': 'target',
+        'rep': 0, 'time_seconds': 0, 'status': 'done', 'fuzzer_image': 'image',
+        'build_config': None, 'runtime_config': None,
+        'started_ts': 0, 'ended_ts': None, 'elapsed_seconds': None,
+        'bug_hits_total': 0, 'unique_bugs_total': 0,
+        'corpus_files_total': None, 'execs_done': None, 'crashes': None, 'hangs': None,
+        'coverage_html': None, 'coverage_html_rel': None, 'coverage_sets_json_rel': None,
+    }
+    for metric in ('branches', 'lines', 'functions', 'regions'):
+        fields[f'{metric}_cov'] = None
+        fields[f'{metric}_total'] = None
+        fields[f'{metric}_pct'] = None
+    return TrialReport(**{**fields, **overrides})

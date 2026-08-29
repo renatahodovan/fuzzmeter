@@ -21,6 +21,7 @@ from ..metrics import (
     safe_int,
     trapezoid_auc,
 )
+from .trial_analysis import TrialReport
 
 
 def empty_covered_counts(cov_metrics: tuple[str, ...]) -> dict[str, int | None]:
@@ -130,7 +131,7 @@ def downsample_curve(curve: list[dict[str, Any]], *, curve_max_points: int) -> l
 
 
 def aggregate_finals(
-    reps: list[dict[str, Any]],
+    reps: list[TrialReport],
     points_by_trial: dict[int, list[dict[str, Any]]],
     *,
     cov_metrics: tuple[str, ...],
@@ -140,16 +141,16 @@ def aggregate_finals(
     finals: dict[str, list[float]] = {key: [] for key in FINAL_DIST_KEYS}
     for trial in reps:
         for metric in cov_metrics:
-            cov_value = trial.get(f'{metric}_cov')
-            total_value = trial.get(f'{metric}_total')
-            pct_value = trial.get(f'{metric}_pct')
+            cov_value = getattr(trial, f'{metric}_cov')
+            total_value = getattr(trial, f'{metric}_total')
+            pct_value = getattr(trial, f'{metric}_pct')
             if cov_value is not None:
                 finals[f'{metric}_cov'].append(float(cov_value))
             if total_value is not None:
                 finals[f'{metric}_total'].append(float(total_value))
             if pct_value is not None:
                 finals[f'{metric}_pct'].append(float(pct_value))
-        trial_points = points_by_trial.get(int(trial['trial_id']), [])
+        trial_points = points_by_trial.get(trial.trial_id, [])
         if not trial_points:
             continue
         last_point = trial_points[-1]
@@ -167,7 +168,7 @@ def aggregate_finals(
             value = last_point.get(key)
             if value is not None:
                 finals[key].append(float(value))
-        elapsed_seconds = safe_int(trial.get('elapsed_seconds'))
+        elapsed_seconds = trial.elapsed_seconds
         if elapsed_seconds is not None:
             finals.setdefault('elapsed_seconds', []).append(float(elapsed_seconds))
             execs_done = safe_int(last_point.get('execs_done'))
@@ -177,7 +178,7 @@ def aggregate_finals(
 
 
 def build_curve(
-    reps: list[dict[str, Any]],
+    reps: list[TrialReport],
     points_by_trial: dict[int, list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
     '''Build an aggregate fuzzer curve across repetitions.'''
@@ -186,7 +187,7 @@ def build_curve(
     all_elapsed: set[float] = set()
     for trial in reps:
         points = sorted(
-            points_by_trial.get(int(trial['trial_id']), []),
+            points_by_trial.get(trial.trial_id, []),
             key=lambda point: (
                 float(point.get('elapsed_s'))
                 if isinstance(point.get('elapsed_s'), (int, float))
@@ -201,7 +202,7 @@ def build_curve(
             elapsed_key = max(0.0, float(elapsed_s))
             point_map[elapsed_key] = point
             all_elapsed.add(elapsed_key)
-        trial_series.append((int(trial['trial_id']), point_map))
+        trial_series.append((trial.trial_id, point_map))
 
     last_seen_per_trial: dict[int, dict[str, Any]] = {}
     curve: list[dict[str, Any]] = []
@@ -268,7 +269,7 @@ def _trial_auc(
 
 def build_trial_rows(
     *,
-    reps: list[dict[str, Any]],
+    reps: list[TrialReport],
     points_by_trial: dict[int, list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
     '''Build per-trial metric rows for a fuzzer entry.'''
@@ -277,16 +278,16 @@ def build_trial_rows(
 
     def sort_key(row: dict[str, Any]) -> tuple[str, int, int]:
         return (
-            str(row.get('fuzzer') or ''),
-            int(row.get('rep') or 0),
-            int(row.get('trial_id') or 0),
+            row.fuzzer,
+            row.rep,
+            row.trial_id,
         )
 
     for trial in sorted(reps, key=sort_key):
-        trial_id = int(trial['trial_id'])
+        trial_id = trial.trial_id
         points = sorted(points_by_trial.get(trial_id, []), key=lambda point: int(point.get('idx') or 0))
         last_point = points[-1] if points else {}
-        elapsed_seconds = safe_int(trial.get('elapsed_seconds'))
+        elapsed_seconds = trial.elapsed_seconds
         execs_done = safe_int(last_point.get('execs_done'))
         execs_per_sec = None
         if execs_done is not None and elapsed_seconds is not None and elapsed_seconds > 0:
@@ -314,30 +315,30 @@ def build_trial_rows(
         )
         convergence_pct = _convergence_pct(
             branches_cov_auc,
-            safe_int(trial.get('branches_cov')),
+            trial.branches_cov,
             elapsed_seconds,
         )
 
         rows.append(
             {
                 'trial_id': trial_id,
-                'fuzzer': trial.get('fuzzer'),
-                'benchmark': trial.get('benchmark'),
-                'fuzz_target': trial.get('fuzz_target'),
-                'rep': safe_int(trial.get('rep')),
-                'started_ts': safe_int(trial.get('started_ts')),
-                'ended_ts': safe_int(trial.get('ended_ts')),
-                'time_seconds': safe_int(trial.get('time_seconds')),
-                'status': trial.get('status'),
+                'fuzzer': trial.fuzzer,
+                'benchmark': trial.benchmark,
+                'fuzz_target': trial.fuzz_target,
+                'rep': trial.rep,
+                'started_ts': trial.started_ts,
+                'ended_ts': trial.ended_ts,
+                'time_seconds': trial.time_seconds,
+                'status': trial.status,
                 'elapsed_seconds': elapsed_seconds,
                 'execs_done': execs_done,
                 'execs_per_sec': execs_per_sec,
-                'regions_cov': trial.get('regions_cov'),
-                'regions_pct': trial.get('regions_pct'),
-                'branches_cov': trial.get('branches_cov'),
-                'branches_pct': trial.get('branches_pct'),
-                'coverage_html': trial.get('coverage_html'),
-                'coverage_html_rel': trial.get('coverage_html_rel'),
+                'regions_cov': trial.regions_cov,
+                'regions_pct': trial.regions_pct,
+                'branches_cov': trial.branches_cov,
+                'branches_pct': trial.branches_pct,
+                'coverage_html': trial.coverage_html,
+                'coverage_html_rel': trial.coverage_html_rel,
                 'regions_cov_auc': regions_cov_auc,
                 'regions_cov_auc_norm': regions_cov_auc_norm,
                 'branches_cov_auc': branches_cov_auc,
@@ -361,7 +362,7 @@ def build_fuzzer_entry(
     cov_metrics: tuple[str, ...],
     curve_max_points: int,
     fuzzer: str,
-    reps: list[dict[str, Any]],
+    reps: list[TrialReport],
     bugs: list[dict[str, Any]],
     versions: dict[str, Any],
     points_by_trial: dict[int, list[dict[str, Any]]],
@@ -409,7 +410,7 @@ def collect_target_view(
     *,
     cov_metrics: tuple[str, ...],
     curve_max_points: int,
-    trials: list[dict[str, Any]],
+    trials: list[TrialReport],
     timeseries: dict[str, Any],
     bugs: list[dict[str, Any]],
     aggregated_coverage_by_fuzzer: dict[tuple[str, str, str], dict[str, int | None]],
@@ -438,24 +439,19 @@ def collect_target_view(
         dst[key] = merged
 
     for trial in trials:
-        benchmark = trial.get('benchmark')
-        fuzz_target = trial.get('fuzz_target')
-        fuzzer = trial.get('fuzzer')
-        if not (benchmark and fuzz_target and fuzzer):
-            continue
         target_group = grouped.setdefault(
-            (benchmark, fuzz_target),
-            {'benchmark': benchmark, 'fuzz_target': fuzz_target, 'fuzzers': {}},
+            (trial.benchmark, trial.fuzz_target),
+            {'benchmark': trial.benchmark, 'fuzz_target': trial.fuzz_target, 'fuzzers': {}},
         )
         fuzzer_group = target_group['fuzzers'].setdefault(
-            fuzzer,
+            trial.fuzzer,
             {'reps': [], 'bugs': [], 'versions': {}},
         )
         fuzzer_group['reps'].append(trial)
-        if trial.get('fuzzer_image'):
-            fuzzer_group['versions']['fuzzer_image'] = trial['fuzzer_image']
-        merge_version_config(fuzzer_group['versions'], 'build_config', trial.get('build_config'))
-        merge_version_config(fuzzer_group['versions'], 'runtime_config', trial.get('runtime_config'))
+        if trial.fuzzer_image:
+            fuzzer_group['versions']['fuzzer_image'] = trial.fuzzer_image
+        merge_version_config(fuzzer_group['versions'], 'build_config', trial.build_config)
+        merge_version_config(fuzzer_group['versions'], 'runtime_config', trial.runtime_config)
 
     for bug in bugs:
         key = (bug.get('benchmark'), bug.get('fuzz_target'))

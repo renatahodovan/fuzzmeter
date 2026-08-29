@@ -31,7 +31,7 @@ def attach_target_matrices(
     *,
     target: dict[str, Any],
     fuzzers: list[str],
-    trials_by_fuzzer: dict[str, list[dict[str, Any]]],
+    branch_coverage_by_fuzzer: dict[str, list[int | None]],
     coverage_sets_by_metric: dict[str, dict[str, set[str]]],
     trial_coverage_sets_by_metric: dict[str, dict[str, list[set[str] | None]]],
 ) -> None:
@@ -65,7 +65,7 @@ def attach_target_matrices(
     )
     target[BRANCH_MWU_MATRIX_KEY], target[BRANCH_A12_MATRIX_KEY] = coverage_matrices.compute_branch_stat_matrices(
         fuzzers=fuzzers,
-        trials_by_fuzzer=trials_by_fuzzer,
+        branch_coverage_by_fuzzer=branch_coverage_by_fuzzer,
     )
     coverage_matrices.attach_exclusive_coverage_stats(
         target=target,

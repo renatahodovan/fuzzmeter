@@ -34,7 +34,7 @@ from fuzzmeter.reporting.metrics import (
     vargha_delaney_a12,
 )
 from fuzzmeter.reporting.payload import _PayloadBuilder
-from tests.support.dbs import agg_snapshot_row, run_data_snapshot, snapshot_row, trial_row
+from tests.support.dbs import agg_snapshot_row, run_data_snapshot, snapshot_row, trial_report, trial_row
 
 
 def _coverage_export(branch_line: int) -> dict:
@@ -246,7 +246,7 @@ class CoverageReportingTest(unittest.TestCase):
 
     def test_report_curve_preserves_cumulative_metric_decreases(self) -> None:
         curve = coverage_curves.build_curve(
-            [{'trial_id': 1}],
+            [trial_report(trial_id=1)],
             {
                 1: [
                     {'idx': 1, 'ordinal': 1, 'elapsed_s': 10, 'branches_cov': 5, 'execs_done': 100},
@@ -262,7 +262,7 @@ class CoverageReportingTest(unittest.TestCase):
 
     def test_report_curve_aligns_repetitions_by_elapsed_time(self) -> None:
         curve = coverage_curves.build_curve(
-            [{'trial_id': 1}, {'trial_id': 2}],
+            [trial_report(trial_id=1), trial_report(trial_id=2)],
             {
                 1: [
                     {'idx': 1, 'ordinal': 1, 'elapsed_s': 60, 'branches_cov': 10},
@@ -289,9 +289,9 @@ class CoverageReportingTest(unittest.TestCase):
 
         branch_mwu_matrix, branch_a12_matrix = coverage_matrices.compute_branch_stat_matrices(
             fuzzers=['alpha', 'beta'],
-            trials_by_fuzzer={
-                'alpha': [trial for trial in trials if trial['fuzzer'] == 'alpha'],
-                'beta': [trial for trial in trials if trial['fuzzer'] == 'beta'],
+            branch_coverage_by_fuzzer={
+                'alpha': [trial['branches_cov'] for trial in trials if trial['fuzzer'] == 'alpha'],
+                'beta': [trial['branches_cov'] for trial in trials if trial['fuzzer'] == 'beta'],
             },
         )
 
@@ -331,7 +331,7 @@ class CoverageReportingTest(unittest.TestCase):
             snapshot_rows=[snapshot_row(ts=900)],
         )
 
-        overview = builder.collect_overview([{'elapsed_seconds': 300}, {'elapsed_seconds': 300}])
+        overview = builder.collect_overview([trial_report(elapsed_seconds=300), trial_report(elapsed_seconds=300)])
 
         self.assertEqual(300, overview['elapsed_seconds'])
         self.assertEqual(800, overview['wall_elapsed_seconds'])
@@ -344,7 +344,7 @@ class CoverageReportingTest(unittest.TestCase):
             snapshot_rows=[snapshot_row(ts=160)],
         )
 
-        overview = builder.collect_overview([{'elapsed_seconds': 60}])
+        overview = builder.collect_overview([trial_report(elapsed_seconds=60)])
 
         self.assertEqual(60, overview['elapsed_seconds'])
         self.assertEqual(60, overview['wall_elapsed_seconds'])

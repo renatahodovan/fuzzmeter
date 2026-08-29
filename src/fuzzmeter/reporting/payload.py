@@ -19,10 +19,11 @@ from typing import Any
 from ..db.snapshot import AggSnapshotRow, CoverageSummary
 from .analyzers import bug_analysis, coverage_curves, target_matrices, trial_analysis
 from .analyzers.custom_metrics import attach_custom_metric_sections, has_custom_metric_sections
+from .analyzers.trial_analysis import TrialReport
 from .data.coverage_data import CoverageData
 from .data.run_data import RunData
 from .keys import COV_METRICS
-from .metrics import dt, safe_int
+from .metrics import dt
 from .plugin_sections import attach_extra_sections
 from .provenance import attach_measurement_provenance
 
@@ -113,7 +114,7 @@ class _PayloadBuilder:
             'measurement_provenance': measurement_provenance,
         }
 
-    def collect_overview(self, trials: list[dict[str, Any]]) -> dict[str, Any]:
+    def collect_overview(self, trials: list[TrialReport]) -> dict[str, Any]:
         '''Collect run-level overview metadata from the run rows and the collected trials.'''
 
         created_ts = self._data.overview_raw.get('created_ts')
@@ -137,7 +138,7 @@ class _PayloadBuilder:
 
         trial_elapsed_seconds = [
             seconds
-            for seconds in (safe_int(trial.get('elapsed_seconds')) for trial in trials)
+            for seconds in (trial.elapsed_seconds for trial in trials)
             if seconds is not None
         ]
         elapsed_seconds = max(trial_elapsed_seconds, default=wall_elapsed_seconds)
@@ -181,21 +182,20 @@ class _PayloadBuilder:
 
     @staticmethod
     def _trials_by_target_fuzzer(
-        trials: list[dict[str, Any]],
-    ) -> dict[tuple[str, str], dict[str, list[dict[str, Any]]]]:
+        trials: list[TrialReport],
+    ) -> dict[tuple[str, str], dict[str, list[TrialReport]]]:
         '''Group the collected trials by target and by the fuzzer that ran them.'''
 
-        grouped: dict[tuple[str, str], dict[str, list[dict[str, Any]]]] = {}
+        grouped: dict[tuple[str, str], dict[str, list[TrialReport]]] = {}
         for trial in trials:
-            fuzzer = trial['fuzzer']
-            benchmark = trial['benchmark']
-            fuzz_target = trial['fuzz_target']
-            grouped.setdefault((benchmark, fuzz_target), {}).setdefault(fuzzer, []).append(trial)
+            grouped.setdefault(
+                (trial.benchmark, trial.fuzz_target), {},
+            ).setdefault(trial.fuzzer, []).append(trial)
         return grouped
 
     def _target_coverage_inputs(
         self,
-        trials: list[dict[str, Any]],
+        trials: list[TrialReport],
     ) -> tuple[
         dict[tuple[str, str, str], dict[str, int | None]],
         dict[tuple[str, str, str], dict[str, Any] | None],
@@ -234,7 +234,7 @@ class _PayloadBuilder:
     def _trial_coverage_sets_by_metric(
         self,
         fuzzers: list[str],
-        trials_by_fuzzer: dict[str, list[dict[str, Any]]],
+        trials_by_fuzzer: dict[str, list[TrialReport]],
     ) -> dict[str, dict[str, list[set[str] | None]]]:
         return {
             metric: self._coverage_data.trial_coverage_sets_by_fuzzer(
@@ -245,7 +245,7 @@ class _PayloadBuilder:
             for metric in COV_METRICS
         }
 
-    def collect_trials(self) -> list[dict[str, Any]]:
+    def collect_trials(self) -> list[TrialReport]:
         '''Collect per-trial report rows.'''
 
         return trial_analysis.collect_trials(
@@ -255,7 +255,7 @@ class _PayloadBuilder:
             rel_to_url=self._rel_to_url,
         )
 
-    def collect_timeseries(self, trials: list[dict[str, Any]]) -> dict[str, Any]:
+    def collect_timeseries(self, trials: list[TrialReport]) -> dict[str, Any]:
         '''Collect per-trial snapshot time series.'''
 
         return trial_analysis.collect_timeseries(
@@ -277,7 +277,7 @@ class _PayloadBuilder:
 
     def collect_target_view(
         self,
-        trials: list[dict[str, Any]],
+        trials: list[TrialReport],
         timeseries: dict[str, Any],
         bugs: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
@@ -335,7 +335,7 @@ class _PayloadBuilder:
     def create_matrices(
         self,
         targets: list[dict[str, Any]],
-        trials: list[dict[str, Any]],
+        trials: list[TrialReport],
     ) -> list[dict[str, Any]]:
         '''Attach pairwise coverage and bug comparison matrices to each target.'''
 
@@ -352,7 +352,10 @@ class _PayloadBuilder:
             target_matrices.attach_target_matrices(
                 target=target,
                 fuzzers=fuzzers,
-                trials_by_fuzzer=trials_by_fuzzer,
+                branch_coverage_by_fuzzer={
+                    fuzzer: [trial.branches_cov for trial in fuzzer_trials]
+                    for fuzzer, fuzzer_trials in trials_by_fuzzer.items()
+                },
                 coverage_sets_by_metric=self._coverage_sets_by_metric(fuzzers, benchmark, fuzz_target),
                 trial_coverage_sets_by_metric=self._trial_coverage_sets_by_metric(fuzzers, trials_by_fuzzer),
             )

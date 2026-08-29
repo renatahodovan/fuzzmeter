@@ -21,7 +21,7 @@ from fuzzmeter.reporting.set_comparison import (
     trial_set_comparison,
     trial_set_index,
 )
-from tests.support.dbs import snapshot_row, telemetry_sample, trial_row
+from tests.support.dbs import snapshot_row, telemetry_sample, trial_report, trial_row
 
 COV_METRICS = ('branches',)
 CURVE_MAX_POINTS = 100
@@ -46,7 +46,7 @@ class TrialAnalysisTest(unittest.TestCase):
             rel_to_url=lambda path: None,
         )
 
-        self.assertEqual(60, trials[0]['elapsed_seconds'])
+        self.assertEqual(60, trials[0].elapsed_seconds)
 
     def test_collect_trials_reports_a_trial_that_has_no_snapshot_yet(self) -> None:
         trials = trial_analysis.collect_trials(
@@ -56,12 +56,12 @@ class TrialAnalysisTest(unittest.TestCase):
             rel_to_url=lambda path: f'url:{path}' if path else None,
         )
 
-        self.assertIsNone(trials[0]['branches_cov'])
-        self.assertIsNone(trials[0]['branches_pct'])
-        self.assertIsNone(trials[0]['last_snapshot_ts'])
-        self.assertIsNone(trials[0]['corpus_files_total'])
-        self.assertIsNone(trials[0]['coverage_html'])
-        self.assertEqual(0, trials[0]['elapsed_seconds'])
+        self.assertIsNone(trials[0].branches_cov)
+        self.assertIsNone(trials[0].branches_pct)
+        self.assertIsNone(trials[0].execs_done)
+        self.assertIsNone(trials[0].corpus_files_total)
+        self.assertIsNone(trials[0].coverage_html)
+        self.assertEqual(0, trials[0].elapsed_seconds)
 
     def test_collect_trials_uses_latest_snapshot_and_clamps_elapsed_time(self) -> None:
         trials = trial_analysis.collect_trials(
@@ -87,26 +87,17 @@ class TrialAnalysisTest(unittest.TestCase):
         )
 
         self.assertEqual(1, len(trials))
-        self.assertEqual(50, trials[0]['elapsed_seconds'])
-        self.assertEqual(2, trials[0]['branches_cov'])
-        self.assertEqual(50.0, trials[0]['branches_pct'])
-        self.assertEqual('url:coverage/index.html', trials[0]['coverage_html'])
-        self.assertEqual('coverage/coverage-sets.json', trials[0]['coverage_sets_json_rel'])
-        self.assertEqual(3, trials[0]['bug_hits_total'])
-        self.assertEqual(2, trials[0]['unique_bugs_total'])
+        self.assertEqual(50, trials[0].elapsed_seconds)
+        self.assertEqual(2, trials[0].branches_cov)
+        self.assertEqual(50.0, trials[0].branches_pct)
+        self.assertEqual('url:coverage/index.html', trials[0].coverage_html)
+        self.assertEqual('coverage/coverage-sets.json', trials[0].coverage_sets_json_rel)
+        self.assertEqual(3, trials[0].bug_hits_total)
+        self.assertEqual(2, trials[0].unique_bugs_total)
 
     def test_collect_timeseries_merges_resources_and_cumulative_bug_counts(self) -> None:
         timeseries = trial_analysis.collect_timeseries(
-            trials=[
-                {
-                    'trial_id': 1,
-                    'fuzzer': 'fz',
-                    'benchmark': 'bench',
-                    'fuzz_target': 'target',
-                    'started_ts': 100,
-                    'time_seconds': 50,
-                }
-            ],
+            trials=[trial_report(trial_id=1, started_ts=100, time_seconds=50)],
             snapshot_rows=[
                 snapshot_row(
                     snapshot_id=10,
@@ -404,13 +395,13 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
     def test_aggregate_finals_collects_coverage_and_last_point_metrics(self) -> None:
         finals = coverage_curves.aggregate_finals(
             reps=[
-                {
-                    'trial_id': 1,
-                    'elapsed_seconds': 10,
-                    'branches_cov': 5,
-                    'branches_total': 10,
-                    'branches_pct': 50.0,
-                }
+                trial_report(
+                    trial_id=1,
+                    elapsed_seconds=10,
+                    branches_cov=5,
+                    branches_total=10,
+                    branches_pct=50.0,
+                )
             ],
             points_by_trial={
                 1: [
@@ -431,19 +422,15 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
     def test_build_trial_rows_computes_auc_and_execution_rate(self) -> None:
         rows = coverage_curves.build_trial_rows(
             reps=[
-                {
-                    'trial_id': 1,
-                    'fuzzer': 'fz',
-                    'benchmark': 'bench',
-                    'fuzz_target': 'target',
-                    'rep': 0,
-                    'elapsed_seconds': 10,
-                    'branches_cov': 10,
-                    'branches_pct': 50.0,
-                    'regions_cov': 5,
-                    'regions_pct': 25.0,
-                    'coverage_html_rel': 'coverage/trial/html/index.html',
-                }
+                trial_report(
+                    trial_id=1,
+                    elapsed_seconds=10,
+                    branches_cov=10,
+                    branches_pct=50.0,
+                    regions_cov=5,
+                    regions_pct=25.0,
+                    coverage_html_rel='coverage/trial/html/index.html',
+                )
             ],
             points_by_trial={
                 1: [
@@ -479,18 +466,14 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
             cov_metrics=COV_METRICS,
             curve_max_points=CURVE_MAX_POINTS,
             trials=[
-                {
-                    'trial_id': 1,
-                    'fuzzer': 'fz',
-                    'benchmark': 'bench',
-                    'fuzz_target': 'target',
-                    'build_config': {'opt': 'a'},
-                    'runtime_config': {'jobs': 1},
-                    'fuzzer_image': 'image',
-                    'branches_cov': 5,
-                    'branches_total': 10,
-                    'branches_pct': 50.0,
-                }
+                trial_report(
+                    trial_id=1,
+                    build_config={'opt': 'a'},
+                    runtime_config={'jobs': 1},
+                    branches_cov=5,
+                    branches_total=10,
+                    branches_pct=50.0,
+                )
             ],
             timeseries={'per_trial': {1: {'trial_id': 1, 'points': [{'idx': 1, 'execs_done': 10}]}}},
             bugs=[{'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'fz', 'bug_key': 'bug', 'hits_total': 2}],
@@ -556,8 +539,8 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         result = builder.create_matrices(
             [target],
             [
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha', 'branches_cov': 2},
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta', 'branches_cov': 1},
+                trial_report(fuzzer='alpha', branches_cov=2),
+                trial_report(fuzzer='beta', branches_cov=1),
             ],
         )
 
@@ -603,10 +586,7 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
 
         builder.create_matrices(
             [target],
-            [
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'alpha'},
-                {'benchmark': 'bench', 'fuzz_target': 'target', 'fuzzer': 'beta'},
-            ],
+            [trial_report(fuzzer='alpha'), trial_report(fuzzer='beta')],
         )
 
         relcov = target['relcov_matrix']['by_metric']['branches']

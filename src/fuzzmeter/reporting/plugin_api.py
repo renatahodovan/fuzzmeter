@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+from .analyzers.trial_analysis import TrialReport
+
 ChartType = Literal[
     'bar',
     'distribution',
@@ -111,7 +113,7 @@ class ReportingContext:
     benchmark: str
     fuzz_target: str
     fuzzer: str
-    trials: list[dict[str, Any]]
+    trials: list[TrialReport]
     timeseries_by_trial: dict[int, dict[str, Any]]
     bugs: list[dict[str, Any]]
     snapshot_dirs_by_trial: dict[int, list[Path]]

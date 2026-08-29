@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Callable, Dict
 
 from ...db.resource_telemetry import TelemetrySample
@@ -16,6 +17,46 @@ from ...db.snapshot import CoverageSummary, SnapshotRow
 from ...db.trials import TrialRow
 from ..keys import SNAPSHOT_COVERAGE_FIELDS
 from ..metrics import dt, pct, safe_int
+
+
+@dataclass(frozen=True)
+class TrialReport:
+    """Describe one trial of a run as the report reads it."""
+
+    trial_id: int
+    fuzzer: str
+    benchmark: str
+    fuzz_target: str
+    rep: int
+    time_seconds: int
+    status: str
+    fuzzer_image: str
+    build_config: dict[str, Any] | None
+    runtime_config: dict[str, Any] | None
+    started_ts: int
+    ended_ts: int | None
+    elapsed_seconds: int | None
+    bug_hits_total: int
+    unique_bugs_total: int
+    corpus_files_total: int | None
+    execs_done: int | None
+    crashes: int | None
+    hangs: int | None
+    coverage_html: str | None
+    coverage_html_rel: str | None
+    coverage_sets_json_rel: str | None
+    branches_cov: int | None
+    branches_total: int | None
+    branches_pct: float | None
+    lines_cov: int | None
+    lines_total: int | None
+    lines_pct: float | None
+    functions_cov: int | None
+    functions_total: int | None
+    functions_pct: float | None
+    regions_cov: int | None
+    regions_total: int | None
+    regions_pct: float | None
 
 
 def snapshot_has_coverage(row: SnapshotRow) -> bool:
@@ -64,72 +105,54 @@ def collect_trials(
     latest_snapshots: dict[int, SnapshotRow],
     bug_stats_by_trial: dict[int, tuple[int, int]],
     rel_to_url: Callable[[str | None], str | None],
-) -> list[dict[str, Any]]:
-    '''Collect report trial rows from database rows and snapshot summaries.'''
+) -> list[TrialReport]:
+    '''Collect the report view of every trial from its database rows and latest snapshot.'''
 
-    trials: list[dict[str, Any]] = []
+    trials: list[TrialReport] = []
     for row in trial_rows:
-        trial_id = row.trial_id
-        latest = latest_snapshots.get(trial_id)
-        coverage_html_rel = None
-        if latest is not None and snapshot_has_coverage(latest):
-            coverage_html_rel = latest.coverage.coverage_html_dir
+        latest = latest_snapshots.get(row.trial_id)
+        coverage_html_rel = (
+            latest.coverage.coverage_html_dir
+            if latest is not None and snapshot_has_coverage(latest)
+            else None
+        )
         coverage = coverage_summary_from_snapshot(latest)
-        coverage['coverage_html'] = rel_to_url(coverage_html_rel)
-        coverage['coverage_html_rel'] = coverage_html_rel
-        coverage['coverage_sets_json_rel'] = None if latest is None else latest.coverage_sets_json_rel
-        bug_hits_total, unique_bugs_total = bug_stats_by_trial.get(trial_id, (0, 0))
-        trial = {
-            'trial_id': trial_id,
-            'fuzzer': row.fuzzer,
-            'benchmark': row.benchmark,
-            'fuzz_target': row.fuzz_target,
-            'rep': row.rep,
-            'time_seconds': row.time_seconds,
-            'jobs': row.jobs,
-            'status': row.status,
-            'started_ts': row.started_ts,
-            'ended_ts': row.ended_ts,
-            'started_at': dt(row.started_ts),
-            'ended_at': dt(row.ended_ts),
-            'elapsed_seconds': _elapsed_seconds(row, coverage),
-            'bug_hits_total': int(bug_hits_total),
-            'unique_bugs_total': int(unique_bugs_total),
+        bug_hits_total, unique_bugs_total = bug_stats_by_trial.get(row.trial_id, (0, 0))
+        trials.append(TrialReport(
+            trial_id=row.trial_id,
+            fuzzer=row.fuzzer,
+            benchmark=row.benchmark,
+            fuzz_target=row.fuzz_target,
+            rep=row.rep,
+            time_seconds=row.time_seconds,
+            status=row.status,
+            fuzzer_image=row.fuzzer_image,
+            build_config=row.build_config,
+            runtime_config=row.runtime_config,
+            started_ts=row.started_ts,
+            ended_ts=row.ended_ts,
+            elapsed_seconds=_elapsed_seconds(row, coverage),
+            bug_hits_total=int(bug_hits_total),
+            unique_bugs_total=int(unique_bugs_total),
+            corpus_files_total=coverage['corpus_files_total'],
+            execs_done=coverage['execs_done'],
+            crashes=coverage['crashes'],
+            hangs=coverage['hangs'],
+            coverage_html=rel_to_url(coverage_html_rel),
+            coverage_html_rel=coverage_html_rel,
+            coverage_sets_json_rel=None if latest is None else latest.coverage_sets_json_rel,
             **{
-                f'{metric}_cov': coverage.get(f'{metric}_covered')
+                f'{metric}_{report_suffix}': coverage[f'{metric}_{coverage_suffix}']
                 for metric in SNAPSHOT_COVERAGE_FIELDS
+                for report_suffix, coverage_suffix in (('cov', 'covered'), ('total', 'total'), ('pct', 'pct'))
             },
-            **{
-                f'{metric}_{suffix}': coverage.get(f'{metric}_{suffix}')
-                for metric in SNAPSHOT_COVERAGE_FIELDS
-                for suffix in ('total', 'pct')
-            },
-            **{
-                key: coverage.get(key)
-                for key in (
-                    'last_snapshot_ts',
-                    'last_snapshot_at',
-                    'corpus_files_total',
-                    'execs_done',
-                    'crashes',
-                    'hangs',
-                    'coverage_html',
-                    'coverage_html_rel',
-                )
-            },
-        }
-        if coverage.get('coverage_sets_json_rel'):
-            trial['coverage_sets_json_rel'] = coverage['coverage_sets_json_rel']
-        trial['fuzzer_image'] = row.fuzzer_image
-        trial['build_config'] = row.build_config
-        trial['runtime_config'] = row.runtime_config
-        trials.append(trial)
+        ))
     return trials
 
 
 def collect_timeseries(
     *,
-    trials: list[dict[str, Any]],
+    trials: list[TrialReport],
     snapshot_rows: list[SnapshotRow],
     resource_telemetry_rows: list[TelemetrySample],
     bug_hits_by_snapshot: dict[int, int],
@@ -137,22 +160,14 @@ def collect_timeseries(
 ) -> dict[str, Any]:
     '''Collect per-trial time-series points from snapshot rows.'''
 
-    started_ts_by_trial = {
-        int(trial['trial_id']): safe_int(trial.get('started_ts'))
-        for trial in trials
-        if trial.get('trial_id') is not None
-    }
-    time_seconds_by_trial = {
-        int(trial['trial_id']): safe_int(trial.get('time_seconds'))
-        for trial in trials
-        if trial.get('trial_id') is not None
-    }
+    started_ts_by_trial = {trial.trial_id: trial.started_ts for trial in trials}
+    time_seconds_by_trial = {trial.trial_id: trial.time_seconds for trial in trials}
     per_trial: Dict[str, Dict[str, Any]] = {
-        str(int(trial['trial_id'])): {
-            'trial_id': int(trial['trial_id']),
-            'fuzzer': trial.get('fuzzer'),
-            'benchmark': trial.get('benchmark'),
-            'fuzz_target': trial.get('fuzz_target'),
+        str(trial.trial_id): {
+            'trial_id': trial.trial_id,
+            'fuzzer': trial.fuzzer,
+            'benchmark': trial.benchmark,
+            'fuzz_target': trial.fuzz_target,
             'points': [],
         }
         for trial in trials

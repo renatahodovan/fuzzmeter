@@ -17,6 +17,7 @@ from pathlib import Path
 from fuzzers.afl.run import fuzz as afl_fuzzer
 from fuzzers.afl.run.reporting import AFLReportingPlugin
 from fuzzmeter.reporting.plugin_api import ReportingContext
+from tests.support.dbs import trial_report
 
 
 class AFLReportingTest(unittest.TestCase):
@@ -59,7 +60,7 @@ class AFLReportingTest(unittest.TestCase):
                 benchmark='bench',
                 fuzz_target='target',
                 fuzzer='aflplusplus',
-                trials=[{'trial_id': 1, 'started_ts': 100}],
+                trials=[trial_report(trial_id=1, started_ts=100)],
                 timeseries_by_trial={1: {'points': [{'idx': 1, 'ts': 160}]}},
                 bugs=[],
                 snapshot_dirs_by_trial={1: [snapshot_dir]},

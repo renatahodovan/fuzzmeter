@@ -46,7 +46,7 @@ from fuzzmeter.reporting.web_payload import (
     serialize_extra_sections,
     validate_extra_sections,
 )
-from tests.support.dbs import agg_snapshot_row
+from tests.support.dbs import agg_snapshot_row, trial_report
 
 
 class CoverageDataTest(unittest.TestCase):
@@ -106,13 +106,7 @@ class CoverageDataTest(unittest.TestCase):
                 result = data.trial_coverage_sets_by_fuzzer(
                     fuzzers=['fz'],
                     trials_by_fuzzer={'fz': [
-                        {
-                            'fuzzer': 'fz',
-                            'benchmark': 'bench',
-                            'fuzz_target': 'target',
-                            'coverage_sets_json_rel': 'coverage/fz/trial/coverage-sets.json',
-                            'coverage_html_rel': None,
-                        }
+                        trial_report(coverage_sets_json_rel='coverage/fz/trial/coverage-sets.json')
                     ]},
                     metric='branches',
                 )
@@ -132,18 +126,8 @@ class CoverageDataTest(unittest.TestCase):
                 result = data.trial_coverage_sets_by_fuzzer(
                     fuzzers=['fz'],
                     trials_by_fuzzer={'fz': [
-                        {
-                            'fuzzer': 'fz',
-                            'benchmark': 'bench',
-                            'fuzz_target': 'target',
-                            'coverage_sets_json_rel': 'coverage/trial-0/coverage-sets.json',
-                        },
-                        {
-                            'fuzzer': 'fz',
-                            'benchmark': 'bench',
-                            'fuzz_target': 'target',
-                            'coverage_sets_json_rel': 'coverage/missing/coverage-sets.json',
-                        },
+                        trial_report(coverage_sets_json_rel='coverage/trial-0/coverage-sets.json'),
+                        trial_report(coverage_sets_json_rel='coverage/missing/coverage-sets.json'),
                     ]},
                     metric='branches',
                 )
@@ -417,7 +401,7 @@ class ReportingPluginSectionsTest(unittest.TestCase):
 
             index = _build_trial_snapshot_index(run_dir)
             dirs = _snapshot_dirs_by_trial(
-                [{'trial_id': 7, 'fuzzer': 'derived', 'benchmark': 'bench', 'fuzz_target': 'target', 'rep': 2}],
+                [trial_report(trial_id=7, fuzzer='derived', rep=2)],
                 index,
                 ['derived', 'base'],
                 'base',

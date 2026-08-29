@@ -13,6 +13,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+from fuzzmeter.reporting.analyzers.trial_analysis import TrialReport
 from fuzzmeter.reporting.plugin_api import ChartSeries, ChartSpec, DataPoint, ExtraSection, ReportingContext
 
 MUTATOR_MANIFEST = '.fuzzmeter_mutators.json'
@@ -54,17 +55,16 @@ def _point_by_idx(timeseries_entry: dict) -> dict[int, dict]:
     }
 
 
-def _elapsed_seconds_for_point(trial: dict, point: dict) -> int | None:
-    started_ts = trial.get('started_ts')
+def _elapsed_seconds_for_point(trial: TrialReport, point: dict) -> int | None:
     point_ts = point.get('ts')
     try:
-        if started_ts is None or point_ts is None:
+        if point_ts is None:
             elapsed_s = point.get('elapsed_s')
             if elapsed_s is None:
                 return None
             elapsed = int(float(elapsed_s))
             return elapsed if elapsed >= 0 else None
-        elapsed = int(point_ts) - int(started_ts)
+        elapsed = int(point_ts) - trial.started_ts
         return elapsed if elapsed >= 0 else None
     except Exception:
         return None
@@ -182,7 +182,7 @@ def _build_payload(ctx: ReportingContext) -> tuple[list[ChartSeries], dict[str, 
     snapshot_point_count = 0
 
     for trial in ctx.trials:
-        trial_id = int(trial.get('trial_id') or 0)
+        trial_id = trial.trial_id
         timeseries_entry = ctx.timeseries_by_trial.get(trial_id) or {'points': []}
         points_by_idx = _point_by_idx(timeseries_entry)
         trial_history: list[tuple[int, dict[str, int]]] = []
@@ -302,7 +302,7 @@ class AFLReportingPlugin:
 
     @staticmethod
     def _cache_key(ctx: ReportingContext) -> tuple[str, str, str, tuple[int, ...]]:
-        trial_ids = tuple(sorted(int(trial.get('trial_id') or 0) for trial in ctx.trials))
+        trial_ids = tuple(sorted(trial.trial_id for trial in ctx.trials))
         return (ctx.run_id, ctx.benchmark, ctx.fuzz_target, trial_ids)
 
     def _resolve(self, ctx: ReportingContext) -> tuple[list[ChartSeries], dict[str, object]]:
