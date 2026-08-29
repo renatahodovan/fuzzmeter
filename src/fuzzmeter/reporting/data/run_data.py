@@ -43,7 +43,7 @@ class RunData:
     '''Load report data from the run database.'''
 
     def __init__(self, db_path: Path):
-        self.db_path = Path(db_path)
+        self.db_path = db_path
 
     def open(self) -> ReportingDB:
         '''Open the reporting database view.'''

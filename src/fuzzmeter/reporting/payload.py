@@ -77,13 +77,9 @@ class _PayloadBuilder:
         file_url_prefix: str | None = None,
         fuzzer_dirs: dict[str, Path] | None = None,
     ):
-        self.run_dir = Path(run_dir).resolve()
-        self.db_path = self.run_dir / 'fuzzmeter.db'
-        if not self.db_path.exists():
-            raise FileNotFoundError(f'Missing DB: {self.db_path}')
+        self.run_dir = run_dir
         self.file_url_prefix = file_url_prefix
-        self._run_data = RunData(self.db_path)
-        loaded = self._run_data.load(run_dir_name=self.run_dir.name, run_id=run_id)
+        loaded = RunData(run_dir / 'fuzzmeter.db').load(run_dir_name=run_dir.name, run_id=run_id)
         self.run_id = loaded.run_id
         self._overview_raw = loaded.overview_raw
         self._trial_rows = loaded.trial_rows
@@ -99,7 +95,7 @@ class _PayloadBuilder:
         self._bugs = loaded.bugs
         self._bug_hits_by_bug = loaded.bug_hits_by_bug
         self._bug_trials_by_bug = loaded.bug_trials_by_bug
-        self._coverage_data = CoverageData(self.run_dir)
+        self._coverage_data = CoverageData(run_dir)
         self._trial_analysis = TrialAnalysis(
             snapshot_coverage_fields=SNAPSHOT_COVERAGE_FIELDS,
             trial_version_fields=TRIAL_METADATA_FIELDS,
@@ -537,7 +533,10 @@ def build_payload(
     file_url_prefix: str | None = None,
     fuzzer_dirs: dict[str, Path] | None = None,
 ) -> dict[str, Any]:
-    '''Build the JSON payload consumed by the web report.'''
+    '''Build the JSON payload consumed by the web report.
+
+    The caller must pass a resolved run directory that contains ``fuzzmeter.db``.
+    '''
 
     return _PayloadBuilder(
         run_dir,

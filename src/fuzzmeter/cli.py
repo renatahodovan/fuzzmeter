@@ -46,14 +46,19 @@ def _resolve_resource_dirs(
     return dirs
 
 
+def _resolve_run_dir(value: Path) -> Path:
+    run_dir = value.expanduser().resolve()
+    if not run_dir.is_dir():
+        raise NotADirectoryError(f'Run directory is not a directory: {run_dir}')
+    if not (run_dir / 'fuzzmeter.db').is_file():
+        raise FileNotFoundError(f'Run directory does not contain fuzzmeter.db: {run_dir}')
+    return run_dir
+
+
 def _resolve_run_dirs(values: list[list[Path]]) -> tuple[Path, ...]:
     run_dirs: dict[str, Path] = {}
     for value in (path for group in values for path in group):
-        run_dir = value.expanduser().resolve()
-        if not run_dir.is_dir():
-            raise NotADirectoryError(f'Run directory is not a directory: {run_dir}')
-        if not (run_dir / 'fuzzmeter.db').is_file():
-            raise FileNotFoundError(f'Run directory does not contain fuzzmeter.db: {run_dir}')
+        run_dir = _resolve_run_dir(value)
         if run_dir.name in run_dirs:
             raise ValueError(f'Duplicate run directory name: {run_dir.name}')
         run_dirs[run_dir.name] = run_dir
@@ -126,7 +131,7 @@ def _execute_run(parser, args):
         return 130
 
     logger.info('Experiment completed: %s', run_dir)
-    report_dir = write_report(Path(run_dir), fuzzer_dirs=campaign_config.fuzzer_dirs)
+    report_dir = write_report(run_dir, out_dir=run_dir / 'report', fuzzer_dirs=campaign_config.fuzzer_dirs)
     logger.info('Static report generated to: %s', report_dir)
     return 0
 
@@ -134,8 +139,12 @@ def _execute_run(parser, args):
 def _execute_report(args):
     from .reporting import write_report
 
-    run_dir = args.run_dir.expanduser().resolve()
-    out_dir = args.out_dir.expanduser().resolve() if args.out_dir else None
+    try:
+        run_dir = _resolve_run_dir(args.run_dir)
+    except OSError as exc:
+        logger.error('Invalid run directory: %s', exc)
+        return 1
+    out_dir = args.out_dir.expanduser().resolve() if args.out_dir else run_dir / 'report'
     try:
         fuzzer_dirs = _resolve_resource_dirs(args.fuzzers, checkout_subdir='fuzzers', label='Fuzzer')
     except (FileNotFoundError, NotADirectoryError, PermissionError, OSError, ValueError) as exc:
