@@ -64,7 +64,14 @@ class Fuzzer:
     def local_repo(self) -> Path | None:
         """Return the host-side source checkout this fuzzer is configured to build from."""
         raw_path = os.environ.get(self.local_repo_env, '').strip() if self.local_repo_env else ''
-        return Path(raw_path).expanduser().resolve() if raw_path else None
+        if not raw_path:
+            return None
+        path = Path(raw_path).expanduser().resolve()
+        if not path.is_dir():
+            raise NotADirectoryError(
+                f'Local fuzzer repository from {self.local_repo_env} is not a directory: {path}'
+            )
+        return path
 
     @property
     def parents(self) -> list[Fuzzer]:
