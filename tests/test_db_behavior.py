@@ -593,10 +593,10 @@ class DatabaseBehaviorTest(unittest.TestCase):
             with self.assertRaises(sqlite3.IntegrityError):
                 db.exec(
                     '''
-                    INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep)
-                    VALUES(?,?,?,?,?)
+                    INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep, started_ts)
+                    VALUES(?,?,?,?,?,?)
                     ''',
-                    ('missing-run', 'fz', 'bench', 'target', 0),
+                    ('missing-run', 'fz', 'bench', 'target', 0, 1),
                 )
 
             with self.assertRaises(sqlite3.IntegrityError):

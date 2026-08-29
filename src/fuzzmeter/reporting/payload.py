@@ -70,7 +70,7 @@ def _trial_elapsed_seconds(row: TrialRow) -> int | None:
 
     measured = (
         row.ended_ts - row.started_ts
-        if row.started_ts is not None and row.ended_ts is not None and row.ended_ts >= row.started_ts
+        if row.ended_ts is not None and row.ended_ts >= row.started_ts
         else None
     )
     if measured is None:
@@ -91,7 +91,7 @@ def _run_time_window(
     therefore taken over both sources.
     '''
 
-    started_candidates = [row.started_ts for row in trial_rows if row.started_ts is not None]
+    started_candidates = [row.started_ts for row in trial_rows]
     activity_candidates = [
         *(row.ended_ts for row in trial_rows if row.ended_ts is not None),
         *(ts for ts in (safe_int(row.get('ts')) for row in snapshot_rows) if ts is not None),

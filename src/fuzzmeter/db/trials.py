@@ -37,7 +37,7 @@ class TrialRow(TrialRecord):
 
     trial_id: int
     jobs: int | None
-    started_ts: int | None
+    started_ts: int
     ended_ts: int | None
 
     @classmethod
@@ -55,7 +55,7 @@ class TrialRow(TrialRecord):
             runtime_config_json=row['runtime_config_json'],
             trial_id=int(row['trial_id']),
             jobs=None if row['jobs'] is None else int(row['jobs']),
-            started_ts=None if row['started_ts'] is None else int(row['started_ts']),
+            started_ts=int(row['started_ts']),
             ended_ts=None if row['ended_ts'] is None else int(row['ended_ts']),
         )
 
@@ -66,9 +66,9 @@ def ensure_trial_row(db: DB, *, run_id: str, record: TrialRecord, started_ts: in
         '''
         INSERT OR IGNORE INTO trials(
             run_id,fuzzer,benchmark,fuzz_target,rep,
-            time_seconds,status,fuzzer_image,build_config_json,runtime_config_json
+            time_seconds,status,fuzzer_image,build_config_json,runtime_config_json,started_ts
         )
-        VALUES(?,?,?,?,?,?,?,?,?,?)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?)
         ''',
         (
             str(run_id),
@@ -81,6 +81,7 @@ def ensure_trial_row(db: DB, *, run_id: str, record: TrialRecord, started_ts: in
             str(record.fuzzer_image),
             record.build_config_json,
             record.runtime_config_json,
+            int(started_ts),
         ),
     )
     tid = db.scalar(
@@ -95,6 +96,7 @@ def ensure_trial_row(db: DB, *, run_id: str, record: TrialRecord, started_ts: in
     )
     if tid is None:
         raise RuntimeError('Failed to create trial row')
+    # An existing row is reused on a repeated run, so refresh the start of the new attempt.
     db.exec('UPDATE trials SET started_ts=? WHERE trial_id=?', (int(started_ts), int(tid)))
     return int(tid)
 

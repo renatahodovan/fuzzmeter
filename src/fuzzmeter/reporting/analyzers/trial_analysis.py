@@ -79,7 +79,7 @@ class TrialAnalysis:
     def _elapsed_seconds(self, row: TrialRow, coverage: dict[str, Any]) -> int | None:
         started_ts = row.started_ts
         ended_ts = safe_int(coverage.get('last_snapshot_ts')) or row.ended_ts or started_ts
-        if started_ts is None or ended_ts is None or ended_ts < started_ts:
+        if ended_ts < started_ts:
             return None
         elapsed_seconds = int(ended_ts - started_ts)
         if row.time_seconds > 0:

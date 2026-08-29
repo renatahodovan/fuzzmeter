@@ -154,10 +154,10 @@ class SnapshotCollectorTest(unittest.TestCase):
             db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run-1', 1, 'config'))
             db.exec(
                 '''
-                INSERT INTO trials(trial_id, run_id, fuzzer, benchmark, fuzz_target, rep, status)
-                VALUES(?,?,?,?,?,?,?)
+                INSERT INTO trials(trial_id, run_id, fuzzer, benchmark, fuzz_target, rep, status, started_ts)
+                VALUES(?,?,?,?,?,?,?,?)
                 ''',
-                (1, 'run-1', 'aflplusplus', 'bench', 'target', 0, 'running'),
+                (1, 'run-1', 'aflplusplus', 'bench', 'target', 0, 'running', 1),
             )
             db.close()
 
@@ -193,10 +193,10 @@ class SnapshotCollectorTest(unittest.TestCase):
             db.exec('INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)', ('run-1', 1, 'config'))
             db.exec(
                 '''
-                INSERT INTO trials(trial_id, run_id, fuzzer, benchmark, fuzz_target, rep, status)
-                VALUES(?,?,?,?,?,?,?)
+                INSERT INTO trials(trial_id, run_id, fuzzer, benchmark, fuzz_target, rep, status, started_ts)
+                VALUES(?,?,?,?,?,?,?,?)
                 ''',
-                (1, 'run-1', 'aflplusplus', 'bench', 'target', 0, 'running'),
+                (1, 'run-1', 'aflplusplus', 'bench', 'target', 0, 'running', 1),
             )
             db.close()
 

@@ -27,11 +27,11 @@ def seeded_run_db(db_path: Path) -> None:
         db.exec(
             '''
             INSERT INTO trials(
-              trial_id, run_id, fuzzer, benchmark, fuzz_target, rep, status
+              trial_id, run_id, fuzzer, benchmark, fuzz_target, rep, status, started_ts
             )
-            VALUES(?,?,?,?,?,?,?)
+            VALUES(?,?,?,?,?,?,?,?)
             ''',
-            (1, 'run', 'fuzzer', 'bench', 'target', 0, 'running'),
+            (1, 'run', 'fuzzer', 'bench', 'target', 0, 'running', 1),
         )
         for snapshot_id in (7, 9):
             db.exec(
@@ -105,17 +105,17 @@ def run_listing_db(
         if with_trial_data:
             db.exec(
                 '''
-                INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep, status)
-                VALUES(?,?,?,?,?,?)
+                INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep, status, started_ts)
+                VALUES(?,?,?,?,?,?,?)
                 ''',
-                (run_id, 'fz', 'bench', 'target-a', 0, 'done'),
+                (run_id, 'fz', 'bench', 'target-a', 0, 'done', created_ts),
             )
             db.exec(
                 '''
-                INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep, status)
-                VALUES(?,?,?,?,?,?)
+                INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep, status, started_ts)
+                VALUES(?,?,?,?,?,?,?)
                 ''',
-                (run_id, 'fz', 'bench', 'target-b', 0, 'running'),
+                (run_id, 'fz', 'bench', 'target-b', 0, 'running', created_ts),
             )
             trial_id = int(db.scalar('SELECT trial_id FROM trials WHERE fuzz_target=?', ('target-a',)))
             db.exec(
@@ -275,7 +275,7 @@ def trial_row(**overrides: Any) -> TrialRow:
     return TrialRow.from_row({
         'trial_id': 1, 'fuzzer': 'fz', 'benchmark': 'bench', 'fuzz_target': 'target',
         'rep': 0, 'time_seconds': 0, 'jobs': None, 'status': 'done',
-        'started_ts': None, 'ended_ts': None, 'fuzzer_image': 'image',
+        'started_ts': 0, 'ended_ts': None, 'fuzzer_image': 'image',
         'build_config_json': None, 'runtime_config_json': None,
         **overrides,
     })

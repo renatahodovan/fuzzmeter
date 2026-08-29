@@ -38,7 +38,7 @@ _SCHEMA = [
       build_config_json TEXT,
       runtime_config_json TEXT,
 
-      started_ts INTEGER,
+      started_ts INTEGER NOT NULL,
       ended_ts INTEGER,
 
       FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE

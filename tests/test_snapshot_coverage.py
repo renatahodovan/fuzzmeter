@@ -81,10 +81,10 @@ class SnapshotCoverageTest(unittest.TestCase):
                 db.exec('INSERT INTO runs(run_id) VALUES(?)', ('run',))
                 db.exec(
                     '''
-                    INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep)
-                    VALUES(?,?,?,?,?)
+                    INSERT INTO trials(run_id, fuzzer, benchmark, fuzz_target, rep, started_ts)
+                    VALUES(?,?,?,?,?,?)
                     ''',
-                    ('run', 'fz', 'bench', 'target', 0),
+                    ('run', 'fz', 'bench', 'target', 0, 1),
                 )
                 trial_id = int(db.scalar('SELECT trial_id FROM trials'))
                 snapshot_id = db_snapshot.save_snapshot_data(
