@@ -54,7 +54,14 @@ class DockerHelperTest(unittest.TestCase):
         self.assertIn('  FM_LOG_LEVEL  = "INFO\\"quoted"', escaped_lines)
 
     def test_hook_env_requires_fm_log_level_and_does_not_set_legacy_fallback(self) -> None:
-        runtime = DockerRuntime(fuzzer_dirs={'fuzzer': Path('/repo/fuzzers/fuzzer')}, out_src='/out', run_user=None)
+        runtime = DockerRuntime(
+            fuzzer_dirs={'fuzzer': Path('/repo/fuzzers/fuzzer')},
+            out_src='/out',
+            run_user='1000:1000',
+            run_id='run-1',
+            memory=None,
+            memory_swap=None,
+        )
 
         with patch.dict('os.environ', {}, clear=True):
             with self.assertRaises(KeyError):
@@ -72,8 +79,10 @@ class DockerHelperTest(unittest.TestCase):
         runtime = DockerRuntime(
             fuzzer_dirs={'fuzzer': Path('/repo/fuzzers/fuzzer')},
             out_src='/out',
-            run_user=None,
+            run_user='1000:1000',
             run_id='run-7',
+            memory=None,
+            memory_swap=None,
         )
         docker = DockerClient(runtime)
 
@@ -417,8 +426,10 @@ class DockerHelperTest(unittest.TestCase):
         runtime = DockerRuntime(
             fuzzer_dirs={'fuzzer': Path('/repo/fuzzers/fuzzer')},
             out_src='/out',
-            run_user=None,
+            run_user='1000:1000',
             run_id='run-1',
+            memory=None,
+            memory_swap=None,
         )
         client = DockerClient(runtime)
 

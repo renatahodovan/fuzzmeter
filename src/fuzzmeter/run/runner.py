@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 import uuid
@@ -19,8 +20,10 @@ from pathlib import Path
 from typing import TypeVar
 
 from ..artifacts.builder import prepare_artifacts
+from ..composite.collect import collect_records, save_records
 from ..config import CampaignConfig
-from ..db import open_db
+from ..db import ensure_schema, open_db
+from ..db import runs as db_runs
 from ..db import trials as db_trials
 from ..docker import DockerRuntime
 from ..snapshot import ReplaySnapshotScheduler, SnapshotScheduler
@@ -29,7 +32,6 @@ from ..trial.models import ReplayTrialConfig, TrialConfig
 from ..trial.replay import prepare_replay_trial
 from ..trial.runner import run_one_trial
 from .shutdown import RunShutdown, cleanup_containers
-from .workspace import initialize_run_dir
 
 LOG = logging.getLogger(__name__)
 
@@ -37,12 +39,11 @@ _T = TypeVar('_T')
 
 
 def _live_resource_plan(*, total_jobs: int, snapshot_jobs: int | None = None) -> tuple[int, int]:
-    if snapshot_jobs is not None:
+    if snapshot_jobs:
         if snapshot_jobs >= total_jobs:
-            raise ValueError('Snapshot jobs must not exhaust all the available parallelism (%d > %d)' % (total_jobs, snapshot_jobs))
-        if not snapshot_jobs:
-            raise ValueError('Snapshot jobs must be at least 1.')
-
+            raise ValueError(
+                f'Snapshot jobs must not exhaust all the available parallelism ({total_jobs} > {snapshot_jobs})'
+            )
         return total_jobs - snapshot_jobs, snapshot_jobs
 
     if total_jobs == 1:
@@ -56,6 +57,34 @@ def _live_resource_plan(*, total_jobs: int, snapshot_jobs: int | None = None) ->
     return trial_workers, snapshot_workers
 
 
+def _initialize_run_dir(
+    *,
+    run_dir: Path,
+    run_id: str,
+    db_path: Path,
+    config_src: str,
+    campaign_config: CampaignConfig,
+    label: str | None = None,
+) -> None:
+    '''Initialize run metadata, config files, and database schema.'''
+    (run_dir / 'config.yaml').write_text(config_src, encoding='utf-8')
+    with open_db(db_path) as db:
+        ensure_schema(db)
+        db_runs.upsert_run(
+            db,
+            run_id=run_id,
+            created_ts=int(time.time()),
+            config_src=config_src,
+            label=label,
+        )
+
+    campaign_config.write_run_config(run_dir)
+    save_records(
+        run_dir / 'fuzzmeter.db',
+        collect_records(run_id=run_id, campaign_config=campaign_config),
+    )
+
+
 def run_experiment(
     campaign_config: CampaignConfig,
     out_root: Path,
@@ -64,14 +93,15 @@ def run_experiment(
 ) -> Path:
     '''Run a fuzzing or replay experiment and return the run directory.'''
     run_id = str(uuid.uuid4())
-    docker_runtime = DockerRuntime.from_paths(
+    docker_runtime = DockerRuntime(
         fuzzer_dirs=campaign_config.fuzzer_dirs,
-        out_root=out_root,
+        out_src=str(out_root),
+        run_user=f'{os.getuid()}:{os.getgid()}',
         run_id=run_id,
-    ).with_docker_limits(
         memory=campaign_config.settings.memory,
-        memory_swap=campaign_config.settings.memory_swap,
+        memory_swap=campaign_config.settings.memory_swap
     )
+
     timestamp = time.strftime('%Y-%m-%d_%H%M%S', time.localtime())
     if label is not None:
         timestamp = f'{timestamp}-{label}'
@@ -79,14 +109,13 @@ def run_experiment(
     with RunShutdown(docker_runtime) as shutdown:
         run_dir.mkdir(parents=True)
 
-        db_path = (Path(run_dir) / 'fuzzmeter.db')
-        initialize_run_dir(
-            run_dir=run_dir,
-            run_id=run_id,
-            config_src=config_src,
-            campaign_config=campaign_config,
-            label=label,
-        )
+        db_path = run_dir / 'fuzzmeter.db'
+        _initialize_run_dir(run_dir=run_dir,
+                            run_id=run_id,
+                            db_path=db_path,
+                            config_src=config_src,
+                            campaign_config=campaign_config,
+                            label=label)
 
         fuzz_binaries = prepare_artifacts(
             campaign_config=campaign_config,
@@ -95,10 +124,7 @@ def run_experiment(
             run_id=run_id,
             docker_runtime=docker_runtime,
         )
-        trial_configs = plan_trials(
-            campaign_config=campaign_config,
-            fuzz_binaries=fuzz_binaries,
-        )
+        trial_configs = plan_trials(campaign_config=campaign_config, fuzz_binaries=fuzz_binaries)
         replay_trial_configs = [cfg for cfg in trial_configs if isinstance(cfg, ReplayTrialConfig)]
 
         if replay_trial_configs:
@@ -138,12 +164,8 @@ def _run_live_experiment(
     run_id: str,
     docker_runtime: DockerRuntime,
     trial_configs: list[TrialConfig],
-    stop_event: threading.Event | None = None,
+    stop_event: threading.Event,
 ) -> Path:
-    if not trial_configs:
-        LOG.warning('No trials were planned for this live run')
-        return run_dir
-
     trial_workers, snap_jobs = _live_resource_plan(
         total_jobs=campaign_config.settings.parallel_jobs,
         snapshot_jobs=campaign_config.settings.snapshot_jobs,
@@ -155,7 +177,6 @@ def _run_live_experiment(
         max(2, int(campaign_config.settings.parallel_jobs)),
     )
 
-    stop_event = stop_event or threading.Event()
     scheduler = SnapshotScheduler(
         db_path=db_path,
         run_dir=run_dir,

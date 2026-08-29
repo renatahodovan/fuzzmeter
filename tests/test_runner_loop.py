@@ -207,6 +207,7 @@ class RunnerLoopTest(unittest.TestCase):
                 run_id='run',
                 docker_runtime=None,
                 trial_configs=[],
+                stop_event=threading.Event(),
             )
 
         self.assertEqual(run_dir, result)
@@ -351,6 +352,7 @@ class RunnerLoopTest(unittest.TestCase):
                     run_id='run',
                     docker_runtime=None,
                     trial_configs=[_trial_config(run_dir)],
+                    stop_event=threading.Event(),
                 )
 
             self.assertEqual(run_dir, result)

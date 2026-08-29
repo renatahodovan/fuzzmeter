@@ -19,8 +19,10 @@ class RunShutdownTest(unittest.TestCase):
         self.runtime = DockerRuntime(
             fuzzer_dirs={'fuzzer': Path('/repo/fuzzers/fuzzer')},
             out_src='/out',
-            run_user=None,
+            run_user='1000:1000',
             run_id='run-1',
+            memory=None,
+            memory_swap=None,
         )
 
     def test_context_sweeps_at_startup_and_restores_signal_handlers(self) -> None:
