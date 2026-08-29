@@ -125,6 +125,18 @@ class ReportingPayloadTest(unittest.TestCase):
         normalized = _normalize_payload(payload)
         self.assertEqual(PAYLOAD_HASH, _payload_hash(normalized))
 
+    def test_curve_points_carry_the_resource_series_the_report_plots(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            reporting_run_db(run_dir)
+
+            payload = build_payload(run_dir, run_id='run')
+
+        curve = payload['targets'][0]['fuzzers'][0]['curve']
+        plotted = [point for point in curve if 'resource_memory_mib_median' in point]
+        self.assertTrue(plotted, 'report.js detects and plots the _median resource series')
+        self.assertIn('resource_corpus_disk_mib_median', plotted[0])
+
     def test_mixed_provenance_adds_visible_comparison_warning(self) -> None:
         targets = [{
             'benchmark': 'bench',

@@ -180,10 +180,8 @@ function hasMultipleFuzzers(target) {
 
 function hasResourceTelemetry(target) {
   return (target.fuzzers || []).some((fuzzer) => (fuzzer.curve || []).some((point) => (
-    Number.isFinite(Number(point.resource_cpu_percent))
-    || Number.isFinite(Number(point.resource_memory_mib))
-    || Number.isFinite(Number(point.resource_memory_percent))
-    || Number.isFinite(Number(point.resource_corpus_disk_mib))
+    Number.isFinite(Number(point.resource_memory_mib_median))
+    || Number.isFinite(Number(point.resource_corpus_disk_mib_median))
   )));
 }
 
