@@ -362,6 +362,15 @@ a:hover{ text-decoration:underline; }
   color:var(--text);
   font-weight:700;
 }
+.provenance-panel > summary{
+  display:flex;
+  align-items:baseline;
+  gap:12px;
+  flex-wrap:wrap;
+  color:var(--text);
+}
+.provenance-panel > summary .provenance-warning{ margin-top:0; }
+.provenance-panel .table-scroll{ margin-top:12px; }
 .provenance-badges{ margin-top:8px; }
 #summaryPanel{
   padding:14px 16px 16px;
