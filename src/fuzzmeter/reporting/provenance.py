@@ -14,6 +14,8 @@ from typing import Any
 
 from ..db.snapshot import AggSnapshotRow
 
+_PROFILE_FLAG_FIELDS = ('report_flags', 'branch_export_flags', 'export_flags')
+
 
 def attach_measurement_provenance(
     *,
@@ -76,9 +78,37 @@ def attach_measurement_provenance(
     }
 
 
+def _comparable_record(record: dict[str, Any]) -> dict[str, Any]:
+    '''Return the record without the values that differ per fuzzer by construction.
+
+    The profile paths and the replay restart and batch counts are outcomes of measuring
+    one fuzzer, not settings shared by the run, so comparing them across fuzzers would
+    report every healthy run as mixed.
+    '''
+
+    comparable = dict(record)
+    if record.get('llvm_cov'):
+        comparable['llvm_cov'] = {
+            key: [_flag_without_profile_path(flag) for flag in value] if key in _PROFILE_FLAG_FIELDS else value
+            for key, value in record['llvm_cov'].items()
+        }
+    if record.get('measurement'):
+        comparable['measurement'] = {
+            key: value
+            for key, value in record['measurement'].items()
+            if key not in ('artificial_restarts', 'batch_size')
+        }
+    return comparable
+
+
+def _flag_without_profile_path(flag: Any) -> Any:
+    return '-instr-profile' if str(flag).startswith('-instr-profile=') else flag
+
+
 def _comparison_signature(record: dict[str, Any] | None) -> str | None:
     if not record:
         return None
+    record = _comparable_record(record)
     comparable = {
         'schema_version': record.get('schema_version'),
         'counter_update_mode': record.get('requested_counter_update_mode'),
@@ -130,13 +160,13 @@ def _threats_table(records: list[dict[str, Any] | None]) -> list[dict[str, Any]]
         ('clang version', lambda item: (item.get('coverage_build') or {}).get('clang_version'), 'Toolchain changes can alter mappings and totals.'),
         ('image digests', lambda item: _compact(item.get('images')), 'Different binaries invalidate direct coverage comparison.'),
         ('coverage-set age', lambda item: (item.get('coverage_sets') or {}).get('freshness'), 'Carried sets lag behind current scalar coverage.'),
-        ('coverage-set source', lambda item: _compact(item.get('coverage_sets')), 'Source tick and profile hash identify stale set data.'),
         ('repetitions', lambda item: _compact(item.get('repetitions')), 'Low, unequal, or below-threshold samples weaken statistical claims.'),
         ('input outcomes', lambda item: _compact(item.get('inputs')), 'Timeouts, failures, and batch-mate losses undercount coverage.'),
     ]
+    comparable = [None if record is None else _comparable_record(record) for record in records]
     rows = []
     for name, getter, threat in fields:
-        values = ['unavailable' if item is None else getter(item) for item in records]
+        values = ['unavailable' if item is None else getter(item) for item in comparable]
         normalized = ['unavailable' if value is None else str(value) for value in values]
         unique = sorted(set(normalized))
         status = (

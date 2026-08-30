@@ -22,7 +22,7 @@ from fuzzmeter.reporting import build_payload, write_report
 from fuzzmeter.reporting.provenance import attach_measurement_provenance
 from tests.support.dbs import agg_snapshot_row, reporting_run_db
 
-PAYLOAD_HASH = 'fd93c6b19907093f6fc775efe02f7f5926f057d5a92f509ec15bd2c1a77b2c22'
+PAYLOAD_HASH = '80aa59417d529e25fb1e4dcf3d16117d6f66065187e162d698e92379717e7d26'
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _BUNDLE_SMOKE_SCRIPT = r'''
 import fs from 'node:fs';
@@ -182,6 +182,50 @@ class ReportingPayloadTest(unittest.TestCase):
         self.assertEqual('mixed_or_unavailable', run_provenance['consistency'])
         self.assertIn('mixed or unavailable provenance', run_provenance['warning'])
         self.assertTrue(run_provenance['threats_table'])
+
+    def test_provenance_ignores_the_values_that_differ_per_fuzzer_by_construction(self) -> None:
+        '''Profile paths and replay restart counts are not comparability deviations.'''
+
+        targets = [{
+            'benchmark': 'bench',
+            'fuzz_target': 'target',
+            'fuzzers': [{'fuzzer': 'a'}, {'fuzzer': 'b'}],
+        }]
+        base = {
+            'schema_version': 2,
+            'requested_counter_update_mode': 'atomic',
+            'branch_definition_version': 5,
+            'branch_counting_definition': 'per-instantiation',
+            'measurement': {'mode': 'stateless', 'ordering': 'path-sorted'},
+            'coverage_build': {'clang_version': '18'},
+            'coverage_sets': {'freshness': 'fresh', 'source_tick': 1},
+            'llvm_cov': {'report_flags': [], 'export_flags': ['-skip-expansions']},
+        }
+        snapshots = {
+            ('a', 'bench', 'target'): agg_snapshot_row(measurement_provenance_json=json.dumps({
+                **base,
+                'measurement': {**base['measurement'], 'artificial_restarts': 1, 'batch_size': 168},
+                'llvm_cov': {**base['llvm_cov'], 'report_flags': ['-instr-profile=/run/a/merged.profdata']},
+            })),
+            ('b', 'bench', 'target'): agg_snapshot_row(fuzzer='b', measurement_provenance_json=json.dumps({
+                **base,
+                'measurement': {**base['measurement'], 'artificial_restarts': 4, 'batch_size': 256},
+                'llvm_cov': {**base['llvm_cov'], 'report_flags': ['-instr-profile=/run/b/merged.profdata']},
+            })),
+        }
+
+        run_provenance = attach_measurement_provenance(
+            targets=targets,
+            agg_snapshots=snapshots,
+        )
+
+        self.assertEqual('consistent', run_provenance['consistency'])
+        self.assertIsNone(run_provenance['warning'])
+        self.assertNotIn('provenance_warning', targets[0])
+        self.assertNotIn('provenance_badges', targets[0])
+        statuses = {row['field']: row['status'] for row in run_provenance['threats_table']}
+        self.assertEqual('consistent', statuses['llvm-cov report flags'])
+        self.assertEqual('consistent', statuses['measurement mode'])
 
     def test_write_report_writes_static_payload_and_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
