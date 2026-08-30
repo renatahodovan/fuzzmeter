@@ -21,7 +21,7 @@ independently from the fuzzers, reproduces crashes, stores all raw and derived
 data in a SQLite database, and generates interactive reports.
 
 The goal of FuzzMeter is not to collapse performance into a single ranking, but
-to help researchers and practicioners analyze different aspects of fuzzer
+to help researchers and practitioners analyze different aspects of fuzzer
 behavior: coverage growth, bug discovery, corpus evolution, execution speed,
 resource usage, statistical comparisons, replayed artifacts, and fuzzer-specific
 measurements.
@@ -115,7 +115,7 @@ A small campaign looks like this::
     fuzzers:
       - aflplusplus
       - libfuzzer
-      - fuzzer: libfuzzer_entropic
+      - id: libfuzzer_entropic
         parent: libfuzzer
         runtime:
           args:
@@ -133,24 +133,61 @@ Run it with::
 
     fuzzmeter --log-level INFO run --config configs/minimal.yaml --out out
 
-The output is written under ``out/runs/<run_id>/``. On successful completion,
-FuzzMeter also exports a static HTML report under the same directory.
+Every run gets its own directory under the output root, named after the time
+the run started: ``out/<YYYY-MM-DD_HHMMSS>/``, or
+``out/<YYYY-MM-DD_HHMMSS>-<label>/`` when ``run --label`` is given. On
+successful completion, FuzzMeter also exports a static HTML report under
+``report/`` inside that directory.
 
 The command-line interface contains three main subcommands::
 
     fuzzmeter run --config <config.yaml> --out <output-root>
     fuzzmeter report <run-dir>
-    fuzzmeter serve --root <output-root-or-runs-dir> --host 127.0.0.1 --port 8000
+    fuzzmeter serve --root <run-dir> [<run-dir> ...]
 
 ``run`` executes the campaign and exports a static report. ``serve`` starts the
 dynamic database-backed web UI for existing runs. ``report`` exports a static
 report for an existing run.
 
+``serve --root`` takes the run directories themselves, not the output root:
+every value must be a directory that already contains a ``fuzzmeter.db``. The
+option accepts several directories at once and can be repeated, so a whole
+output root is served with a shell glob::
+
+    fuzzmeter serve --root out/*
+
+The subcommands accept a few more options:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Option
+     - Description
+   * - ``run --out <dir>``
+     - Output root. Defaults to ``out``.
+   * - ``run --label <label>``
+     - Human-readable label appended to the run directory name.
+   * - ``run --fuzzers <dir>...``, ``run --benchmarks <dir>...``
+     - Fuzzer and benchmark definition directories. Both default to every
+       directory under ``fuzzers/`` and ``benchmarks/`` in the current working
+       directory.
+   * - ``report --out <dir>``
+     - Report output directory. Defaults to ``report/`` inside the run
+       directory.
+   * - ``report --fuzzers <dir>...``
+     - Fuzzer definition directories, needed for fuzzer-defined report
+       sections.
+   * - ``serve --host <host>``, ``serve --port <port>``
+     - Web UI interface and port. The default host is ``0.0.0.0``, which
+       exposes the UI on every interface; pass ``127.0.0.1`` to keep it local.
+   * - ``serve --debug``
+     - Run the web UI in Flask debug mode.
+
 
 Campaign Configuration
 ======================
 
-The most important campaign are:
+The most important campaign fields are:
 
 .. list-table::
    :header-rows: 1
@@ -159,8 +196,10 @@ The most important campaign are:
      - Description
    * - ``fuzzers``
      - Names or derived entries. A plain string loads
-       ``fuzzers/<name>/fuzzer.yaml``. A mapping can define a fuzzer variant
-       with ``fuzzer`` and ``parent``.
+       ``fuzzers/<name>/build/build.yaml`` merged with
+       ``fuzzers/<name>/run/run.yaml``. A mapping defines a fuzzer variant and
+       must carry an ``id``; ``parent`` names the fuzzer it derives from, and
+       defaults to the ``id`` itself.
    * - ``fuzz_targets``
      - Fuzz target specifications in ``benchmark:fuzz_target`` form. The
        benchmark definition in ``benchmarks/<benchmark>/benchmark.yaml`` can
@@ -175,15 +214,27 @@ The most important campaign are:
    * - ``run.snapshot.every_seconds``
      - Snapshot cadence. Each tick records corpus/crash state and telemetry, and
        schedules coverage, reproduction, and custom measurements.
+   * - ``run.snapshot.jobs``
+     - Part of the job budget reserved for snapshot measurement workers,
+       ``1`` by default. It must stay below ``run.parallel_jobs``; ``0`` lets
+       the run split the budget itself.
+   * - ``run.snapshot.export_every_ticks``
+     - Render the HTML coverage export only on every Nth snapshot tick. ``0``
+       skips it except where a report needs it.
    * - ``run.memory`` and ``run.memory_swap``
      - Optional Docker memory limits.
+
+Besides ``id``, ``parent``, ``build``, and ``runtime``, a fuzzer entry can
+carry ``allowed_fuzz_targets`` (restrict the entry to some of the campaign fuzz
+targets), ``replay_trials`` (see `Replay Mode`_), ``source_dependencies``,
+``reporting_parent``, and ``local_repo_env``.
 
 Fuzzer entries can derive from existing fuzzers and override only the parts
 that change::
 
     fuzzers:
       - libfuzzer
-      - fuzzer: libfuzzer_shallow
+      - id: libfuzzer_shallow
         parent: libfuzzer
         runtime:
           args:
@@ -247,18 +298,20 @@ Replay is useful when:
 Replay sources are configured on fuzzer entries with ``replay_trials``::
 
     fuzzers:
-      - fuzzer: aflplusplus_old
+      - id: aflplusplus_old
         parent: aflplusplus
         allowed_fuzz_targets:
           - jerryscript:jerry
         replay_trials:
-          - /data/old-runs/afl/default
-      - fuzzer: libfuzzer_old
+          jerryscript:jerry:
+            - /data/old-runs/afl/default
+      - id: libfuzzer_old
         parent: libfuzzer
         allowed_fuzz_targets:
           - jerryscript:jerry
         replay_trials:
-          - /data/old-runs/libfuzzer/corpus
+          jerryscript:jerry:
+            - /data/old-runs/libfuzzer/corpus
     fuzz_targets:
       - jerryscript:jerry
     run:
@@ -266,6 +319,10 @@ Replay sources are configured on fuzzer entries with ``replay_trials``::
       parallel_jobs: 8
       snapshot:
         every_seconds: 900
+
+``replay_trials`` maps ``benchmark:fuzz_target`` specs to the directories to
+replay, so one entry can replay several fuzz targets. A fuzzer definition can
+carry its own ``replay_trials``; a campaign entry replaces them.
 
 The ``parent`` fuzzer is still important in replay mode. It tells FuzzMeter how
 to interpret the output layout, where corpora and crashes are located, and
@@ -314,12 +371,11 @@ available.
 Temporary Composite Report Views
 --------------------------------
 
-When ``fuzzmeter serve`` starts, it scans the direct child directories under
-the configured runs root and indexes the composite measurement descriptors
-stored in each ``fuzzmeter.db``. Only descriptor metadata is loaded at startup;
-time series, trial, bug, and coverage data stay in their original run
-directories and are read lazily when a temporary composite report view needs
-them.
+When ``fuzzmeter serve`` starts, it indexes the composite measurement
+descriptors stored in the ``fuzzmeter.db`` of every configured run directory.
+Only descriptor metadata is loaded at startup; time series, trial, bug, and
+coverage data stay in their original run directories and are read lazily when a
+temporary composite report view needs them.
 
 Composite views are read-only and no-copy. FuzzMeter does not create a merged
 database, copy artifacts, or write a ``comparison.json`` file. The view
@@ -343,9 +399,9 @@ user to judge. Runtime length, repetition count, and fuzzer version metadata
 are displayed in the source summary and report payload, but they do not block
 selection.
 
-Benchmark-specific source metadata is optional. If ``run.source_info`` is
-true, FuzzMeter looks for ``source_info.py`` hooks under benchmark and fuzzer
-roots and runs the same hook infrastructure with two scopes: ``benchmark_source`` and
+Benchmark-specific source metadata is optional. FuzzMeter looks for a
+``source_info.py`` hook under the benchmark and the fuzzer root, and runs the
+same hook infrastructure with two scopes: ``benchmark_source`` and
 ``fuzzer_version``. Hook output is redacted before storage: likely secret
 fields and private absolute path fragments are replaced with placeholder
 values, and the report treats missing source metadata as ``risky`` rather than
@@ -353,18 +409,18 @@ silently compatible.
 
 To serve existing runs dynamically::
 
-    fuzzmeter --log-level INFO serve --root out/runs --host 127.0.0.1 --port 8000
+    fuzzmeter --log-level INFO serve --root out/* --host 127.0.0.1 --port 8000
 
 To regenerate a static report from an existing run directory::
 
-    fuzzmeter report out/runs/<run_id>
+    fuzzmeter report out/<run-dir>
 
 
 Output Layout
 =============
 
 By default, the output root is ``out/``. Each run is stored under
-``out/runs/<run_id>/``.
+``out/<YYYY-MM-DD_HHMMSS>/``, named after the time the run started.
 
 Important paths are:
 
@@ -378,6 +434,8 @@ Important paths are:
        and bug data.
    * - ``config.yaml``
      - The campaign YAML captured at run start.
+   * - ``benchmark_config.json``
+     - The resolved fuzzer identities, recorded for later reporting runs.
    * - ``trials/``
      - Per-trial workspaces with logs, live outputs, snapshots, and target
        binary references.
@@ -401,10 +459,9 @@ Run it with a short time budget from the repository root::
 
 Then open the dynamic web UI::
 
-    fuzzmeter serve --root out/runs --host 127.0.0.1 --port 8000
+    fuzzmeter serve --root out/* --host 127.0.0.1 --port 8000
 
-or open the generated static report under the corresponding
-``out/runs/<run_id>/report/`` directory.
+or open the generated static report under the ``report/`` directory of the run.
 
 .. end included documentation
 
