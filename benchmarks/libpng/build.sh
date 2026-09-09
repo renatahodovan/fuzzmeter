@@ -47,7 +47,7 @@ do
     $CXX $CXXFLAGS -std=c++11 -I. \
          $SRC/libpng/contrib/oss-fuzz/${f}.cc \
          -o $OUT/${f} \
-         -lFuzzingEngine .libs/libpng16.a -lz
+         ${LIB_FUZZING_ENGINE} .libs/libpng16.a -lz
 
     # Only libfuzzer can run the nalloc targets.
     if test -n "${LIB_FUZZING_ENGINE:-}"
