@@ -14,9 +14,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         pkg-config \
         make \
         ninja-build \
-        python3-pip && \
-    python3 -m pip install meson ninja requests && \
+        python3-requests \
+        python3-venv && \
+    python3 -m venv /usr/local/freetype2-build-env && \
+    /usr/local/freetype2-build-env/bin/pip install meson ninja && \
+    ln -s /usr/local/freetype2-build-env/bin/meson /usr/local/bin/meson && \
+    ln -s /usr/local/freetype2-build-env/bin/ninja /usr/local/bin/ninja && \
     rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/usr/local/freetype2-build-env/bin:${PATH}"
 
 RUN mkdir -p "${SRC}/font-corpus"
 ADD https://github.com/adobe-fonts/adobe-variable-font-prototype/releases/download/1.001/AdobeVFPrototype.otf ${SRC}/font-corpus/
