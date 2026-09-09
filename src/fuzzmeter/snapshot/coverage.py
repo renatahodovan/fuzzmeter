@@ -59,6 +59,7 @@ def process_snapshot_coverage(
     tick_idx: int,
     ts: int,
     jobs: int,
+    coverage_jobs: int | None = None,
     snapshots: list[TrialCoverageSnapshot],
     campaign_trials: Sequence[TrialInstance],
     docker_runtime: DockerRuntime,
@@ -66,6 +67,7 @@ def process_snapshot_coverage(
     progress: SnapshotProgress | None = None,
 ) -> None:
     '''Process every coverage snapshot scheduled for a tick.'''
+    coverage_jobs = jobs if coverage_jobs is None else coverage_jobs
     coverage_states: list[TrialCoverageSnapshotState] = []
     coverage_batches = []
     for snapshot in snapshots:
@@ -122,7 +124,7 @@ def process_snapshot_coverage(
         replay_coverage_batches(
             docker_runtime=docker_runtime,
             batches=coverage_batches,
-            jobs=jobs,
+            jobs=coverage_jobs,
             on_batch_done=progress.step_coverage if progress is not None else None,
         )
 

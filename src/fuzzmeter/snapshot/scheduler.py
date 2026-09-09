@@ -54,6 +54,7 @@ class SnapshotScheduler:
         docker_runtime: DockerRuntime,
         coverage_export_every: int = 1,
         jobs: int = 4,
+        parallel_jobs: int = 0,
         total_trials: int = 0,
         trial_workers: int = 0,
         stop_event: threading.Event | None = None,
@@ -66,6 +67,7 @@ class SnapshotScheduler:
         self.every_seconds = every_seconds
         self.coverage_export_every = coverage_export_every
         self.jobs = jobs
+        self.parallel_jobs = parallel_jobs
         self.total_trials = total_trials
         self.trial_workers = trial_workers
         self.docker_runtime = docker_runtime
@@ -209,6 +211,13 @@ class SnapshotScheduler:
         with self._lock:
             return len(self._active)
 
+    def _coverage_jobs(self) -> int:
+        '''Return coverage workers after reclaiming final-wave trial slots.'''
+        with self._lock:
+            if self.total_trials and len(self._campaign_trials) == self.total_trials:
+                return max(self.jobs, self.parallel_jobs - len(self._active))
+        return self.jobs
+
     def _update_run_progress(self, *, now_ts: int) -> None:
         '''Refresh campaign and current-wave progress from registered trials.'''
         with self._lock:
@@ -319,6 +328,7 @@ class SnapshotScheduler:
         render_heavy: bool = False,
     ) -> None:
         active_trials = list(selected_trials)
+        coverage_jobs = self._coverage_jobs()
         write_export = render_heavy or (
             self.coverage_export_every > 0 and tick_idx % self.coverage_export_every == 0
         )
@@ -345,6 +355,7 @@ class SnapshotScheduler:
                 tick_idx=tick_idx,
                 ts=end_ts,
                 jobs=self.jobs,
+                coverage_jobs=coverage_jobs,
                 snapshots=coverage_snapshots,
                 campaign_trials=campaign_trials,
                 docker_runtime=self.docker_runtime,

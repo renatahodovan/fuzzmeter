@@ -186,6 +186,7 @@ def _run_live_experiment(
         coverage_export_every=campaign_config.settings.snapshot_export_every_ticks,
         docker_runtime=docker_runtime,
         jobs=snap_jobs,
+        parallel_jobs=campaign_config.settings.parallel_jobs,
         total_trials=len(trial_configs),
         trial_workers=trial_workers,
         stop_event=stop_event,
