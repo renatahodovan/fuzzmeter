@@ -27,7 +27,14 @@ class _TqdmLoggingHandler(logging.Handler):
 class SnapshotProgress:
     '''Keep a fixed set of progress bars at the bottom of the terminal.'''
 
-    def __init__(self, *, total_seconds: int, enabled: bool) -> None:
+    def __init__(
+        self,
+        *,
+        total_seconds: int,
+        enabled: bool,
+        total_trials: int = 0,
+        trial_workers: int = 0,
+    ) -> None:
         self._enabled = (
             enabled
             and sys.stderr is not None
@@ -36,6 +43,7 @@ class SnapshotProgress:
         )
         self._lock = threading.Lock()
         self._replaced_handlers: list[tuple[logging.Logger, logging.Handler, logging.Handler]] = []
+        self._campaign_bar = None
         self._run_bar = None
         self._scheduler_bar = None
         self._coverage_bar = None
@@ -45,11 +53,23 @@ class SnapshotProgress:
             return
 
         self._install_logging_handlers()
+        show_campaign = total_trials > trial_workers > 0
+        run_position = 1 if show_campaign else 0
+        if show_campaign:
+            self._campaign_bar = tqdm(
+                total=total_trials,
+                desc='Trials',
+                unit='trial',
+                position=0,
+                leave=True,
+                dynamic_ncols=True,
+                colour='blue',
+            )
         self._run_bar = tqdm(
             total=max(total_seconds, 1),
             desc='Run',
             unit='s',
-            position=0,
+            position=run_position,
             leave=True,
             dynamic_ncols=True,
             colour='cyan',
@@ -58,7 +78,7 @@ class SnapshotProgress:
             total=1,
             desc='Scheduler',
             unit='tick',
-            position=1,
+            position=run_position + 1,
             leave=True,
             dynamic_ncols=True,
             colour='yellow',
@@ -67,7 +87,7 @@ class SnapshotProgress:
             total=1,
             desc='Coverage',
             unit='job',
-            position=2,
+            position=run_position + 2,
             leave=True,
             dynamic_ncols=True,
             colour='green',
@@ -76,7 +96,7 @@ class SnapshotProgress:
             total=1,
             desc='Crashes',
             unit='job',
-            position=3,
+            position=run_position + 3,
             leave=True,
             dynamic_ncols=True,
             colour='red',
@@ -90,20 +110,49 @@ class SnapshotProgress:
         if not self._enabled:
             return
         with self._lock:
-            for bar in (self._crashes_bar, self._coverage_bar, self._scheduler_bar, self._run_bar):
+            for bar in (self._crashes_bar, self._coverage_bar, self._scheduler_bar, self._run_bar, self._campaign_bar):
                 if bar is not None:
                     bar.close()
             self._run_bar = None
             self._scheduler_bar = None
             self._coverage_bar = None
             self._crashes_bar = None
+            self._campaign_bar = None
             self._restore_logging_handlers()
 
-    def update_run(self, *, elapsed_seconds: int, total_seconds: int, tick_idx: int, active_trials: int) -> None:
-        '''Refresh the run-wide campaign progress bar.'''
+    def update_campaign(self, *, completed: int, active: int, queued: int, remaining_seconds: int) -> None:
+        '''Refresh the multi-wave trial progress bar.'''
+        if self._campaign_bar is None:
+            return
+        with self._lock:
+            self._campaign_bar.n = min(max(completed, 0), self._campaign_bar.total)
+            minutes = max(0, remaining_seconds) // 60
+            self._campaign_bar.set_postfix(
+                running=active,
+                queued=queued,
+                eta=f'{minutes // 60}h {minutes % 60}m',
+                refresh=False,
+            )
+            self._campaign_bar.refresh()
+
+    def update_run(
+        self,
+        *,
+        elapsed_seconds: int,
+        total_seconds: int,
+        tick_idx: int,
+        active_trials: int,
+        wave_idx: int = 1,
+        wave_count: int = 1,
+    ) -> None:
+        '''Refresh the current trial-wave progress bar.'''
         if self._run_bar is None:
             return
         with self._lock:
+            description = 'Run' if wave_count == 1 else f'Run [{wave_idx}/{wave_count}]'
+            if self._run_bar.desc != description:
+                self._run_bar.reset(total=max(total_seconds, 1))
+                self._run_bar.set_description_str(description)
             self._run_bar.total = max(total_seconds, 1)
             target = max(0, min(elapsed_seconds, self._run_bar.total))
             delta = target - int(self._run_bar.n)

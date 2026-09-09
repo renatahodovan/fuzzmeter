@@ -186,6 +186,8 @@ def _run_live_experiment(
         coverage_export_every=campaign_config.settings.snapshot_export_every_ticks,
         docker_runtime=docker_runtime,
         jobs=snap_jobs,
+        total_trials=len(trial_configs),
+        trial_workers=trial_workers,
         stop_event=stop_event,
     )
     scheduler_thread = threading.Thread(target=scheduler.run_loop, name='snapshot-scheduler')

@@ -54,6 +54,8 @@ class SnapshotScheduler:
         docker_runtime: DockerRuntime,
         coverage_export_every: int = 1,
         jobs: int = 4,
+        total_trials: int = 0,
+        trial_workers: int = 0,
         stop_event: threading.Event | None = None,
     ) -> None:
         self.stop_event = stop_event
@@ -64,6 +66,8 @@ class SnapshotScheduler:
         self.every_seconds = every_seconds
         self.coverage_export_every = coverage_export_every
         self.jobs = jobs
+        self.total_trials = total_trials
+        self.trial_workers = trial_workers
         self.docker_runtime = docker_runtime
         self.start_ts = int(time.time())
 
@@ -82,6 +86,8 @@ class SnapshotScheduler:
         self._progress = SnapshotProgress(
             total_seconds=self.campaign_seconds,
             enabled=LOG.isEnabledFor(logging.INFO),
+            total_trials=total_trials,
+            trial_workers=trial_workers,
         )
 
         self._resource_telemetry = ResourceTelemetryCollector()
@@ -165,12 +171,7 @@ class SnapshotScheduler:
             )
             while True:
                 now = time.time()
-                self._progress.update_run(
-                    elapsed_seconds=max(0, int(now) - self.start_ts),
-                    total_seconds=self.campaign_seconds,
-                    tick_idx=self._scheduled_ticks,
-                    active_trials=self._active_trials_count(),
-                )
+                self._update_run_progress(now_ts=int(now))
                 due_snapshots, next_due_ts = self._due_periodic_snapshots(now_ts=int(now))
                 for ts, trials in due_snapshots:
                     self._schedule_periodic_tick(
@@ -207,6 +208,55 @@ class SnapshotScheduler:
     def _active_trials_count(self) -> int:
         with self._lock:
             return len(self._active)
+
+    def _update_run_progress(self, *, now_ts: int) -> None:
+        '''Refresh campaign and current-wave progress from registered trials.'''
+        with self._lock:
+            started_trials = list(self._campaign_trials.values())
+            active_trials = list(self._active.values())
+
+        if self.total_trials > self.trial_workers > 0:
+            started = len(started_trials)
+            active = len(active_trials)
+            completed = started - active
+            queued = max(0, self.total_trials - started)
+            wave_count = (self.total_trials + self.trial_workers - 1) // self.trial_workers
+            wave_idx = min(wave_count, max(1, (max(started, 1) - 1) // self.trial_workers + 1))
+            wave_start = self.start_ts
+            wave_trials = started_trials[(wave_idx - 1) * self.trial_workers:wave_idx * self.trial_workers]
+            if wave_trials:
+                wave_start = min(trial.start_ts for trial in wave_trials)
+            remaining_work = sum(
+                max(0, trial.start_ts + trial.config.trial_timeout - now_ts)
+                for trial in active_trials
+            ) + queued * self.campaign_seconds
+            longest_active = max(
+                (trial.start_ts + trial.config.trial_timeout - now_ts for trial in active_trials),
+                default=0,
+            )
+            remaining_seconds = max(
+                longest_active,
+                (remaining_work + self.trial_workers - 1) // self.trial_workers,
+            )
+            self._progress.update_campaign(
+                completed=completed,
+                active=active,
+                queued=queued,
+                remaining_seconds=remaining_seconds,
+            )
+        else:
+            wave_idx = wave_count = 1
+            wave_start = self.start_ts
+            active = len(active_trials)
+
+        self._progress.update_run(
+            elapsed_seconds=max(0, now_ts - wave_start),
+            total_seconds=self.campaign_seconds,
+            tick_idx=self._scheduled_ticks,
+            active_trials=active,
+            wave_idx=wave_idx,
+            wave_count=wave_count,
+        )
 
     def _due_periodic_snapshots(self, *, now_ts: int) -> tuple[list[tuple[int, tuple[TrialInstance, ...]]], int | None]:
         due_by_ts: dict[int, list[TrialInstance]] = {}
@@ -272,12 +322,7 @@ class SnapshotScheduler:
         write_export = render_heavy or (
             self.coverage_export_every > 0 and tick_idx % self.coverage_export_every == 0
         )
-        self._progress.update_run(
-            elapsed_seconds=max(0, end_ts - self.start_ts),
-            total_seconds=self.campaign_seconds,
-            tick_idx=tick_idx,
-            active_trials=len(active_trials),
-        )
+        self._update_run_progress(now_ts=int(time.time()))
 
         coverage_snapshots, crash_snapshots = collect_snapshots(
             db_path=self.db_path,
