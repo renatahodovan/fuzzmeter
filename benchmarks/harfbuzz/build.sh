@@ -14,7 +14,7 @@ meson --default-library=static --prefer-static --wrap-mode=nodownload \
       "${build}" \
   || (cat build/meson-logs/meson-log.txt && false)
 
-ninja -v -j"$(nproc)" -C "${build}" test/fuzzing/hb-{shape,raster,vector,gpu,subset,repacker}-fuzzer
+ninja -v -j2 -C "${build}" test/fuzzing/hb-{shape,raster,vector,gpu,subset,repacker}-fuzzer
 mv "${build}"/test/fuzzing/hb-{shape,raster,vector,gpu,subset,repacker}-fuzzer "${OUT}/"
 
 mkdir -p all-fonts
