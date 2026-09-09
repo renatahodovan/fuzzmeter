@@ -35,8 +35,8 @@ mv scripts/pnglibconf.dfa.temp scripts/pnglibconf.dfa
 # Build the libpng library.
 autoreconf -f -i
 ./configure --with-libpng-prefix=OSS_FUZZ_
-make -j$(nproc) clean
-make -j$(nproc) libpng16.la
+make -j"${FM_BUILD_JOBS:-$(nproc)}" clean
+make -j"${FM_BUILD_JOBS:-$(nproc)}" libpng16.la
 
 for f in libpng_read_fuzzer \
          libpng_colormap_fuzzer \

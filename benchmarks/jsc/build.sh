@@ -8,7 +8,7 @@ mkdir -p "${DEPS_PATH}"
 cd /src/icu/source
 ./configure --disable-shared --enable-static --disable-layoutex \
   --disable-tests --disable-samples --with-data-packaging=static --prefix="${DEPS_PATH}"
-make install -j"$(nproc)"
+make install -j"${FM_BUILD_JOBS:-$(nproc)}"
 
 # Flatten ICU archives because WebKit's static link expects single archives.
 cd "${DEPS_PATH}/lib"

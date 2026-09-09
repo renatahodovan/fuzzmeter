@@ -3,3 +3,5 @@ fuzz_targets:
   js:
     input_mode: file
     timeout_s: 1
+    build:
+      compile_jobs: 2

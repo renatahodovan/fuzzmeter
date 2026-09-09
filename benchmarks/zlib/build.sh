@@ -10,11 +10,11 @@ if ! ./configure; then
     exit 1
 fi
 
-make -j"$(nproc)" clean
-make -j"$(nproc)" all
+make -j"${FM_BUILD_JOBS:-$(nproc)}" clean
+make -j"${FM_BUILD_JOBS:-$(nproc)}" all
 
 if [[ "${SANITIZER}" != "memory" ]]; then
-    make -j"$(nproc)" check
+    make -j"${FM_BUILD_JOBS:-$(nproc)}" check
 fi
 
 ${CXX} ${CXXFLAGS} -std=c++11 -I. \

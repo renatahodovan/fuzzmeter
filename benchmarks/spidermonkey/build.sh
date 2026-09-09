@@ -23,10 +23,7 @@ export MOZCONFIG=./mozconfig
 
 ./mach --no-interactive bootstrap --application-choice js
 
-build_jobs="$(nproc)"
-if [ "${build_jobs}" -gt 2 ]; then
-    build_jobs=2
-fi
+build_jobs="${FM_BUILD_JOBS:-$(nproc)}"
 
 ./mach build "-j${build_jobs}"
 

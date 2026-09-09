@@ -67,6 +67,7 @@ def _entry_args(
     benchmark: str,
     benchmark_workdir: str,
     target_name: str,
+    build_compile_jobs: int = 1,
     runner_base_image: str | None = None,
 ) -> list[str]:
     lines = [
@@ -82,6 +83,7 @@ def _entry_args(
         f'  BENCHMARK     = "{benchmark}"',
         f'  BENCHMARK_WORKDIR = "{benchmark_workdir}"',
         f'  TARGET_NAME   = "{target_name}"',
+        f'  BUILD_COMPILE_JOBS = "{build_compile_jobs}"',
         f'  FM_LOG_LEVEL  = "{_escape(os.environ.get("FM_LOG_LEVEL", "INFO"))}"',
     ]
     if runner_base_image:
@@ -110,6 +112,7 @@ def generate_run_bake_hcl(
     entrypoint_resources: Path,
     fuzzmeter_resources: Path,
     memory_limit: str | None,
+    build_compile_jobs: int = 1,
 ) -> str:
     benchmarks = {case.fuzz_target.benchmark.name: case.fuzz_target.benchmark for case in campaign_cases}
 
@@ -240,6 +243,7 @@ def generate_run_bake_hcl(
                 benchmark=case.fuzz_target.benchmark.name,
                 benchmark_workdir=_escape(case.fuzz_target.benchmark.workdir),
                 target_name=case.fuzz_target.fuzz_target,
+                build_compile_jobs=case.fuzz_target.build_compile_jobs or build_compile_jobs,
                 runner_base_image='runner_base',
             ),
             depends_on=runner_depends,
@@ -270,6 +274,7 @@ def generate_run_bake_hcl(
                     benchmark=case.fuzz_target.benchmark.name,
                     benchmark_workdir=_escape(case.fuzz_target.benchmark.workdir),
                     target_name=case.fuzz_target.fuzz_target,
+                    build_compile_jobs=case.fuzz_target.build_compile_jobs or build_compile_jobs,
                 ),
                 depends_on=[
                     f'instrumentation_builder_{internal_fuzzer}',

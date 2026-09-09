@@ -44,6 +44,15 @@ class ArtifactBuilderTest(unittest.TestCase):
                 )
 
             self.assertEqual(run_dir, run.call_args.kwargs['cwd'])
+            self.assertEqual(3, run.call_count)
+            self.assertEqual(
+                [
+                    'runner_plain_bench-target',
+                    'coverage_runner_bench-target',
+                    'crash_runner_bench-target',
+                ],
+                [call.args[0][-1] for call in run.call_args_list],
+            )
             self.assertTrue((run_dir / 'bake.hcl').is_file())
             bake_hcl = (run_dir / 'bake.hcl').read_text(encoding='utf-8')
             resolved_root = repo_root.resolve()

@@ -24,7 +24,7 @@ fi
 
 # Linking OpenSSL's fuzz targets in parallel exceeds the 4 GiB image-build
 # limit when coverage instrumentation is enabled.
-make -j1 LDCMD="${CXX} ${CXXFLAGS}"
+make -j"${FM_BUILD_JOBS:-$(nproc)}" LDCMD="${CXX} ${CXXFLAGS}"
 
 fuzzers=$(find fuzz -executable -type f '!' -name '*.py' '!' -name '*-test' '!' -name '*.pl' '!' -name '*.sh')
 for f in ${fuzzers}; do

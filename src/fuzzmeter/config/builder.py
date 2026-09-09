@@ -103,11 +103,19 @@ def _fuzz_target_from_config(benchmark_dir: Path, required_benchmark: str, requi
     if not all(isinstance(override, dict) for override in fuzzer_overrides.values()):
         raise ValueError('Fuzzer overrides in benchmark configs must be mappings.')
 
+    build_data = fuzz_target_data.get('build') or {}
+    if not isinstance(build_data, dict):
+        raise TypeError(f'Fuzz target build configuration must be a mapping: {path}')
+    compile_jobs = build_data.get('compile_jobs')
+    if compile_jobs is not None:
+        compile_jobs = _normalized_int_value('build.compile_jobs', compile_jobs, 1)
+
     return FuzzTarget(benchmark=Benchmark(name=benchmark, src_dir=benchmark_dir, config_path=path),
                       fuzz_target=required_fuzz_target,
                       input_mode=input_mode,
                       target_timeout_s=timeout_s,
-                      fuzzer_overrides=fuzzer_overrides)
+                      fuzzer_overrides=fuzzer_overrides,
+                      build_compile_jobs=compile_jobs)
 
 
 def _normalized_int_value(name: str, value: str, min_value: int, max_value: int | None = None) -> int:
@@ -122,11 +130,18 @@ def _normalized_int_value(name: str, value: str, min_value: int, max_value: int 
 def _load_campaign_settings(data: dict[str, Any]) -> CampaignSettings:
     run_data = data.get('run') or {}
     snap_data = run_data.get('snapshot') or {}
+    build_data = data.get('build') or {}
+    if not isinstance(build_data, dict):
+        raise TypeError('Campaign build configuration must be a mapping.')
     return CampaignSettings(
         time_seconds=_normalized_int_value(
             'time_seconds', run_data.get('time_seconds', CampaignSettings.time_seconds), 60
         ),
         repetitions=_normalized_int_value('repetitions', run_data.get('repetitions', CampaignSettings.repetitions), 1),
+        build_jobs=_normalized_int_value('build.jobs', build_data.get('jobs', CampaignSettings.build_jobs), 1),
+        build_compile_jobs=_normalized_int_value(
+            'build.compile_jobs', build_data.get('compile_jobs', CampaignSettings.build_compile_jobs), 1
+        ),
         parallel_jobs=_normalized_int_value(
             'parallel_jobs', run_data.get('parallel_jobs', CampaignSettings.parallel_jobs), 1
         ),

@@ -30,7 +30,7 @@ export CFLAGS="$CFLAGS -DSQLITE_MAX_LENGTH=128000000 \
                -DSQLITE_MAX_PAGE_COUNT=16384"             
                
 ../configure --shared=0
-make -j$(nproc)
+make -j"${FM_BUILD_JOBS:-$(nproc)}"
 make sqlite3.c
 
 EXTRA_FLAGS=""

@@ -31,6 +31,6 @@ fi
 gn gen out/fuzz --args="${ARGS}"
 
 rm -f out/fuzz/d8
-ninja -C out/fuzz d8 -j"$(nproc)"
+ninja -C out/fuzz d8 -j"${FM_BUILD_JOBS:-$(nproc)}"
 
 cp ./out/fuzz/{d8,snapshot_blob.bin,*.so,icudtl.dat} "${OUT}"

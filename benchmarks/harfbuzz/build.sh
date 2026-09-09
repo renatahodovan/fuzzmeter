@@ -5,6 +5,7 @@ export CFLAGS="${CFLAGS} -fno-sanitize=vptr -DHB_NO_VISIBILITY"
 export CXXFLAGS="${CXXFLAGS} -fno-sanitize=vptr -DHB_NO_VISIBILITY"
 
 build="${WORK}/build"
+build_jobs="${FM_BUILD_JOBS:-$(nproc)}"
 rm -rf "${build}"
 mkdir -p "${build}"
 
@@ -14,7 +15,7 @@ meson --default-library=static --prefer-static --wrap-mode=nodownload \
       "${build}" \
   || (cat build/meson-logs/meson-log.txt && false)
 
-ninja -v -j2 -C "${build}" test/fuzzing/hb-{shape,raster,vector,gpu,subset,repacker}-fuzzer
+ninja -v -j"${build_jobs}" -C "${build}" test/fuzzing/hb-{shape,raster,vector,gpu,subset,repacker}-fuzzer
 mv "${build}"/test/fuzzing/hb-{shape,raster,vector,gpu,subset,repacker}-fuzzer "${OUT}/"
 
 mkdir -p all-fonts

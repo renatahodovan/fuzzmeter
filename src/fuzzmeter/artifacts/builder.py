@@ -75,6 +75,7 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
             entrypoint_resources=entrypoint_resources_path,
             fuzzmeter_resources=fuzzmeter_resources_path,
             memory_limit=campaign_config.settings.memory,
+            build_compile_jobs=campaign_config.settings.build_compile_jobs,
         )
         bake_hcl_path = run_dir / 'bake.hcl'
         bake_hcl_path.write_text(bake_hcl, encoding='utf-8')
@@ -89,11 +90,25 @@ def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
         ]
 
         progress = 'auto' if logger.isEnabledFor(logging.INFO) else 'plain'
-        subprocess.run(
-            ['docker', 'buildx', 'bake', *allow_args, '--progress', progress, '-f', str(bake_hcl_path), 'fm'],
-            check=True,
-            cwd=Path(run_dir),
+        bake_targets = [
+            f'runner_{case.fuzzer.id}_{case.fuzz_target.ident}'
+            for case in campaign_config.cases
+        ]
+        target_cases = {case.fuzz_target.ident: case for case in campaign_config.cases}
+        bake_targets.extend(
+            f'{stage_name}_{fuzz_target_id}'
+            for _, stage_name in INSTRUMENTATION_PROFILES
+            for fuzz_target_id in target_cases
         )
+        for start in range(0, len(bake_targets), campaign_config.settings.build_jobs):
+            subprocess.run(
+                [
+                    'docker', 'buildx', 'bake', *allow_args, '--progress', progress,
+                    '-f', str(bake_hcl_path), *bake_targets[start:start + campaign_config.settings.build_jobs],
+                ],
+                check=True,
+                cwd=Path(run_dir),
+            )
 
 
 def _copy_fuzzer_context(

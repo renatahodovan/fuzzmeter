@@ -133,6 +133,7 @@ class FuzzTarget:
     input_mode: str
     fuzzer_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
     target_timeout_s: float = 1.0
+    build_compile_jobs: int | None = None
 
     @property
     def ident(self) -> str:
@@ -186,6 +187,8 @@ class CampaignSettings:
 
     time_seconds: int = 3600
     repetitions: int = 1
+    build_jobs: int = 1
+    build_compile_jobs: int = 1
     parallel_jobs: int = os.cpu_count() or 2
     snapshot_jobs: int = 1
     snapshot_every_seconds: int = 900

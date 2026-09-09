@@ -3,3 +3,5 @@ fuzz_targets:
   x509:
     input_mode: in_process
     timeout_s: 1
+    build:
+      compile_jobs: 1

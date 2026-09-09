@@ -6,12 +6,12 @@ CXXFLAGS="${CXXFLAGS} -O2"
 cd /src/abseil-cpp
 mkdir build && cd build
 cmake -DCMAKE_POSITION_INDEPENDENT_CODE=ON ..
-make -j"$(nproc)"
+make -j"${FM_BUILD_JOBS:-$(nproc)}"
 make install
 ldconfig
 
 cd /src/re2
-make -j"$(nproc)" obj/libre2.a
+make -j"${FM_BUILD_JOBS:-$(nproc)}" obj/libre2.a
 make common-install
 
 ${CXX} ${CXXFLAGS} -I. \
