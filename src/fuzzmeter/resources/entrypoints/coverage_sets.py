@@ -418,10 +418,10 @@ def _safe_text(*parts: Any) -> str:
     return ':'.join(out)
 
 
-def _covered_tuple(values: Any, start: int, end: int | None = None) -> bool:
-    if not isinstance(values, (list, tuple)) or len(values) <= start:
+def _covered_tuple(values: Any, count_index: int) -> bool:
+    if not isinstance(values, (list, tuple)) or len(values) <= count_index:
         raise ValueError('llvm-cov coverage tuple is malformed')
-    return any(_positive(value) for value in values[start:end])
+    return _positive(values[count_index])
 
 
 def _positive(value: Any) -> bool:

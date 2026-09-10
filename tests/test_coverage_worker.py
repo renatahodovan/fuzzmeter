@@ -240,6 +240,30 @@ class CoverageWorkerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'count is not numeric'):
             coverage_sets.coverage_metrics_from_export(_function_export(true_count='broken'))
 
+    def test_coverage_sets_ignore_segment_flags_and_region_metadata(self) -> None:
+        '''Only execution counts establish coverage, not flags or file IDs.'''
+        export_obj = _function_export(true_count=0)
+        data = export_obj['data'][0]
+        data['files'] = [{
+            'filename': '/src/template.cc',
+            'segments': [[10, 1, 0, True, True, True]],
+        }]
+        function = data['functions'][0]
+        function['count'] = 0
+        function['filenames'].append('/src/header.h')
+        function['regions'] = [[10, 1, 12, 2, 0, 1, 1, 1]]
+
+        self.assertEqual(
+            {metric: [] for metric in COV_METRICS},
+            coverage_sets.coverage_metrics_from_export(export_obj),
+        )
+
+        data['files'][0]['segments'][0][2] = 1
+        function['regions'][0][4] = 1
+        metrics = coverage_sets.coverage_metrics_from_export(export_obj)
+        for metric in ('lines', 'regions', 'functions'):
+            self.assertEqual(1, len(metrics[metric]), metric)
+
     def test_per_instantiation_branch_summary_counts_every_function(self) -> None:
         '''Template instantiations contribute their own two branch directions.'''
         export_obj = _function_export()
