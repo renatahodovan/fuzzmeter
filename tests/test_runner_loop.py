@@ -139,6 +139,7 @@ class _SchedulerStub:
     def __init__(self) -> None:
         self.registered = []
         self.unregistered = []
+        self.final_ticks = 0
         self.run_calls = 0
         self.stop_calls = 0
 
@@ -153,6 +154,9 @@ class _SchedulerStub:
 
     def unregister(self, trial_id: str) -> None:
         self.unregistered.append(trial_id)
+
+    def schedule_final_tick(self) -> None:
+        self.final_ticks += 1
 
 
 class _ThreadStub:
@@ -357,6 +361,7 @@ class RunnerLoopTest(unittest.TestCase):
 
             self.assertEqual(run_dir, result)
             self.assertEqual(1, len(scheduler_refs))
+            self.assertEqual(1, scheduler_refs[0].final_ticks)
             self.assertEqual(1, scheduler_refs[0].stop_calls)
             self.assertEqual(1, len(thread_refs))
             self.assertTrue(thread_refs[0].started)

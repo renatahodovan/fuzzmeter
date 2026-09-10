@@ -114,10 +114,5 @@ def run_one_trial(
                 with open_db(db_path) as db:
                     db_trials.set_trial_status(db, trial_id=trial_db_id, status=status, ended_ts=int(time.time()))
 
-            if status == 'done':
-                try:
-                    scheduler.schedule_final_tick(trial)
-                except Exception as exc:
-                    LOG.error('Failed to schedule last tick: %s', exc)
         finally:
             scheduler.unregister(config.trial_key)

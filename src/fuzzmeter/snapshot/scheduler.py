@@ -136,8 +136,11 @@ class SnapshotScheduler:
             db_snapshot.mark_tick_failed(db, run_id=self.run_id, idx=tick_idx, error=error)
         db.commit()
 
-    def schedule_final_tick(self, trial: TrialInstance, *, render_heavy: bool = True) -> None:
-        '''Queue a final snapshot for one trial without blocking its worker slot.'''
+    def schedule_final_tick(self) -> None:
+        '''Queue one final snapshot for every trial in the campaign.'''
+        trials = self._campaign_trial_snapshots()
+        if not trials:
+            return
         db = DB.open(self.db_path)
         try:
             tick_idx = self._allocate_tick_idx(db)
@@ -147,19 +150,15 @@ class SnapshotScheduler:
             self._schedule_tick(
                 tick_idx=tick_idx,
                 ts=ts,
-                render_heavy=render_heavy,
-                trials=(trial,),
-                campaign_trials=self._campaign_trial_snapshots(),
+                render_heavy=True,
+                trials=trials,
+                campaign_trials=trials,
             )
         finally:
             db.close()
 
     def run_loop(self) -> None:
         '''Run the snapshot scheduler until the campaign ends or stop is requested.'''
-        if self.every_seconds <= 0 or self.every_seconds > self.campaign_seconds:
-            self._progress.close()
-            return
-
         db = DB.open(self.db_path)
         worker = threading.Thread(target=self._tick_worker_loop, name='snapshot-tick-worker')
         worker.start()

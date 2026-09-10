@@ -215,6 +215,7 @@ def _run_live_experiment(
             for cfg in trial_configs
         ]
         _wait_for_futures(futures)
+        scheduler.schedule_final_tick()
     except (KeyboardInterrupt, SystemExit):
         interrupted = True
         LOG.warning('Interrupt received, stopping active trial containers...')
