@@ -283,14 +283,21 @@ class ReportingDB:
         )}
 
     def unique_bug_delta_by_snapshot(self) -> dict[int, int]:
-        '''Return newly discovered bug counts keyed by first-seen snapshot id.'''
+        '''Return first discoveries per trial, keyed by their snapshot id.'''
 
         return {int(row['snapshot_id']): int(row['c'] or 0) for row in self.rows(
             '''
-            SELECT first_seen_snapshot_id AS snapshot_id, COUNT(*) AS c
-            FROM bugs
-            WHERE first_seen_snapshot_id IS NOT NULL
-            GROUP BY first_seen_snapshot_id
+            SELECT s.snapshot_id, COUNT(*) AS c
+            FROM (
+                SELECT s.trial_id, bh.bug_id, MIN(s.idx) AS first_idx
+                FROM bug_hits AS bh
+                JOIN snapshots AS s ON s.snapshot_id = bh.snapshot_id
+                WHERE bh.hits > 0
+                GROUP BY s.trial_id, bh.bug_id
+            ) AS first_hits
+            JOIN snapshots AS s
+              ON s.trial_id = first_hits.trial_id AND s.idx = first_hits.first_idx
+            GROUP BY s.snapshot_id
             '''
         )}
 

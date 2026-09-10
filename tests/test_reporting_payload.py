@@ -18,6 +18,9 @@ import unittest
 from pathlib import Path
 from typing import Any
 
+from fuzzmeter.db import DB
+from fuzzmeter.db import bug as db_bug
+from fuzzmeter.db.report_views import ReportingDB
 from fuzzmeter.reporting import build_payload, write_report
 from fuzzmeter.reporting.provenance import attach_measurement_provenance
 from tests.support.dbs import agg_snapshot_row, reporting_run_db
@@ -133,6 +136,48 @@ class ReportingPayloadTest(unittest.TestCase):
         self.assertEqual(1, len(fuzzer['extra_sections']))
         normalized = _normalize_payload(payload)
         self.assertEqual(PAYLOAD_HASH, _payload_hash(normalized))
+
+    def test_unique_bug_discoveries_are_counted_independently_per_trial(self) -> None:
+        '''A shared bug contributes once to each repetition, in tick order.'''
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            run_dir = Path(tmp_dir)
+            reporting_run_db(run_dir)
+            db_path = run_dir / 'fuzzmeter.db'
+            with DB.open(db_path) as db:
+                db.exec(
+                    '''INSERT INTO trials(
+                        trial_id, run_id, fuzzer, benchmark, fuzz_target, rep,
+                        time_seconds, status, started_ts, ended_ts
+                    ) VALUES(2, 'run', 'fz', 'bench', 'target', 1, 60, 'done', 200, 260)''',
+                )
+                # Snapshot IDs need not have the same order as logical ticks.
+                for snapshot_id, idx, ts in ((30, 2, 260), (40, 1, 230)):
+                    db.exec(
+                        'INSERT INTO snapshots(snapshot_id, trial_id, idx, ts) VALUES(?,2,?,?)',
+                        (snapshot_id, idx, ts),
+                    )
+                for bug_key, first_snapshot, first_ts, hits in (
+                    ('shared', 10, 120, {10: 2, 11: 1, 40: 4, 30: 2}),
+                    ('later', 30, 250, {40: 0, 30: 1}),
+                ):
+                    bug_id = db_bug.ensure_bug(db, db_bug.BugRecord(
+                        run_id='run', fuzzer='fz', benchmark='bench', fuzz_target='target',
+                        bug_key=bug_key, issue_type='crash', top_func='func',
+                        frames=['func'], output='crash', first_seen_ts=first_ts,
+                        first_seen_snapshot_id=first_snapshot,
+                    ))
+                    for snapshot_id, count in hits.items():
+                        db_bug.upsert_bug_hits(db, bug_id=bug_id, snapshot_id=snapshot_id, hits=count)
+                db.commit()
+            with ReportingDB(db_path) as db:
+                self.assertEqual({10: 1, 40: 1, 30: 1}, db.unique_bug_delta_by_snapshot())
+            payload = build_payload(run_dir)
+
+        fuzzer = payload['targets'][0]['fuzzers'][0]
+        self.assertEqual([1, 2], [trial['unique_bugs_total'] for trial in fuzzer['trials']])
+        self.assertEqual([1.0, 2.0], fuzzer['distribution']['unique_bugs_total'])
+        self.assertEqual(1.5, fuzzer['final']['unique_bugs_total_mean'])
+        self.assertEqual([1.0, 1.5], [point['unique_bugs_total_mean'] for point in fuzzer['curve']])
 
     def test_curve_points_carry_the_resource_series_the_report_plots(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
