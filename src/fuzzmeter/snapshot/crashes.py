@@ -41,7 +41,7 @@ def process_snapshot_crashes(
     if progress is not None:
         progress.start_crashes(tick_idx=tick_idx, total=len(crash_batches))
 
-    run_parallel_jobs(
+    batch_results = run_parallel_jobs(
         jobs=jobs,
         total=len(crash_batches),
         desc=f'Snapshot {tick_idx} crashes',
@@ -49,12 +49,9 @@ def process_snapshot_crashes(
         leave=False,
         submit_jobs=lambda executor: [
             executor.submit(
-                repro_bugs.repro_crash_batch,
-                db_path=db_path,
+                repro_bugs.reproduce_crash_batch,
                 docker_runtime=docker_runtime,
-                run_id=run_id,
                 trial=snapshot.trial,
-                snapshot_id=snapshot.snapshot_id,
                 snapshot_crashes_dir=snapshot.snapshot_dir / 'crashes',
                 crash_tests=crash_tests,
                 batch_index=batch_index,
@@ -65,5 +62,16 @@ def process_snapshot_crashes(
         ],
         progress_step=progress.step_crashes if progress is not None else None,
     )
+    results_by_snapshot: dict[int, list] = {snapshot.snapshot_id: [] for snapshot in snapshots}
+    for (snapshot, _, _), results in zip(crash_batches, batch_results, strict=True):
+        results_by_snapshot[snapshot.snapshot_id].extend(results)
+    for snapshot in snapshots:
+        repro_bugs.save_crash_hits(
+            db_path=db_path,
+            run_id=run_id,
+            trial=snapshot.trial,
+            snapshot_id=snapshot.snapshot_id,
+            reproduced=results_by_snapshot[snapshot.snapshot_id],
+        )
     if progress is not None:
         progress.idle_crashes()

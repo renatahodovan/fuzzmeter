@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import signal
 import tempfile
+import threading
 import unittest
 
 from pathlib import Path
@@ -19,8 +20,10 @@ from unittest.mock import Mock, patch
 
 from fuzzmeter.db import DB
 from fuzzmeter.fuzzers.models import OutputPaths
-from fuzzmeter.repro.bugs import _reproduce_crash_batch, repro_crash_batch
+from fuzzmeter.repro.bugs import reproduce_crash_batch, save_crash_hits
 from fuzzmeter.repro.ingest import DetectedFile
+from fuzzmeter.snapshot.crashes import process_snapshot_crashes
+from fuzzmeter.snapshot.trial_snapshot import TrialCrashSnapshot
 from fuzzmeter.trial.models import TrialInstance, TrialLayout
 from tests.support.dbs import seeded_run_db
 from tests.support.trials import make_trial_config
@@ -62,7 +65,7 @@ class ReproBugPersistenceTest(unittest.TestCase):
                         'stdout': '', 'stderr': stderr,
                     }]), encoding='utf-8')
                     with patch('fuzzmeter.repro.bugs.DockerClient', return_value=docker):
-                        results = _reproduce_crash_batch(
+                        results = reproduce_crash_batch(
                             docker_runtime=Mock(), trial=trial,
                             snapshot_crashes_dir=crash_dir,
                             crash_tests=[DetectedFile('input', crash, 10_000_000_000)],
@@ -78,44 +81,18 @@ class ReproBugPersistenceTest(unittest.TestCase):
             db_path = root / 'run.db'
             seeded_run_db(db_path)
             trial = _trial_instance(root)
-
-            with patch(
-                'fuzzmeter.repro.bugs._reproduce_crash_batch',
-                return_value=[
-                    (
-                        'bug-key',
-                        {
-                            'issue_type': 'late-issue',
-                            'top_func': 'late_func',
-                            'frames': ['late_func'],
-                            'output': 'late output',
-                        },
-                        30,
-                    ),
-                    (
-                        'bug-key',
-                        {
-                            'issue_type': 'early-issue',
-                            'top_func': 'early_func',
-                            'frames': ['early_func'],
-                            'output': 'early output',
-                        },
-                        10,
-                    ),
-                ],
-            ):
-                repro_crash_batch(
-                    db_path=db_path,
-                    docker_runtime=Mock(),
-                    run_id='run',
-                    trial=trial,
-                    snapshot_id=7,
-                    snapshot_crashes_dir=root / 'snapshots' / 'crashes',
-                    crash_tests=[],
-                    batch_index=0,
-                    repro_logs_dir=root / 'logs',
-                )
-
+            reproduced = [
+                ('bug-key', {
+                    'issue_type': 'late-issue', 'top_func': 'late_func',
+                    'frames': ['late_func'], 'output': 'late output',
+                }, 30),
+                ('bug-key', {
+                    'issue_type': 'early-issue', 'top_func': 'early_func',
+                    'frames': ['early_func'], 'output': 'early output',
+                }, 10),
+            ]
+            save_crash_hits(db_path=db_path, run_id='run', trial=trial,
+                            snapshot_id=7, reproduced=reproduced)
             bug, hits = _bug_and_hits(db_path)
 
         self.assertEqual('early-issue', bug['issue_type'])
@@ -126,86 +103,48 @@ class ReproBugPersistenceTest(unittest.TestCase):
         self.assertEqual(7, bug['first_seen_snapshot_id'])
         self.assertEqual(2, hits[7])
 
-    def test_repeated_bug_key_preserves_original_metadata_and_replaces_snapshot_hits(self) -> None:
+    def test_snapshot_batches_are_combined_without_double_counting_on_retry(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             db_path = root / 'run.db'
             seeded_run_db(db_path)
             trial = _trial_instance(root)
+            snapshots = [
+                TrialCrashSnapshot(
+                    trial=trial, snapshot_id=snapshot_id,
+                    snapshot_dir=root / str(snapshot_id), tick_idx=1,
+                    crash_files=[DetectedFile(str(index), root / str(index), 0)
+                                 for index in range(count)],
+                )
+                for snapshot_id, count in ((7, 65), (9, 1))
+            ]
+            later_batch_finished = threading.Event()
 
-            with patch(
-                'fuzzmeter.repro.bugs._reproduce_crash_batch',
-                return_value=[
-                    (
-                        'bug-key',
-                        {
-                            'issue_type': 'original-issue',
-                            'top_func': 'original_func',
-                            'frames': ['original_func'],
-                            'output': 'original output',
-                        },
-                        40,
+            def reproduce(**kwargs):
+                first_snapshot = kwargs['snapshot_crashes_dir'].parent.name == '7'
+                if first_snapshot and kwargs['batch_index'] == 0:
+                    self.assertTrue(later_batch_finished.wait(timeout=5))
+                else:
+                    later_batch_finished.set()
+                first_seen = 10 if kwargs['batch_index'] == 1 else 30
+                return [('bug-key', {
+                    'issue_type': 'crash', 'top_func': 'func', 'frames': ['func'],
+                    'output': str(first_seen),
+                }, first_seen)] * len(kwargs['crash_tests'])
+
+            with patch('fuzzmeter.snapshot.crashes.repro_bugs.reproduce_crash_batch',
+                       side_effect=reproduce) as worker:
+                for _ in range(2):
+                    later_batch_finished.clear()
+                    process_snapshot_crashes(
+                        db_path=db_path, run_dir=root, run_id='run', tick_idx=1,
+                        jobs=2, snapshots=snapshots, docker_runtime=Mock(),
                     )
-                ],
-            ):
-                repro_crash_batch(
-                    db_path=db_path,
-                    docker_runtime=Mock(),
-                    run_id='run',
-                    trial=trial,
-                    snapshot_id=9,
-                    snapshot_crashes_dir=root / 'snapshots' / 'crashes',
-                    crash_tests=[],
-                    batch_index=0,
-                    repro_logs_dir=root / 'logs',
-                )
-
-            with patch(
-                'fuzzmeter.repro.bugs._reproduce_crash_batch',
-                return_value=[
-                    (
-                        'bug-key',
-                        {
-                            'issue_type': 'new-issue',
-                            'top_func': 'new_func',
-                            'frames': ['new_func'],
-                            'output': 'new output',
-                        },
-                        20,
-                    ),
-                    (
-                        'bug-key',
-                        {
-                            'issue_type': 'new-issue',
-                            'top_func': 'new_func',
-                            'frames': ['new_func'],
-                            'output': 'new output',
-                        },
-                        20,
-                    ),
-                ],
-            ):
-                repro_crash_batch(
-                    db_path=db_path,
-                    docker_runtime=Mock(),
-                    run_id='run',
-                    trial=trial,
-                    snapshot_id=9,
-                    snapshot_crashes_dir=root / 'snapshots' / 'crashes',
-                    crash_tests=[],
-                    batch_index=1,
-                    repro_logs_dir=root / 'logs',
-                )
-
-            bug, hits = _bug_and_hits(db_path)
-
-        self.assertEqual('original-issue', bug['issue_type'])
-        self.assertEqual('original_func', bug['top_func'])
-        self.assertEqual(['original_func'], json.loads(bug['frames_json']))
-        self.assertEqual('original output', bug['output'])
-        self.assertEqual(40, bug['first_seen_ts'])
-        self.assertEqual(9, bug['first_seen_snapshot_id'])
-        self.assertEqual(2, hits[9])
+                    bug, hits = _bug_and_hits(db_path)
+                    self.assertEqual({7: 65, 9: 1}, hits)
+                    self.assertEqual(10, bug['first_seen_ts'])
+                    self.assertEqual('10', bug['output'])
+                self.assertEqual(6, worker.call_count)
 
 
 def _bug_and_hits(db_path: Path) -> tuple[dict, dict[int, int]]:

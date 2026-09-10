@@ -14,11 +14,12 @@ import logging
 import sys
 
 from contextlib import nullcontext
-from typing import Callable
+from typing import Callable, TypeVar
 
 from tqdm import tqdm
 
 LOG = logging.getLogger(__name__)
+_T = TypeVar('_T')
 
 
 def run_parallel_jobs(
@@ -28,12 +29,12 @@ def run_parallel_jobs(
     desc: str,
     position: int = 0,
     leave: bool = False,
-    submit_jobs: Callable[[cf.ThreadPoolExecutor], list[cf.Future[None]]],
+    submit_jobs: Callable[[cf.ThreadPoolExecutor], list[cf.Future[_T]]],
     progress_step: Callable[[], None] | None = None,
-) -> None:
-    '''Run submitted jobs in parallel and update a progress bar when available.'''
+) -> list[_T]:
+    '''Run jobs in parallel and return results in submission order with progress.'''
     if total <= 0:
-        return
+        return []
     progress_enabled = (
         progress_step is None
         and LOG.isEnabledFor(logging.INFO)
@@ -49,7 +50,8 @@ def run_parallel_jobs(
     with progress_context as progress:
         progress_bar = progress
         with cf.ThreadPoolExecutor(max_workers=jobs) as executor:
-            for future in cf.as_completed(submit_jobs(executor)):
+            futures = submit_jobs(executor)
+            for future in cf.as_completed(futures):
                 future.result()
                 if progress_step is not None:
                     progress_step()
@@ -58,3 +60,4 @@ def run_parallel_jobs(
                         progress_bar.update(1)
                     except (OSError, ValueError):
                         progress_bar = None
+            return [future.result() for future in futures]

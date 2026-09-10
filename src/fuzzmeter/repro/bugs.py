@@ -35,32 +35,16 @@ _MAX_COMPONENT = 120
 _CRASH_SIGNALS = {4, 5, 6, 7, 8, 11}  # SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGSEGV.
 
 
-def repro_crash_batch(
+def save_crash_hits(
     *,
     db_path: Path,
-    docker_runtime: DockerRuntime,
     run_id: str,
     trial: TrialInstance,
     snapshot_id: int,
-    snapshot_crashes_dir: Path,
-    crash_tests: list[DetectedFile],
-    batch_index: int,
-    tick_idx: int | None = None,
-    repro_logs_dir: Path,
+    reproduced: list[tuple[str, dict[str, Any], int]],
 ) -> None:
-    '''Reproduce new crashes in the sanitizer image and persist bug hits.'''
-    repro_logs_dir.mkdir(parents=True, exist_ok=True)
-
+    '''Persist the combined reproduction results of one complete snapshot.'''
     config = trial.config
-    reproduced = _reproduce_crash_batch(
-        docker_runtime=docker_runtime,
-        trial=trial,
-        snapshot_crashes_dir=snapshot_crashes_dir,
-        crash_tests=crash_tests,
-        repro_logs_dir=repro_logs_dir,
-        batch_index=batch_index,
-        tick_idx=snapshot_id if tick_idx is None else tick_idx,
-    )
     hits, bug_data_by_key = _collect_bug_hits(reproduced)
 
     with open_db(db_path) as db:
@@ -101,7 +85,7 @@ def _collect_bug_hits(
     return hits, bug_data_by_key
 
 
-def _reproduce_crash_batch(
+def reproduce_crash_batch(
     *,
     docker_runtime: DockerRuntime,
     trial: TrialInstance,
@@ -111,6 +95,7 @@ def _reproduce_crash_batch(
     batch_index: int,
     tick_idx: int,
 ) -> list[tuple[str, dict[str, Any], int]]:
+    '''Reproduce a crash batch without persisting partial snapshot hit counts.'''
     docker = DockerClient(docker_runtime)
     batch_root = snapshot_crashes_dir.parent / '.crash_repro_batches' / f'{batch_index:06d}'
     batch_root.mkdir(parents=True, exist_ok=True)
