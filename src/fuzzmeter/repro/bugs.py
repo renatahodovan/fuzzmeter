@@ -31,6 +31,8 @@ _ISSUE_UBSAN = re.compile(r'runtime error:\s*([^\n]+)', re.IGNORECASE)
 _ISSUE_MSAN = re.compile(r'WARNING:\s*MemorySanitizer:\s*([^\n]+)', re.IGNORECASE)
 _ANY_FUNC = re.compile(r'^\s*#\d+\s+0x[0-9a-fA-F]+\s+in\s+([^\s(]+).*?/src/')
 _MAX_COMPONENT = 120
+# Workers run on Linux; the host's signal numbers can differ (e.g. macOS SIGBUS).
+_CRASH_SIGNALS = {4, 5, 6, 7, 8, 11}  # SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE, SIGSEGV.
 
 
 def repro_crash_batch(
@@ -132,7 +134,7 @@ def _reproduce_crash_batch(
             'FM_CRASH_INPUT_LIST': docker.container_path(input_list),
             'FM_CRASH_OUTPUT_JSON': docker.container_path(output_json),
         },
-        check=False,
+        check=True,
         kind='crash',
         trial_key=trial.config.trial_key,
         cmd=['python3', '/opt/fuzzmeter/crash_worker.py'],
@@ -150,12 +152,16 @@ def _reproduce_crash_batch(
     results: list[tuple[str, dict[str, Any], int]] = []
     for new_file, worker_output in zip(crash_tests, outputs, strict=False):
         output = (worker_output.get('stdout') or '') + (worker_output.get('stderr') or '')
-        results.append(_classify_crash_output(
+        classified = _classify_crash_output(
             trial=trial,
             new_file=new_file,
             output=output,
+            returncode=worker_output['returncode'],
+            timed_out=worker_output['timeout'],
             repro_logs_dir=repro_logs_dir,
-        ))
+        )
+        if classified is not None:
+            results.append(classified)
 
     return results
 
@@ -165,14 +171,22 @@ def _classify_crash_output(
     trial: TrialInstance,
     new_file: DetectedFile,
     output: str,
+    returncode: int,
+    timed_out: bool,
     repro_logs_dir: Path,
-) -> tuple[str, dict[str, Any], int]:
-    issue = 'crash'
+) -> tuple[str, dict[str, Any], int] | None:
+    issue = None
     for regex in (_ISSUE_ASAN, _ISSUE_MSAN, _ISSUE_UBSAN):
         match = regex.search(output)
         if match:
             issue = match.group(1).strip()
             break
+
+    if timed_out or (issue is None and -returncode not in _CRASH_SIGNALS):
+        LOG.warning('Crash did not reproduce for %s: returncode=%s, timeout=%s',
+                    new_file.abs_src, returncode, timed_out)
+        return None
+    issue = issue or 'crash'
 
     frames: list[str] = []
     for line in output.splitlines():
