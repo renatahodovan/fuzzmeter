@@ -222,6 +222,7 @@ def _run_live_experiment(
         ]
         _wait_for_futures(futures)
         if scheduler is not None:
+            scheduler.raise_if_failed()
             scheduler.schedule_final_tick()
     except (KeyboardInterrupt, SystemExit):
         interrupted = True
@@ -254,6 +255,13 @@ def _run_live_experiment(
                 LOG.error('Failed to stop snapshot scheduler: %s', exc)
         if scheduler_thread is not None:
             scheduler_thread.join()
+
+    if scheduler is not None:
+        try:
+            scheduler.raise_if_failed()
+        except Exception:
+            cleanup_containers(docker_runtime)
+            raise
 
     return run_dir
 

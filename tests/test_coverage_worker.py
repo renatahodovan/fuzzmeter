@@ -653,7 +653,7 @@ TOTAL                                        31                 5    83.87%     
         self.assertEqual({'missing_profraw': 2}, diagnostics['status_counts'])
         merge_profiles.assert_not_called()
 
-    def test_finalize_mode_without_profdata_writes_empty_summary(self) -> None:
+    def test_finalize_mode_without_profdata_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             out_dir = root / 'out'
@@ -672,16 +672,10 @@ TOTAL                                        31                 5    83.87%     
                 prof_list=prof_list,
             )
 
-            coverage_worker._run_finalize_mode(cfg)
+            with self.assertRaisesRegex(RuntimeError, 'Merged coverage profile is unavailable'):
+                coverage_worker._run_finalize_mode(cfg)
 
-            summary = (out_dir / 'summary.json').read_text(encoding='utf-8')
-            provenance = json.loads(
-                (out_dir / 'measurement-provenance.json').read_text(encoding='utf-8')
-            )
-
-        self.assertEqual('{}', summary)
-        self.assertEqual('invalid', provenance['validity']['status'])
-        self.assertEqual('unavailable', provenance['coverage_sets']['freshness'])
+            self.assertFalse((out_dir / 'summary.json').exists())
 
     def test_write_coverage_outputs_skips_html_when_skip_env_is_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

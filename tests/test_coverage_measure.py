@@ -18,11 +18,14 @@ from unittest.mock import Mock, patch
 
 from fuzzmeter.repro.coverage_measure import (
     CoverageBatch,
+    CoveragePipelineError,
     _preserve_previous_artifacts,
     _replace_out_root,
     _synchronize_coverage_set_provenance,
     build_coverage_replay_batches,
     coverage_measurement_context,
+    merge_coverage_outputs,
+    replay_coverage_batch,
     replay_coverage_batches,
 )
 
@@ -208,7 +211,7 @@ class CoverageMeasureTest(unittest.TestCase):
                 'fuzzmeter.repro.coverage_measure.replay_coverage_batch',
                 side_effect=[RuntimeError('first failure'), ValueError('second failure')],
             ),
-            self.assertRaises(RuntimeError) as raised,
+            self.assertRaises(CoveragePipelineError) as raised,
         ):
             replay_coverage_batches(
                 docker_runtime=Mock(),
@@ -218,6 +221,171 @@ class CoverageMeasureTest(unittest.TestCase):
 
         self.assertIn('first failure', str(raised.exception))
         self.assertIn('second failure', str(raised.exception))
+
+    def test_replay_coverage_batch_retries_pipeline_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            docker = Mock()
+            docker.container_path.side_effect = str
+            docker.out_volume.return_value = 'out-volume'
+            docker.run.side_effect = [RuntimeError('first'), RuntimeError('second'), None]
+
+            with patch('fuzzmeter.repro.coverage_measure.DockerClient', return_value=docker):
+                replay_coverage_batch(
+                    docker_runtime=Mock(),
+                    image='coverage-image',
+                    fuzz_target='target',
+                    input_mode='file',
+                    inputs=[root / 'input'],
+                    batch_profdata_path=root / 'batch.profdata',
+                    diagnostics_dir=root / 'diagnostics',
+                    container_name='coverage-batch',
+                )
+
+        self.assertEqual(3, docker.run.call_count)
+
+    def test_replay_coverage_batch_fails_after_three_attempts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            docker = Mock()
+            docker.container_path.side_effect = str
+            docker.out_volume.return_value = 'out-volume'
+            docker.run.side_effect = RuntimeError('docker unavailable')
+
+            with patch('fuzzmeter.repro.coverage_measure.DockerClient', return_value=docker), \
+                 self.assertRaisesRegex(CoveragePipelineError, 'failed after 3 attempts'):
+                replay_coverage_batch(
+                    docker_runtime=Mock(),
+                    image='coverage-image',
+                    fuzz_target='target',
+                    input_mode='file',
+                    inputs=[root / 'input'],
+                    batch_profdata_path=root / 'batch.profdata',
+                    diagnostics_dir=root / 'diagnostics',
+                    container_name='coverage-batch',
+                )
+
+        self.assertEqual(3, docker.run.call_count)
+
+    def test_coverage_merge_retries_without_changing_published_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            state_dir = root / 'state'
+            state_dir.mkdir()
+            profdata_path = state_dir / 'merged.profdata'
+            profdata_path.write_bytes(b'old profile')
+            observed_profiles = []
+
+            def merge_once(**kwargs):
+                observed_profiles.append(profdata_path.read_bytes())
+                if len(observed_profiles) == 1:
+                    raise RuntimeError('report failed')
+                profdata_path.write_bytes(b'new profile')
+                return {'cov_lines_covered': 1}
+
+            with patch(
+                'fuzzmeter.repro.coverage_measure._merge_coverage_outputs_once',
+                side_effect=merge_once,
+            ):
+                summary = merge_coverage_outputs(
+                    docker_runtime=Mock(),
+                    run_dir=root,
+                    case=Mock(),
+                    out_root=root / 'out',
+                    state_dir=state_dir,
+                    work_dir=state_dir / 'work',
+                    profile_inputs=[],
+                )
+            published_profile = profdata_path.read_bytes()
+
+        self.assertEqual([b'old profile', b'old profile'], observed_profiles)
+        self.assertEqual({'cov_lines_covered': 1}, summary)
+        self.assertEqual(b'new profile', published_profile)
+
+    def test_coverage_merge_preserves_profile_after_retry_exhaustion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            state_dir = root / 'state'
+            state_dir.mkdir()
+            profdata_path = state_dir / 'merged.profdata'
+            profdata_path.write_bytes(b'old profile')
+            attempts = 0
+
+            def merge_once(**kwargs):
+                nonlocal attempts
+                attempts += 1
+                self.assertEqual(b'old profile', profdata_path.read_bytes())
+                raise RuntimeError('export failed')
+
+            with patch(
+                'fuzzmeter.repro.coverage_measure._merge_coverage_outputs_once',
+                side_effect=merge_once,
+            ), self.assertRaisesRegex(CoveragePipelineError, 'failed after 3 attempts'):
+                merge_coverage_outputs(
+                    docker_runtime=Mock(),
+                    run_dir=root,
+                    case=Mock(),
+                    out_root=root / 'out',
+                    state_dir=state_dir,
+                    work_dir=state_dir / 'work',
+                    profile_inputs=[],
+                )
+
+            restored = profdata_path.read_bytes()
+
+        self.assertEqual(b'old profile', restored)
+        self.assertEqual(3, attempts)
+
+    def test_coverage_merge_publishes_candidate_profile_after_outputs_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            state_dir = root / 'state'
+            state_dir.mkdir()
+            published_profile = state_dir / 'merged.profdata'
+            published_profile.write_bytes(b'o' * 80)
+            batch_profile = root / 'batch.profdata'
+            batch_profile.write_bytes(b'b' * 80)
+            case = Mock()
+            case.images.coverage = 'coverage-image'
+            case.fuzz_target.benchmark.name = 'benchmark'
+            case.fuzz_target.fuzz_target = 'target'
+            docker = Mock()
+            docker.container_path.side_effect = str
+            docker.image_id.return_value = 'sha256:image'
+            docker.out_volume.return_value = 'out-volume'
+
+            def run_worker(**kwargs):
+                env = kwargs['env']
+                candidate = Path(env['FM_PROFDATA_PATH'])
+                out_dir = Path(env['FM_OUT_DIR'])
+                self.assertNotEqual(published_profile, candidate)
+                self.assertEqual(
+                    [str(published_profile), str(batch_profile)],
+                    Path(env['FM_PROF_LIST']).read_text(encoding='utf-8').splitlines(),
+                )
+                candidate.write_bytes(b'n' * 80)
+                (out_dir / 'summary.json').write_text('{"cov_lines_covered": 1}', encoding='utf-8')
+                (out_dir / 'measurement-provenance.json').write_text('{"schema_version": 2}', encoding='utf-8')
+                (out_dir / 'coverage-sets.json').write_text('{"version": 5}', encoding='utf-8')
+
+            docker.run.side_effect = run_worker
+            with patch('fuzzmeter.repro.coverage_measure.DockerClient', return_value=docker):
+                summary = merge_coverage_outputs(
+                    docker_runtime=Mock(),
+                    run_dir=root,
+                    case=case,
+                    out_root=root / 'coverage' / 'trial',
+                    state_dir=state_dir,
+                    work_dir=state_dir / 'work',
+                    profile_inputs=[batch_profile],
+                )
+
+            current_profile = published_profile.read_bytes()
+            output_profile_exists = (root / 'coverage' / 'trial' / 'merged.profdata').exists()
+
+        self.assertEqual({'cov_lines_covered': 1}, summary)
+        self.assertEqual(b'n' * 80, current_profile)
+        self.assertFalse(output_profile_exists)
 
     def test_measurement_context_records_batch_semantics_and_profile_loss(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -248,7 +416,7 @@ class CoverageMeasureTest(unittest.TestCase):
         self.assertEqual('batched-stateful', context['measurement']['mode'])
         self.assertEqual(3, context['measurement']['batch_size'])
         self.assertEqual(0, context['measurement']['artificial_restarts'])
-        self.assertEqual('degraded', context['validity']['status'])
+        self.assertEqual('valid', context['validity']['status'])
         self.assertEqual(1, context['inputs']['status_counts']['failed'])
         self.assertEqual(3, context['inputs']['profiles_lost_to_batch_mate_crash'])
         self.assertEqual(3, context['repetitions']['n'])

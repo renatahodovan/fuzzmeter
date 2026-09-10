@@ -31,6 +31,10 @@ from .resource_telemetry import ResourceTelemetryCollector
 LOG = logging.getLogger(__name__)
 
 
+class SnapshotProcessingError(RuntimeError):
+    '''Report a fatal snapshot measurement failure to the run coordinator.'''
+
+
 @dataclass(frozen=True)
 class SnapshotData:
     tick_idx: int
@@ -81,7 +85,10 @@ class SnapshotScheduler:
         self._lock = threading.Lock()
         self._tick_lock = threading.Lock()
         self._tick_seq_lock = threading.Lock()
+        self._fatal_lock = threading.Lock()
+        self._wake_event = threading.Event()
         self._tick_queue: queue.Queue[SnapshotData | None] = queue.Queue()
+        self._fatal_error: BaseException | None = None
         self._next_tick_idx: int | None = None
         self._scheduled_ticks = 0
         self._processed_ticks = 0
@@ -116,16 +123,33 @@ class SnapshotScheduler:
     def stop(self) -> None:
         '''Request the scheduler loop to stop after pending work.'''
         self._stop = True
+        self._wake_event.set()
+
+    def raise_if_failed(self) -> None:
+        '''Raise a fatal background processing error in the caller thread.'''
+        with self._fatal_lock:
+            error = self._fatal_error
+        if error is not None:
+            raise SnapshotProcessingError(f'Snapshot measurement failed: {error}') from error
+
+    def _set_fatal_error(self, exc: BaseException) -> None:
+        with self._fatal_lock:
+            if self._fatal_error is None:
+                self._fatal_error = exc
+        self._stop = True
+        self._wake_event.set()
+        if self.stop_event is not None:
+            self.stop_event.set()
 
     @property
     def _shutting_down(self) -> bool:
-        '''Report whether this scheduler or the whole run is stopping.
+        '''Report whether the whole run is being interrupted externally.
 
         The signal handler sets the shared stop event before it sweeps the
         containers, so consulting it is what lets a tick that a sweep killed be
         recorded as aborted rather than as a measurement failure.
         '''
-        return self._stop or (self.stop_event is not None and self.stop_event.is_set())
+        return self.stop_event is not None and self.stop_event.is_set()
 
     def _record_tick_error(self, db: DB, *, tick_idx: int, exc: BaseException) -> None:
         '''Persist a tick error as aborted while stopping and as failed otherwise.'''
@@ -138,6 +162,7 @@ class SnapshotScheduler:
 
     def schedule_final_tick(self) -> None:
         '''Queue one final snapshot for every trial in the campaign.'''
+        self.raise_if_failed()
         trials = self._campaign_trial_snapshots()
         if not trials:
             return
@@ -184,13 +209,19 @@ class SnapshotScheduler:
 
                 if self._stop:
                     break
-                if next_due_ts is None:
-                    time.sleep(1.0)
-                    continue
-                time.sleep(max(0.0, float(next_due_ts) - now))
+                wait_seconds = 1.0 if next_due_ts is None else max(0.0, float(next_due_ts) - now)
+                self._wake_event.wait(wait_seconds)
+                self._wake_event.clear()
+        except Exception as exc:
+            self._set_fatal_error(exc)
+            LOG.exception('Snapshot scheduler failed')
         finally:
             self._tick_queue.put(None)
             worker.join()
+            with self._fatal_lock:
+                fatal_error = self._fatal_error
+            if fatal_error is not None:
+                self._abort_pending_ticks(db, cause=fatal_error)
             db.close()
             self._progress.close()
 
@@ -418,8 +449,29 @@ class SnapshotScheduler:
                 except Exception as exc:
                     self._record_tick_error(db, tick_idx=snapshot_item.tick_idx, exc=exc)
                     LOG.exception('Error during snapshot tick %s', snapshot_item.tick_idx)
+                    if not self._shutting_down:
+                        self._set_fatal_error(exc)
+                        self._abort_pending_ticks(db, cause=exc)
+                        break
         finally:
             db.close()
+
+    def _abort_pending_ticks(self, db: DB, *, cause: BaseException) -> None:
+        '''Mark queued ticks that cannot run after a fatal measurement error.'''
+        while True:
+            try:
+                pending = self._tick_queue.get_nowait()
+            except queue.Empty:
+                return
+            if pending is None:
+                return
+            db_snapshot.mark_tick_aborted(
+                db,
+                run_id=self.run_id,
+                idx=pending.tick_idx,
+                error=f'Not processed after {type(cause).__name__}: {cause}',
+            )
+            db.commit()
 
     def _schedule_tick(
         self,

@@ -267,7 +267,7 @@ def build_measurement_provenance(
             'artificial_restarts': None,
         },
         'validity': context.get('validity') or {
-            'status': 'degraded',
+            'status': 'invalid',
             'diagnostics': ['measurement context unavailable'],
         },
         'repetitions': context.get('repetitions') or {

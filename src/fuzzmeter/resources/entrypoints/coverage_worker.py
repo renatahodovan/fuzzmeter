@@ -175,26 +175,7 @@ def _run_finalize_mode(cfg: WorkerConfig) -> None:
     shutil.rmtree(cfg.work_dir, ignore_errors=True)
 
     if not cfg.profdata.is_file():
-        (cfg.out_dir / 'summary.json').write_text('{}', encoding='utf-8', errors='replace')
-        provenance = build_measurement_provenance(
-            report_flags=None,
-            branch_export_flags=None,
-            export_flags=None,
-            measurement_context={
-                **(cfg.measurement_context or {}),
-                'coverage_sets': {
-                    'freshness': 'unavailable',
-                    'source_tick': None,
-                    'source_profdata_sha256': None,
-                },
-                'validity': {
-                    'status': 'invalid',
-                    'diagnostics': ['merged coverage profile is unavailable'],
-                },
-            },
-        )
-        _write_measurement_provenance(cfg.out_dir, provenance)
-        return
+        raise RuntimeError('Merged coverage profile is unavailable')
 
     _write_coverage_outputs(cfg)
 

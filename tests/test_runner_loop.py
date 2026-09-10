@@ -16,7 +16,7 @@ import unittest
 
 from concurrent.futures import Future
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fuzzmeter.config import CampaignConfig, CampaignSettings
 from fuzzmeter.db import DB, ensure_schema
@@ -32,9 +32,10 @@ from fuzzmeter.run.runner import (
     run_experiment,
 )
 from fuzzmeter.snapshot.collector import collect_snapshots
-from fuzzmeter.snapshot.scheduler import ReplaySnapshotScheduler, SnapshotScheduler
+from fuzzmeter.snapshot.scheduler import ReplaySnapshotScheduler, SnapshotProcessingError, SnapshotScheduler
 from fuzzmeter.snapshot.trial_snapshot import TrialCoverageSnapshot, TrialCrashSnapshot
 from fuzzmeter.trial.models import ReplayTrialInstance, TrialConfig, TrialInstance, TrialLayout
+from fuzzmeter.trial.runner import run_one_trial
 from tests.support.trials import make_trial_config
 
 
@@ -142,6 +143,7 @@ class _SchedulerStub:
         self.final_ticks = 0
         self.run_calls = 0
         self.stop_calls = 0
+        self.failure: BaseException | None = None
 
     def register(self, trial: TrialInstance) -> None:
         self.registered.append(trial)
@@ -157,6 +159,10 @@ class _SchedulerStub:
 
     def schedule_final_tick(self) -> None:
         self.final_ticks += 1
+
+    def raise_if_failed(self) -> None:
+        if self.failure is not None:
+            raise SnapshotProcessingError(str(self.failure)) from self.failure
 
 
 class _ThreadStub:
@@ -392,6 +398,75 @@ class RunnerLoopTest(unittest.TestCase):
             self.assertTrue(thread_refs[0].started)
             self.assertTrue(thread_refs[0].joined)
 
+    def test_live_run_stops_after_snapshot_processing_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            run_dir = Path(tmp_dir)
+            config = CampaignConfig(settings=CampaignSettings(parallel_jobs=2), cases=[])
+            scheduler = _SchedulerStub()
+            scheduler.failure = RuntimeError('coverage merge failed')
+            stop_event = threading.Event()
+
+            with patch('fuzzmeter.run.runner.SnapshotScheduler', return_value=scheduler), \
+                 patch('fuzzmeter.run.runner.run_one_trial'), \
+                 patch('fuzzmeter.run.runner.cleanup_containers') as cleanup, \
+                 self.assertRaisesRegex(SnapshotProcessingError, 'coverage merge failed'):
+                _run_live_experiment(
+                    db_path=run_dir / 'state.db',
+                    campaign_config=config,
+                    run_dir=run_dir,
+                    run_id='run',
+                    docker_runtime=Mock(),
+                    trial_configs=[_trial_config(run_dir)],
+                    stop_event=stop_event,
+                )
+
+        self.assertTrue(stop_event.is_set())
+        self.assertEqual(1, scheduler.stop_calls)
+        cleanup.assert_called_once()
+
+    def test_trial_records_snapshot_failure_and_stops_container(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            db_path = root / 'state.db'
+            with DB.open(db_path) as db:
+                ensure_schema(db)
+                db.exec(
+                    'INSERT INTO runs(run_id, created_ts, config_src) VALUES(?,?,?)',
+                    ('run', 1, 'config'),
+                )
+            config = _trial_config(root)
+            layout = TrialLayout.from_config(trial_dir=root / 'trial', cfg=config)
+            layout.fuzzer_log.parent.mkdir(parents=True)
+            input_corpus = root / 'input'
+            input_corpus.mkdir()
+            scheduler = Mock()
+            scheduler.raise_if_failed.side_effect = SnapshotProcessingError('coverage failed')
+            container = Mock()
+            container.start.return_value = True
+
+            with patch(
+                'fuzzmeter.trial.runner.prepare_live_workspace',
+                return_value=(layout, input_corpus),
+            ), patch('fuzzmeter.trial.runner.TrialContainer', return_value=container), \
+                 patch('fuzzmeter.trial.runner.subprocess.Popen', return_value=Mock()), \
+                 self.assertRaisesRegex(SnapshotProcessingError, 'coverage failed'):
+                run_one_trial(
+                    docker_runtime=Mock(fuzzer_dirs={}),
+                    db_path=db_path,
+                    run_id='run',
+                    run_dir=root,
+                    config=config,
+                    scheduler=scheduler,
+                    stop_event=threading.Event(),
+                )
+
+            with DB.open(db_path) as db:
+                status = db.scalar('SELECT status FROM trials')
+
+        self.assertEqual('failed_measurement', status)
+        container.stop.assert_called_once()
+        scheduler.unregister.assert_called_once_with(config.trial_key)
+
     def test_process_tick_creates_tick_snapshot_and_runs_snapshot_work(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -518,6 +593,7 @@ class RunnerLoopTest(unittest.TestCase):
             finally:
                 db.close()
 
+            stop_event = threading.Event()
             scheduler = SnapshotScheduler(
                 db_path=db_path,
                 run_dir=root,
@@ -525,6 +601,7 @@ class RunnerLoopTest(unittest.TestCase):
                 campaign_seconds=300,
                 every_seconds=60,
                 docker_runtime=None,
+                stop_event=stop_event,
             )
             scheduler._schedule_tick(
                 tick_idx=1,
@@ -546,6 +623,9 @@ class RunnerLoopTest(unittest.TestCase):
 
         self.assertEqual('failed', tick['status'])
         self.assertIn('coverage exploded', tick['error'])
+        self.assertTrue(stop_event.is_set())
+        with self.assertRaisesRegex(SnapshotProcessingError, 'coverage exploded'):
+            scheduler.raise_if_failed()
 
     def test_tick_worker_records_shutdown_interruption_as_aborted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

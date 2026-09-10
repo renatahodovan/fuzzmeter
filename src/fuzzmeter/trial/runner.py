@@ -20,7 +20,7 @@ from pathlib import Path
 from ..db import open_db
 from ..db import trials as db_trials
 from ..docker import DockerRuntime
-from ..snapshot import SnapshotScheduler
+from ..snapshot import SnapshotProcessingError, SnapshotScheduler
 from .models import TrialConfig, TrialInstance
 from .runtime import TrialContainer
 from .workspace import prepare_live_workspace
@@ -97,6 +97,12 @@ def run_one_trial(
                 start_new_session=True,
             )
             trial_container.monitor_until_deadline(stop_event=stop_event)
+            if scheduler is not None:
+                scheduler.raise_if_failed()
+    except SnapshotProcessingError:
+        status = 'failed_measurement'
+        LOG.error('Stopped trial %s after a snapshot measurement failure', config.trial_key)
+        raise
     except Exception:
         status = 'failed_runtime' if started else 'failed_start'
         LOG.error('Failed to execute fuzzer in %s directory.', run_dir)

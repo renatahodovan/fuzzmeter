@@ -21,10 +21,14 @@ from typing import Any, Callable
 
 from ..config import CampaignCase
 from ..docker import DockerClient, DockerRuntime
-from .coverage_state import load_coverage_summary
 
 LOG = logging.getLogger(__name__)
 DEFAULT_COVERAGE_BATCH_SIZE = 256
+COVERAGE_PIPELINE_ATTEMPTS = 3
+
+
+class CoveragePipelineError(RuntimeError):
+    '''Report an exhausted mandatory coverage processing step.'''
 
 
 @dataclass(frozen=True)
@@ -123,7 +127,7 @@ def replay_coverage_batches(
 
     if failures:
         details = '\n'.join(f'{index}. {type(exc).__name__}: {exc}' for index, exc in enumerate(failures, 1))
-        raise RuntimeError(f'Coverage replay failed in {len(failures)} batch(es):\n{details}')
+        raise CoveragePipelineError(f'Coverage replay failed in {len(failures)} batch(es):\n{details}')
 
 
 def replay_coverage_batch(
@@ -143,45 +147,60 @@ def replay_coverage_batch(
     if not inputs:
         return
 
-    diagnostics_dir.mkdir(parents=True, exist_ok=True)
-    batch_profdata_path.parent.mkdir(parents=True, exist_ok=True)
-    batch_profdata_path.unlink(missing_ok=True)
+    for attempt in range(1, COVERAGE_PIPELINE_ATTEMPTS + 1):
+        try:
+            diagnostics_dir.mkdir(parents=True, exist_ok=True)
+            batch_profdata_path.parent.mkdir(parents=True, exist_ok=True)
+            batch_profdata_path.unlink(missing_ok=True)
 
-    docker = DockerClient(docker_runtime)
-    input_list_path = diagnostics_dir / 'inputs.txt'
-    input_list_path.write_text(
-        '\n'.join(docker.container_path(path) for path in inputs) + '\n',
-        encoding='utf-8',
-    )
+            docker = DockerClient(docker_runtime)
+            input_list_path = diagnostics_dir / 'inputs.txt'
+            input_list_path.write_text(
+                '\n'.join(docker.container_path(path) for path in inputs) + '\n',
+                encoding='utf-8',
+            )
 
-    out_dir = diagnostics_dir / 'out'
-    work_dir = diagnostics_dir / 'work'
-    shutil.rmtree(out_dir, ignore_errors=True)
-    shutil.rmtree(work_dir, ignore_errors=True)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    work_dir.mkdir(parents=True, exist_ok=True)
+            out_dir = diagnostics_dir / 'out'
+            work_dir = diagnostics_dir / 'work'
+            shutil.rmtree(out_dir, ignore_errors=True)
+            shutil.rmtree(work_dir, ignore_errors=True)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            work_dir.mkdir(parents=True, exist_ok=True)
 
-    env = {
-        'FM_OUT_DIR': docker.container_path(out_dir),
-        'FM_TARGET_NAME': fuzz_target,
-        'FM_INPUT_MODE': input_mode,
-        'FM_INPUT_LIST': docker.container_path(input_list_path),
-        'FM_BATCH_PROFDATA_PATH': docker.container_path(batch_profdata_path),
-        'FM_TIMEOUT_S': str(timeout_s),
-        'FM_WORK_DIR': docker.container_path(work_dir),
-        'FM_LOG_LEVEL': str(os.environ.get('FM_LOG_LEVEL', 'INFO')).upper(),
-    }
-
-    docker.run(
-        image=image,
-        name=container_name,
-        env=env,
-        volumes=[docker.out_volume()],
-        check=True,
-        kind='coverage',
-        trial_key=trial_key,
-        cmd=['python3', '/opt/fuzzmeter/coverage_worker.py'],
-    )
+            docker.run(
+                image=image,
+                name=container_name,
+                env={
+                    'FM_OUT_DIR': docker.container_path(out_dir),
+                    'FM_TARGET_NAME': fuzz_target,
+                    'FM_INPUT_MODE': input_mode,
+                    'FM_INPUT_LIST': docker.container_path(input_list_path),
+                    'FM_BATCH_PROFDATA_PATH': docker.container_path(batch_profdata_path),
+                    'FM_TIMEOUT_S': str(timeout_s),
+                    'FM_WORK_DIR': docker.container_path(work_dir),
+                    'FM_LOG_LEVEL': str(os.environ.get('FM_LOG_LEVEL', 'INFO')).upper(),
+                },
+                volumes=[docker.out_volume()],
+                check=True,
+                kind='coverage',
+                trial_key=trial_key,
+                cmd=['python3', '/opt/fuzzmeter/coverage_worker.py'],
+            )
+            return
+        except Exception as exc:
+            if attempt == COVERAGE_PIPELINE_ATTEMPTS:
+                batch_name = container_name or str(batch_profdata_path)
+                raise CoveragePipelineError(
+                    f'Coverage batch {batch_name} failed after '
+                    f'{COVERAGE_PIPELINE_ATTEMPTS} attempts: {exc}'
+                ) from exc
+            LOG.warning(
+                'Coverage batch %s failed on attempt %s/%s; retrying: %s',
+                container_name or batch_profdata_path,
+                attempt,
+                COVERAGE_PIPELINE_ATTEMPTS,
+                exc,
+            )
 
 
 def merge_coverage_outputs(
@@ -200,9 +219,62 @@ def merge_coverage_outputs(
     measurement_context: dict[str, Any] | None = None,
 ) -> dict:
     '''Merge batch profiles into one coverage output root and refresh its artifacts.'''
+    state_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        for attempt in range(1, COVERAGE_PIPELINE_ATTEMPTS + 1):
+            try:
+                return _merge_coverage_outputs_once(
+                    docker_runtime=docker_runtime,
+                    run_dir=run_dir,
+                    case=case,
+                    out_root=out_root,
+                    state_dir=state_dir,
+                    work_dir=work_dir,
+                    profile_inputs=profile_inputs,
+                    render_html=render_html,
+                    write_coverage_sets=write_coverage_sets,
+                    container_name=container_name,
+                    trial_key=trial_key,
+                    measurement_context=measurement_context,
+                )
+            except Exception as exc:
+                if attempt == COVERAGE_PIPELINE_ATTEMPTS:
+                    merge_name = container_name or str(out_root)
+                    raise CoveragePipelineError(
+                        f'Coverage merge {merge_name} failed after '
+                        f'{COVERAGE_PIPELINE_ATTEMPTS} attempts: {exc}'
+                    ) from exc
+                LOG.warning(
+                    'Coverage merge %s failed on attempt %s/%s; retrying: %s',
+                    container_name or out_root,
+                    attempt,
+                    COVERAGE_PIPELINE_ATTEMPTS,
+                    exc,
+                )
+    finally:
+        (state_dir / '.merged.profdata.candidate').unlink(missing_ok=True)
+
+    raise AssertionError('Coverage retry loop exited without a result')
+
+
+def _merge_coverage_outputs_once(
+    *,
+    docker_runtime: DockerRuntime,
+    run_dir: Path,
+    case: CampaignCase,
+    out_root: Path,
+    state_dir: Path,
+    work_dir: Path,
+    profile_inputs: list[Path],
+    render_html: bool,
+    write_coverage_sets: bool,
+    container_name: str | None,
+    trial_key: str | None,
+    measurement_context: dict[str, Any] | None,
+) -> dict:
+    '''Perform one coverage merge attempt.'''
     docker = DockerClient(docker_runtime)
     image = case.images.coverage
-    state_dir.mkdir(parents=True, exist_ok=True)
     profdata_path = state_dir / 'merged.profdata'
     merge_profiles = _usable_profiles([profdata_path, *profile_inputs])
 
@@ -210,6 +282,7 @@ def merge_coverage_outputs(
     tmp_root = out_root.parent / f'.{out_root.name}.tmp'
     shutil.rmtree(tmp_root, ignore_errors=True)
     tmp_root.mkdir(parents=True, exist_ok=True)
+    candidate_profdata = tmp_root / 'merged.profdata'
 
     prof_list_path = tmp_root / 'profdata_inputs.txt'
     prof_list_path.write_text(
@@ -227,13 +300,7 @@ def merge_coverage_outputs(
     images.setdefault('target_digest', None)
     context['images'] = images
     if images['fuzzer_target_digest'] is None:
-        validity = dict(context.get('validity') or {})
-        validity['status'] = 'degraded'
-        validity['diagnostics'] = [
-            *(validity.get('diagnostics') or []),
-            'coverage image digest unavailable',
-        ]
-        context['validity'] = validity
+        LOG.warning('Coverage image digest is unavailable for %s', image)
     if write_coverage_sets:
         context['coverage_sets'] = {
             'freshness': 'fresh',
@@ -253,7 +320,7 @@ def merge_coverage_outputs(
         'FM_OUT_DIR': docker.container_path(tmp_root),
         'FM_TARGET_NAME': case.fuzz_target.fuzz_target,
         'FM_PROF_LIST': docker.container_path(prof_list_path),
-        'FM_PROFDATA_PATH': docker.container_path(profdata_path),
+        'FM_PROFDATA_PATH': docker.container_path(candidate_profdata),
         'FM_WORK_DIR': docker.container_path(work_dir),
         'FM_LOG_LEVEL': str(os.environ.get('FM_LOG_LEVEL', 'INFO')).upper(),
         'FM_MEASUREMENT_CONTEXT': json.dumps(context, sort_keys=True, separators=(',', ':')),
@@ -277,11 +344,21 @@ def merge_coverage_outputs(
         cmd=['python3', '/opt/fuzzmeter/coverage_worker.py'],
     )
 
+    if candidate_profdata not in _usable_profiles([candidate_profdata]):
+        raise RuntimeError('Coverage worker did not produce a usable merged profile')
+    summary = _load_required_mapping(tmp_root / 'summary.json')
+    _load_required_mapping(tmp_root / 'measurement-provenance.json')
+    if write_coverage_sets:
+        _load_required_mapping(coverage_sets_path)
     if not write_coverage_sets:
         _preserve_previous_artifacts(out_root=out_root, tmp_root=tmp_root, names=('coverage-sets.json',))
     _synchronize_coverage_set_provenance(tmp_root)
+    state_candidate = state_dir / '.merged.profdata.candidate'
+    shutil.copy2(candidate_profdata, state_candidate)
+    candidate_profdata.unlink()
     _replace_out_root(out_root=out_root, tmp_root=tmp_root, protected_dir=state_dir)
-    return load_coverage_summary(out_root / 'summary.json')
+    state_candidate.replace(profdata_path)
+    return summary
 
 
 def coverage_measurement_context(
@@ -294,16 +371,10 @@ def coverage_measurement_context(
     '''Summarize replay semantics and diagnostics for persisted provenance.'''
 
     status_counts = dict.fromkeys(('ok', 'timeout', 'failed', 'missing_profraw'), 0)
-    diagnostics = []
     for batch in batches:
         payload = _load_json(batch.diagnostics_dir / 'out' / 'input_exec_diagnostics.json')
         for status, count in (payload.get('status_counts') or {}).items():
             status_counts[str(status)] = status_counts.get(str(status), 0) + int(count)
-    problematic = sum(status_counts[status] for status in ('timeout', 'failed', 'missing_profraw'))
-    if problematic:
-        diagnostics.append(f'{problematic} replay input(s) did not produce a clean profile')
-    if not batches:
-        diagnostics.append('no replay batches were available for this measurement')
     input_mode = batches[0].input_mode if batches else 'unknown'
     batched = input_mode == 'in_process'
     lost_profiles = 0
@@ -314,8 +385,6 @@ def coverage_measurement_context(
             ).get('status_counts') or {}
             if any(batch_counts.get(status, 0) for status in ('timeout', 'failed', 'missing_profraw')):
                 lost_profiles += len(batch.inputs)
-    if lost_profiles:
-        diagnostics.append(f'{lost_profiles} profile(s) may be lost with a failed batch mate')
     return {
         'snapshot_tick': snapshot_tick,
         'measurement': {
@@ -329,8 +398,8 @@ def coverage_measurement_context(
             ),
         },
         'validity': {
-            'status': 'degraded' if diagnostics else 'valid',
-            'diagnostics': diagnostics,
+            'status': 'valid',
+            'diagnostics': [],
         },
         'repetitions': {
             'n': repetitions,
@@ -348,6 +417,17 @@ def coverage_measurement_context(
             'profiles_lost_to_batch_mate_crash': lost_profiles,
         },
     }
+
+
+def _load_required_mapping(path: Path) -> dict[str, Any]:
+    '''Load one mandatory coverage artifact and reject missing or malformed data.'''
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f'Coverage worker did not produce valid {path.name}') from exc
+    if not isinstance(value, dict):
+        raise RuntimeError(f'Coverage worker produced non-object {path.name}')
+    return value
 
 
 def _usable_profiles(paths: list[Path]) -> list[Path]:

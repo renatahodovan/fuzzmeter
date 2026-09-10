@@ -7,6 +7,6 @@
 
 '''Expose the public snapshot schedulers.'''
 
-from .scheduler import ReplaySnapshotScheduler, SnapshotScheduler
+from .scheduler import ReplaySnapshotScheduler, SnapshotProcessingError, SnapshotScheduler
 
-__all__ = ['ReplaySnapshotScheduler', 'SnapshotScheduler']
+__all__ = ['ReplaySnapshotScheduler', 'SnapshotProcessingError', 'SnapshotScheduler']
