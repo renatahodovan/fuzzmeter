@@ -89,7 +89,11 @@ def _comparable_record(record: dict[str, Any]) -> dict[str, Any]:
     comparable = dict(record)
     if record.get('llvm_cov'):
         comparable['llvm_cov'] = {
-            key: [_flag_without_profile_path(flag) for flag in value] if key in _PROFILE_FLAG_FIELDS else value
+            key: (
+                [_flag_without_profile_path(flag) for flag in value]
+                if key in _PROFILE_FLAG_FIELDS and value is not None
+                else value
+            )
             for key, value in record['llvm_cov'].items()
         }
     if record.get('measurement'):
