@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import logging
-import shlex
 import subprocess
 import time
 
@@ -226,21 +225,6 @@ class DockerClient:
     def copy_from_image(self, *, image: str, src_path: str, dst_path: Path) -> None:
         '''Copy a path from an image to the host.'''
         dst_path.parent.mkdir(parents=True, exist_ok=True)
-
-        quoted_src_path = shlex.quote(src_path)
-        probe_cmd = [
-            'docker',
-            'run',
-            '--rm',
-            *self._label_args(kind='build'),
-            image,
-            'bash',
-            '-lc',
-            f'test -d {quoted_src_path} && echo DIR || (test -f {quoted_src_path} && echo FILE || echo MISSING)',
-        ]
-        kind = self._run(probe_cmd, check=True, capture=True).stdout.strip()
-        if kind == 'MISSING':
-            raise RuntimeError(f'Docker image path is missing in {image}: {src_path}')
 
         container_id = self.create(image, kind='build')
         try:
