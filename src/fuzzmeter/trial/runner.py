@@ -35,7 +35,7 @@ def run_one_trial(
     run_id: str,
     run_dir: Path,
     config: TrialConfig,
-    scheduler: SnapshotScheduler,
+    scheduler: SnapshotScheduler | None,
     stop_event: threading.Event | None = None,
 ) -> None:
     LOG.info('Start fuzzing in %s', run_dir)
@@ -79,7 +79,8 @@ def run_one_trial(
         start_ts=start_ts,
     )
     log_proc: subprocess.Popen[str] | None = None
-    scheduler.register(trial)
+    if scheduler is not None:
+        scheduler.register(trial)
     status: str | None = None
     started = False
     try:
@@ -115,4 +116,5 @@ def run_one_trial(
                     db_trials.set_trial_status(db, trial_id=trial_db_id, status=status, ended_ts=int(time.time()))
 
         finally:
-            scheduler.unregister(config.trial_key)
+            if scheduler is not None:
+                scheduler.unregister(config.trial_key)

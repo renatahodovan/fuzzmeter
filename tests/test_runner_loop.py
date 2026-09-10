@@ -201,6 +201,7 @@ class RunnerLoopTest(unittest.TestCase):
             config = CampaignConfig(settings=CampaignSettings(parallel_jobs=1, snapshot_jobs=0), cases=[])
 
             self.assertEqual((1, 0), _live_resource_plan(total_jobs=1))
+            self.assertEqual((1, 0), _live_resource_plan(total_jobs=1, snapshot_jobs=1))
             self.assertEqual((32, 16), _live_resource_plan(total_jobs=48))
             self.assertEqual((36, 12), _live_resource_plan(total_jobs=48, snapshot_jobs=12))
 
@@ -215,6 +216,30 @@ class RunnerLoopTest(unittest.TestCase):
             )
 
         self.assertEqual(run_dir, result)
+
+    def test_single_live_worker_runs_trials_without_snapshot_scheduler(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            run_dir = Path(tmp_dir)
+            config = CampaignConfig(settings=CampaignSettings(parallel_jobs=1), cases=[])
+
+            with patch('fuzzmeter.run.runner.SnapshotScheduler') as scheduler_cls, \
+                 patch('fuzzmeter.run.runner.run_one_trial') as run_trial, \
+                 self.assertLogs('fuzzmeter.run.runner', level='WARNING') as logs:
+                result = _run_live_experiment(
+                    db_path=run_dir / 'state.db',
+                    campaign_config=config,
+                    run_dir=run_dir,
+                    run_id='run',
+                    docker_runtime=None,
+                    trial_configs=[_trial_config(run_dir)],
+                    stop_event=threading.Event(),
+                )
+
+            self.assertEqual(run_dir, result)
+            scheduler_cls.assert_not_called()
+            run_trial.assert_called_once()
+            self.assertIsNone(run_trial.call_args.kwargs['scheduler'])
+            self.assertIn('Snapshot collection is disabled', logs.output[0])
 
     def test_run_experiment_rejects_mixed_live_and_replay_trials(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

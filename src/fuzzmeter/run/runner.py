@@ -39,6 +39,9 @@ _T = TypeVar('_T')
 
 
 def _live_resource_plan(*, total_jobs: int, snapshot_jobs: int | None = None) -> tuple[int, int]:
+    if total_jobs == 1:
+        return 1, 0
+
     if snapshot_jobs:
         if snapshot_jobs >= total_jobs:
             raise ValueError(
@@ -46,9 +49,7 @@ def _live_resource_plan(*, total_jobs: int, snapshot_jobs: int | None = None) ->
             )
         return total_jobs - snapshot_jobs, snapshot_jobs
 
-    if total_jobs == 1:
-        trial_workers, snapshot_workers = 1, 0
-    elif total_jobs == 2:
+    if total_jobs == 2:
         trial_workers, snapshot_workers = 1, 1
     else:
         snapshot_workers = total_jobs // 3
@@ -174,31 +175,36 @@ def _run_live_experiment(
         'Using trial_workers=%s snapshot_jobs=%s (parallel_jobs=%s)',
         trial_workers,
         snap_jobs,
-        max(2, int(campaign_config.settings.parallel_jobs)),
+        campaign_config.settings.parallel_jobs,
     )
-
-    scheduler = SnapshotScheduler(
-        db_path=db_path,
-        run_dir=run_dir,
-        run_id=run_id,
-        campaign_seconds=campaign_config.settings.time_seconds,
-        every_seconds=campaign_config.settings.snapshot_every_seconds,
-        coverage_export_every=campaign_config.settings.snapshot_export_every_ticks,
-        docker_runtime=docker_runtime,
-        jobs=snap_jobs,
-        parallel_jobs=campaign_config.settings.parallel_jobs,
-        total_trials=len(trial_configs),
-        trial_workers=trial_workers,
-        stop_event=stop_event,
-    )
-    scheduler_thread = threading.Thread(target=scheduler.run_loop, name='snapshot-scheduler')
+    scheduler = None
+    scheduler_thread = None
+    if snap_jobs == 0:
+        LOG.warning('Snapshot collection is disabled because parallel_jobs=1; only fuzzing trials will run')
+    else:
+        scheduler = SnapshotScheduler(
+            db_path=db_path,
+            run_dir=run_dir,
+            run_id=run_id,
+            campaign_seconds=campaign_config.settings.time_seconds,
+            every_seconds=campaign_config.settings.snapshot_every_seconds,
+            coverage_export_every=campaign_config.settings.snapshot_export_every_ticks,
+            docker_runtime=docker_runtime,
+            jobs=snap_jobs,
+            parallel_jobs=campaign_config.settings.parallel_jobs,
+            total_trials=len(trial_configs),
+            trial_workers=trial_workers,
+            stop_event=stop_event,
+        )
+        scheduler_thread = threading.Thread(target=scheduler.run_loop, name='snapshot-scheduler')
     executor: ThreadPoolExecutor | None = None
     futures: list[Future[None]] = []
     interrupted = False
 
     LOG.info('Planned trials: %d', len(trial_configs))
 
-    scheduler_thread.start()
+    if scheduler_thread is not None:
+        scheduler_thread.start()
     try:
         executor = ThreadPoolExecutor(max_workers=trial_workers)
         futures = [
@@ -215,7 +221,8 @@ def _run_live_experiment(
             for cfg in trial_configs
         ]
         _wait_for_futures(futures)
-        scheduler.schedule_final_tick()
+        if scheduler is not None:
+            scheduler.schedule_final_tick()
     except (KeyboardInterrupt, SystemExit):
         interrupted = True
         LOG.warning('Interrupt received, stopping active trial containers...')
@@ -233,18 +240,20 @@ def _run_live_experiment(
                 # the sweep removes the containers under its in-flight tick, or
                 # the resulting error is recorded as a measurement failure.
                 stop_event.set()
-                scheduler.stop()
+                if scheduler is not None:
+                    scheduler.stop()
                 cleanup_containers(docker_runtime)
             except Exception as exc:
                 LOG.error('Failed to stop snapshot scheduler: %s', exc)
         if executor is not None:
             executor.shutdown(wait=True, cancel_futures=interrupted)
-        if not interrupted:
+        if not interrupted and scheduler is not None:
             try:
                 scheduler.stop()
             except Exception as exc:
                 LOG.error('Failed to stop snapshot scheduler: %s', exc)
-        scheduler_thread.join()
+        if scheduler_thread is not None:
+            scheduler_thread.join()
 
     return run_dir
 
