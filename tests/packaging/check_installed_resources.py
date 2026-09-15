@@ -63,6 +63,8 @@ class InstalledResourcesTest(unittest.TestCase):
             self.assertTrue((report_dir / 'report.css').is_file())
             self.assertTrue((report_dir / 'report.js').is_file())
             self.assertTrue((report_dir / 'report' / 'app.js').is_file())
+            self.assertTrue((report_dir / 'report' / 'favicon.png').is_file())
+            self.assertTrue((report_dir / 'report' / 'favicon.svg').is_file())
 
 
 if __name__ == '__main__':

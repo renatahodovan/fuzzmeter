@@ -284,8 +284,18 @@ class ReportingPayloadTest(unittest.TestCase):
             self.assertTrue((report_dir / 'report.css').is_file())
             self.assertTrue((report_dir / 'report.js').is_file())
             self.assertTrue((report_dir / 'report').is_dir())
+            self.assertTrue((report_dir / 'report' / 'favicon.png').is_file())
+            self.assertTrue((report_dir / 'report' / 'favicon.svg').is_file())
             self.assertIn(
                 'window.FM_STATIC_DATA = ',
+                (report_dir / 'report.html').read_text(encoding='utf-8'),
+            )
+            self.assertIn(
+                '<link rel="icon" type="image/png" href="report/favicon.png" />',
+                (report_dir / 'report.html').read_text(encoding='utf-8'),
+            )
+            self.assertIn(
+                '<link rel="icon" type="image/svg+xml" sizes="any" href="report/favicon.svg" />',
                 (report_dir / 'report.html').read_text(encoding='utf-8'),
             )
             self.assertIn(

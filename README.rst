@@ -1,6 +1,10 @@
-=========
-FuzzMeter
-=========
+====================
+|fm-logo| FuzzMeter
+====================
+
+.. |fm-logo| image:: docs/images/avatar.png
+   :alt: FuzzMeter logo
+
 *Systematic fuzzer execution, measurement, replay, and reporting*
 
 .. image:: https://img.shields.io/badge/python-%3E%3D3.10-blue?logo=python&logoColor=white

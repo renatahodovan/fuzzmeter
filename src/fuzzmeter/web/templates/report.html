@@ -15,8 +15,12 @@
   <title>FuzzMeter Report</title>
 
   {% if static_report %}
+    <link rel="icon" type="image/png" href="report/favicon.png" />
+    <link rel="icon" type="image/svg+xml" sizes="any" href="report/favicon.svg" />
     <link rel="stylesheet" href="report.css" />
   {% else %}
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='report/favicon.png') }}" />
+    <link rel="icon" type="image/svg+xml" sizes="any" href="{{ url_for('static', filename='report/favicon.svg') }}" />
     <link rel="stylesheet" href="{{ url_for('static', filename='report.css') }}" />
   {% endif %}
 </head>
