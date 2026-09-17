@@ -133,6 +133,19 @@ def _load_campaign_settings(data: dict[str, Any]) -> CampaignSettings:
     build_data = data.get('build') or {}
     if not isinstance(build_data, dict):
         raise TypeError('Campaign build configuration must be a mapping.')
+
+    unknown_run_keys = set(run_data) - {
+        'memory', 'memory_swap', 'parallel_jobs', 'repetitions', 'snapshot', 'time_seconds',
+    }
+    if unknown_run_keys:
+        LOG.warning('Unknown campaign run keys: %s', ', '.join(sorted(map(str, unknown_run_keys))))
+    unknown_snapshot_keys = set(snap_data) - {'every_seconds', 'export_every_ticks', 'jobs'}
+    if unknown_snapshot_keys:
+        LOG.warning('Unknown campaign snapshot keys: %s', ', '.join(sorted(map(str, unknown_snapshot_keys))))
+    unknown_build_keys = set(build_data) - {'compile_jobs', 'jobs'}
+    if unknown_build_keys:
+        LOG.warning('Unknown campaign build keys: %s', ', '.join(sorted(map(str, unknown_build_keys))))
+
     return CampaignSettings(
         time_seconds=_normalized_int_value(
             'time_seconds', run_data.get('time_seconds', CampaignSettings.time_seconds), 60
@@ -263,6 +276,15 @@ def _load_fuzzers(
         if isinstance(fuzzer_data, str):
             fuzzer_id, fuzzer_name = fuzzer_data, fuzzer_data
         elif isinstance(fuzzer_data, dict):
+            unknown_keys = set(fuzzer_data) - {
+                'allowed_fuzz_targets', 'build', 'id', 'parent', 'replay_trials', 'runtime',
+            }
+            if unknown_keys:
+                LOG.warning(
+                    'Unknown campaign fuzzer keys for %r: %s',
+                    fuzzer_data.get('id'),
+                    ', '.join(sorted(map(str, unknown_keys))),
+                )
             if 'id' not in fuzzer_data:
                 raise ValueError('"id" field must be defined in a fuzzer mapping.')
             fuzzer_id = fuzzer_data['id']
@@ -378,6 +400,10 @@ def load_campaign_config(*, fuzzer_dirs: dict[str, Path], benchmark_dirs: dict[s
 
     if not data or not isinstance(data, dict):
         raise TypeError('Campaign config is empty or not a mapping.')
+
+    unknown_keys = set(data) - {'build', 'fuzz_targets', 'fuzzers', 'run'}
+    if unknown_keys:
+        LOG.warning('Unknown campaign keys: %s', ', '.join(sorted(map(str, unknown_keys))))
 
     fuzzers = _load_fuzzers(data, fuzzer_dirs)
     fuzz_targets = _load_fuzz_targets(data, benchmark_dirs)
