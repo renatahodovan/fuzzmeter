@@ -6,14 +6,14 @@ import signal
 import unittest
 
 from pathlib import Path
-from unittest.mock import call, patch
+from unittest.mock import patch
 
 from fuzzmeter.docker import DockerRuntime
 from fuzzmeter.run.shutdown import RunShutdown
 
 
 class RunShutdownTest(unittest.TestCase):
-    '''Verify startup and signal-triggered sweeps without Docker side effects.'''
+    '''Verify signal-triggered cleanup without Docker side effects.'''
 
     def setUp(self) -> None:
         self.runtime = DockerRuntime(
@@ -23,26 +23,6 @@ class RunShutdownTest(unittest.TestCase):
             run_id='run-1',
             memory=None,
             memory_swap=None,
-        )
-
-    def test_context_sweeps_at_startup_and_restores_signal_handlers(self) -> None:
-        with patch('fuzzmeter.run.shutdown.DockerClient.sweep_run', return_value=3) as sweep, \
-             patch('fuzzmeter.run.shutdown.cleanup_containers', return_value=0) as cleanup, \
-             patch('fuzzmeter.run.shutdown.signal.getsignal', return_value=signal.SIG_DFL), \
-             patch('fuzzmeter.run.shutdown.signal.signal') as install:
-            with RunShutdown(self.runtime) as shutdown:
-                self.assertEqual(3, shutdown.startup_orphans)
-
-        sweep.assert_called_once_with()
-        cleanup.assert_called_once_with(self.runtime)
-        self.assertEqual(
-            [
-                call(signal.SIGINT, shutdown._handle_signal),
-                call(signal.SIGTERM, shutdown._handle_signal),
-                call(signal.SIGINT, signal.SIG_DFL),
-                call(signal.SIGTERM, signal.SIG_DFL),
-            ],
-            install.call_args_list,
         )
 
     def test_first_signal_sets_stop_event_and_sweeps(self) -> None:

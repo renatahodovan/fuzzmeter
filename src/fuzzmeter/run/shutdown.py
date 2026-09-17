@@ -9,7 +9,7 @@ import threading
 
 from types import TracebackType
 
-from ..docker import DockerClient, DockerRuntime
+from ..docker import DockerRuntime
 from ..trial.runtime import TrialContainer
 
 LOG = logging.getLogger(__name__)
@@ -21,17 +21,10 @@ class RunShutdown:
     def __init__(self, docker_runtime: DockerRuntime) -> None:
         self.docker_runtime = docker_runtime
         self.stop_event = threading.Event()
-        self.startup_orphans = 0
         self._signal_count = 0
         self._previous_handlers: dict[signal.Signals, object] = {}
 
     def __enter__(self) -> 'RunShutdown':
-        self.startup_orphans = DockerClient(self.docker_runtime).sweep_run()
-        LOG.info(
-            'Startup container sweep found %d container(s) for run %s',
-            self.startup_orphans,
-            self.docker_runtime.run_id,
-        )
         if threading.current_thread() is threading.main_thread():
             for handled_signal in (signal.SIGINT, signal.SIGTERM):
                 self._previous_handlers[handled_signal] = signal.getsignal(handled_signal)
