@@ -96,11 +96,6 @@ def _execute_run(parser, args):
     if args.label and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', args.label):
         parser.error('Label must start with a letter or digit and contain only ASCII letters, digits, "_", or "-"')
 
-    out_root = args.out.expanduser().resolve()
-    if out_root.exists() and not out_root.is_dir():
-        parser.error(f'Output directory is not a directory: {out_root}')
-    out_root.mkdir(parents=True, exist_ok=True)
-
     try:
         config_src = config_path.read_text(encoding='utf-8')
         fuzzer_dirs = _resolve_resource_dirs(args.fuzzers, checkout_subdir='fuzzers', label='Fuzzer')
@@ -117,7 +112,12 @@ def _execute_run(parser, args):
     except (OSError, TypeError, ValueError) as exc:
         parser.error(str(exc), exc_info=exc)
 
+    out_root = args.out.expanduser().resolve()
+    if out_root.exists() and not out_root.is_dir():
+        parser.error(f'Output directory is not a directory: {out_root}')
+    out_root.mkdir(parents=True, exist_ok=True)
     os.environ['FM_OUT_SRC'] = str(out_root)
+
     try:
         logger.info('Start experiment')
         run_dir = run_experiment(
