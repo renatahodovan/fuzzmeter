@@ -256,14 +256,14 @@ class RunnerLoopTest(unittest.TestCase):
 
             with patch('fuzzmeter.run.runner.prepare_artifacts', return_value={}), \
                  patch('fuzzmeter.run.runner.plan_trials', return_value=[live_cfg, replay_cfg]), \
-                 patch('fuzzmeter.run.shutdown.DockerClient.sweep_run', return_value=0) as sweep:
+                 patch('fuzzmeter.run.shutdown.cleanup_containers', return_value=0) as cleanup:
                 with self.assertRaisesRegex(RuntimeError, 'Replay trials cannot be mixed'):
                     run_experiment(
                         campaign_config=config,
                         out_root=root / 'out',
                         config_src='config',
                     )
-            self.assertGreaterEqual(sweep.call_count, 1)
+            cleanup.assert_called_once()
 
     def test_replay_run_registers_trials_runs_scheduler_and_marks_done(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
