@@ -173,6 +173,7 @@ def prepare_artifacts(
         run_dir=run_dir,
         docker_runtime=docker_runtime,
     )
+    # TODO: Enrich metadata with image IDs, binary hashes, and seed digests.
     save_records(
         db_path,
         collect_records(

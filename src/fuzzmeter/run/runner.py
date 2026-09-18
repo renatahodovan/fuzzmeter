@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import TypeVar
 
 from ..artifacts.builder import prepare_artifacts
-from ..composite.collect import collect_records, save_records
 from ..config import CampaignConfig
 from ..db import ensure_schema, open_db
 from ..db import runs as db_runs
@@ -80,10 +79,6 @@ def _initialize_run_dir(
         )
 
     campaign_config.write_run_config(run_dir)
-    save_records(
-        run_dir / 'fuzzmeter.db',
-        collect_records(run_id=run_id, campaign_config=campaign_config),
-    )
 
 
 def run_experiment(
