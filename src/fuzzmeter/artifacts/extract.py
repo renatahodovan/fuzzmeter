@@ -41,7 +41,8 @@ def extract_fuzz_binaries(
             dst_dir=fuzz_root / case.fuzzer.id / fuzz_target_id,
         )
 
-    for case in campaign_config.cases:
+    cases_by_fuzz_target = {case.fuzz_target.ident: case for case in campaign_config.cases}
+    for case in cases_by_fuzz_target.values():
         _extract_named_binary_from_image(
             docker=docker,
             image=case.images.coverage,
