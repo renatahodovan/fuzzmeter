@@ -14,7 +14,6 @@ import json
 import logging
 import math
 import os
-import re
 import shutil
 import subprocess
 import traceback
@@ -24,8 +23,6 @@ from pathlib import Path
 
 LOG = logging.getLogger(__name__)
 RUNNER_OUT_ROOT = Path('/tmp/fuzzmeter/out')
-MUTATOR_RE = re.compile(r'(?:^|,)execs:\d+,(?:op:)?([^,]+)')
-MUTATOR_MANIFEST = '.fuzzmeter_mutators.json'
 DECODE_FAILURE_MANIFEST = '.fuzzmeter_decode_failures.json'
 
 
@@ -45,23 +42,6 @@ def _map_to_host(path: Path) -> Path:
     except Exception:
         return path
     return out_src_path / rel
-
-
-def _collect_mutator_counts(input_root: Path) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    if not input_root.is_dir():
-        return counts
-    for path in input_root.rglob('*'):
-        if not path.is_file():
-            continue
-        match = MUTATOR_RE.search(path.name)
-        if not match:
-            continue
-        mutator = match.group(1).strip()
-        if not mutator or mutator.startswith('orig:'):
-            continue
-        counts[mutator] = counts.get(mutator, 0) + 1
-    return counts
 
 
 def _is_snapshot_input_file(path: Path, root: Path) -> bool:
@@ -106,20 +86,6 @@ def main() -> None:
     if not input_files:
         tmp_dir.rename(input_dir)
         return
-
-    mutator_counts = _collect_mutator_counts(tmp_dir)
-    (snapshot_dir / MUTATOR_MANIFEST).write_text(
-        json.dumps(
-            {
-                'source': 'preprocess_tmp_input',
-                'mutator_counts': mutator_counts,
-                'total_files': sum(mutator_counts.values()),
-            },
-            indent=2,
-            ensure_ascii=False,
-        ),
-        encoding='utf-8',
-    )
 
     mount_root = host_snapshot_dir.parent
     decode_bin = f'/out/grammarinator-decode-{fuzz_target}'

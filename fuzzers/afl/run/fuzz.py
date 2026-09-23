@@ -15,11 +15,14 @@
 
 import json
 import os
+import re
 import subprocess
 
 from pathlib import Path
 
 from fuzzmeter.resources.instrumentation import utils
+
+_MUTATOR_RE = re.compile(r'(?:^|,)execs:\d+,(?:op:)?([^,]+)')
 
 
 def get_stats(output_corpus, fuzzer_log):  # pylint: disable=unused-argument
@@ -125,31 +128,24 @@ def fuzz(input_corpus, output_corpus, target_binary, input_mode: str):
 
 
 def get_custom_metrics(trial_root: Path, *, snapshot_dir: Path, cutoff_elapsed_s: int | None = None) -> list[dict]:
-    """Return AFL custom mutator counts collected during snapshot preprocessing."""
+    """Return AFL custom mutator counts encoded in snapshot corpus names."""
 
     del trial_root, cutoff_elapsed_s
-    manifest = Path(snapshot_dir) / '.fuzzmeter_mutators.json'
-    if not manifest.is_file():
+    counts: dict[str, int] = {}
+    corpus_dir = Path(snapshot_dir) / 'corpus'
+    if not corpus_dir.is_dir():
         return []
-    try:
-        payload = json.loads(manifest.read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError):
-        return []
-    counts = payload.get('mutator_counts')
-    if not isinstance(counts, dict):
-        return []
-    normalized_counts = {}
-    for name, value in counts.items():
-        text = str(name).strip()
-        if not text or text.startswith('orig:'):
+    for path in corpus_dir.rglob('*'):
+        if not path.is_file():
             continue
-        try:
-            count = int(value)
-        except (TypeError, ValueError):
+        match = _MUTATOR_RE.search(path.name)
+        if not match:
             continue
-        if count > 0:
-            normalized_counts[text] = count
-    if not normalized_counts:
+        mutator = match.group(1).strip()
+        if not mutator or mutator.startswith('orig:'):
+            continue
+        counts[mutator] = counts.get(mutator, 0) + 1
+    if not counts:
         return []
     return [
         {
@@ -160,8 +156,8 @@ def get_custom_metrics(trial_root: Path, *, snapshot_dir: Path, cutoff_elapsed_s
             'title': 'AFL mutators',
             'chart_title': 'Mutator usefulness ratio',
             'chart_subtitle': 'Percentage distribution of AFL custom mutators across snapshot corpora.',
-            'counts': normalized_counts,
-            'total': sum(normalized_counts.values()),
-            'source': 'fuzzmeter_mutator_manifest',
+            'counts': counts,
+            'total': sum(counts.values()),
+            'source': 'snapshot_corpus_filenames',
         }
     ]
