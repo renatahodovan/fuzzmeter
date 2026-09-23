@@ -97,6 +97,7 @@ def prepare_snapshot_inputs(
             env=_snapshot_preprocess_env(
                 snapshot_dir=snapshot_dir,
                 input_dir=input_dir,
+                artifact_dir=snapshot_dir / '.artifacts' / 'preprocess' / input_dir.name,
                 benchmark=benchmark,
                 fuzz_target=fuzz_target,
                 fuzzer=fuzzer,
@@ -128,6 +129,7 @@ def _snapshot_preprocess_env(
     *,
     snapshot_dir: Path,
     input_dir: Path,
+    artifact_dir: Path,
     benchmark: str,
     fuzz_target: str,
     fuzzer: str,
@@ -137,6 +139,7 @@ def _snapshot_preprocess_env(
     return {
         'FM_SNAPSHOT_DIR': str(snapshot_dir),
         'FM_SNAPSHOT_INPUT_DIR': str(input_dir),
+        'FM_SNAPSHOT_ARTIFACT_DIR': str(artifact_dir),
         'FM_BENCHMARK': benchmark,
         'FM_FUZZ_TARGET': fuzz_target,
         'FM_FUZZER': fuzzer,

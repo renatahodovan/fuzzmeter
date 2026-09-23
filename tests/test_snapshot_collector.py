@@ -114,6 +114,45 @@ class SnapshotCollectorTest(unittest.TestCase):
             if src.stat().st_dev == dst.stat().st_dev:
                 self.assertEqual(src.stat().st_ino, dst.stat().st_ino)
 
+    def test_prepare_snapshot_inputs_separates_hook_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            src = root / 'live' / 'id:000001'
+            src.parent.mkdir(parents=True)
+            src.write_text('input', encoding='utf-8')
+            snapshot_dir = root / 'snap'
+            input_dir = snapshot_dir / 'corpus'
+
+            def write_diagnostic(spec) -> None:
+                artifact_dir = Path(spec.env['FM_SNAPSHOT_ARTIFACT_DIR'])
+                artifact_dir.mkdir(parents=True)
+                (artifact_dir / 'error.log').write_text('failed', encoding='utf-8')
+
+            with patch('fuzzmeter.repro.ingest.HookRunner') as hook_runner:
+                hook_runner.return_value.run.side_effect = write_diagnostic
+                prepared = prepare_snapshot_inputs(
+                    docker_runtime=None,
+                    snapshot_dir=snapshot_dir,
+                    input_dir=input_dir,
+                    input_files=[
+                        DetectedFile(
+                            rel_path=src.name,
+                            abs_src=src,
+                            mtime_ns=src.stat().st_mtime_ns,
+                        )
+                    ],
+                    snapshot_preprocess=Path('/preprocess.py'),
+                    benchmark='bench',
+                    fuzz_target='target',
+                    fuzzer='fuzzer',
+                    runner_image='runner',
+                )
+
+            artifact_dir = snapshot_dir / '.artifacts' / 'preprocess' / 'corpus'
+            self.assertEqual([input_dir / src.name], prepared)
+            self.assertEqual('failed', (artifact_dir / 'error.log').read_text(encoding='utf-8'))
+            self.assertEqual([src.name], [path.name for path in input_dir.iterdir()])
+
     def test_detect_new_corpus_files_uses_update_time_interval(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

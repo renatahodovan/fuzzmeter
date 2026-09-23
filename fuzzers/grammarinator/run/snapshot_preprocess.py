@@ -23,7 +23,8 @@ from pathlib import Path
 
 LOG = logging.getLogger(__name__)
 RUNNER_OUT_ROOT = Path('/tmp/fuzzmeter/out')
-DECODE_FAILURE_MANIFEST = '.fuzzmeter_decode_failures.json'
+_DECODE_FAILURE_FILE = 'decode-failures.json'
+_ERROR_LOG_FILE = 'error.log'
 
 
 def _container_path(path: Path, root: Path) -> str:
@@ -63,6 +64,12 @@ def main() -> None:
     runner_image = os.environ['FM_RUNNER_IMAGE']
     snapshot_dir = Path(os.environ['FM_SNAPSHOT_DIR']).resolve()
     input_dir = Path(os.environ.get('FM_SNAPSHOT_INPUT_DIR', snapshot_dir / 'corpus')).resolve()
+    artifact_dir = Path(
+        os.environ.get(
+            'FM_SNAPSHOT_ARTIFACT_DIR',
+            snapshot_dir / '.artifacts' / 'preprocess' / input_dir.name,
+        )
+    ).resolve()
     jobs = int(os.environ.get('FM_JOBS', '1'))
     tmp_dir = input_dir.with_name(f'{input_dir.name}_tmp')
     host_snapshot_dir = _map_to_host(input_dir)
@@ -150,23 +157,25 @@ def main() -> None:
         else:
             decode_failures = _run_decode_batch(input_files)
     except Exception:
-        _write_preprocess_error(snapshot_dir=snapshot_dir)
         shutil.rmtree(input_dir, ignore_errors=True)
         if tmp_dir.exists():
             tmp_dir.rename(input_dir)
+        _write_preprocess_error(artifact_dir=artifact_dir)
         raise
     else:
         if decode_failures:
-            (snapshot_dir / DECODE_FAILURE_MANIFEST).write_text(
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            (artifact_dir / _DECODE_FAILURE_FILE).write_text(
                 json.dumps(decode_failures, indent=2, ensure_ascii=False),
                 encoding='utf-8',
             )
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def _write_preprocess_error(*, snapshot_dir: Path) -> None:
+def _write_preprocess_error(*, artifact_dir: Path) -> None:
     try:
-        (snapshot_dir / '.fuzzmeter_preprocess_error.log').write_text(traceback.format_exc(), encoding='utf-8')
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        (artifact_dir / _ERROR_LOG_FILE).write_text(traceback.format_exc(), encoding='utf-8')
     except Exception:
         LOG.exception('Failed to write snapshot preprocess error log')
 
