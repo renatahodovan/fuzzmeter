@@ -40,7 +40,7 @@ class ReproBugPersistenceTest(unittest.TestCase):
             crash_dir.mkdir(parents=True)
             crash = crash_dir / 'input'
             crash.write_bytes(b'test')
-            batch_root = crash_dir.parent / '.crash_repro_batches' / '000000'
+            batch_root = crash_dir.parent / '.artifacts' / 'crash-repro' / 'batches' / '000000'
             batch_root.mkdir(parents=True)
             docker = Mock()
             docker.container_path.side_effect = str
@@ -131,6 +131,13 @@ class ReproBugPersistenceTest(unittest.TestCase):
             later_batch_finished = threading.Event()
 
             def reproduce(**kwargs):
+                (
+                    kwargs['snapshot_crashes_dir'].parent
+                    / '.artifacts'
+                    / 'crash-repro'
+                    / 'batches'
+                    / f"{kwargs['batch_index']:06d}"
+                ).mkdir(parents=True, exist_ok=True)
                 first_snapshot = kwargs['snapshot_crashes_dir'].parent.name == '7'
                 if first_snapshot and kwargs['batch_index'] == 0:
                     self.assertTrue(later_batch_finished.wait(timeout=5))
@@ -154,6 +161,10 @@ class ReproBugPersistenceTest(unittest.TestCase):
                     self.assertEqual({7: 65, 9: 1}, hits)
                     self.assertEqual(10, bug['first_seen_ts'])
                     self.assertEqual('10', bug['output'])
+                    for snapshot in snapshots:
+                        self.assertFalse(
+                            (snapshot.snapshot_dir / '.artifacts' / 'crash-repro' / 'batches').exists()
+                        )
                 self.assertEqual(6, worker.call_count)
 
 

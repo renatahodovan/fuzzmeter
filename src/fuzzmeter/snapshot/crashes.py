@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import shutil
+
 from pathlib import Path
 
 from ..docker import DockerRuntime
@@ -70,6 +72,10 @@ def process_snapshot_crashes(
             trial=snapshot.trial,
             snapshot_id=snapshot.snapshot_id,
             reproduced=results_by_snapshot[snapshot.snapshot_id],
+        )
+        shutil.rmtree(
+            snapshot.snapshot_dir / '.artifacts' / 'crash-repro' / 'batches',
+            ignore_errors=True,
         )
     if progress is not None:
         progress.idle_crashes()

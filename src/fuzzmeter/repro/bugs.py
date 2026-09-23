@@ -96,7 +96,13 @@ def reproduce_crash_batch(
 ) -> list[tuple[str, dict[str, Any], int]]:
     '''Reproduce a crash batch without persisting partial snapshot hit counts.'''
     docker = DockerClient(docker_runtime)
-    batch_root = snapshot_crashes_dir.parent / '.crash_repro_batches' / f'{batch_index:06d}'
+    batch_root = (
+        snapshot_crashes_dir.parent
+        / '.artifacts'
+        / 'crash-repro'
+        / 'batches'
+        / f'{batch_index:06d}'
+    )
     batch_root.mkdir(parents=True, exist_ok=True)
     input_list = batch_root / 'inputs.txt'
     output_json = batch_root / 'results.json'
