@@ -191,8 +191,10 @@ def reporting_run_db(run_dir: Path) -> None:
             corpus_files=3,
             execs_done=180,
             stats_json=(
-                '{"custom_metrics":[{"counts":{"havoc":3,"splice":1},"id":"afl-mutator-counts",'
-                '"kind":"counter_map","schema_version":1}],"custom_metrics_schema_version":1,'
+                '{"custom_metrics":[{"counts":{"havoc":1,"splice":3},"id":"afl-mutator-counts",'
+                '"kind":"counter_map","schema_version":1},{"counts":{"havoc":100},'
+                '"id":"unrelated-counts","kind":"counter_map","schema_version":1}],'
+                '"custom_metrics_schema_version":1,'
                 '"execs_per_sec":"4.5"}'
             ),
             crashes=2,

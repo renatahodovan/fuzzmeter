@@ -25,7 +25,7 @@ from fuzzmeter.reporting import build_payload, write_report
 from fuzzmeter.reporting.provenance import attach_measurement_provenance
 from tests.support.dbs import agg_snapshot_row, reporting_run_db
 
-PAYLOAD_HASH = '80aa59417d529e25fb1e4dcf3d16117d6f66065187e162d698e92379717e7d26'
+PAYLOAD_HASH = 'b877b6831081cef80f10880ddd1552b8c1edeaf652191a6d787ed806e3ede685'
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _BUNDLE_SMOKE_SCRIPT = r'''
 import fs from 'node:fs';
@@ -134,6 +134,17 @@ class ReportingPayloadTest(unittest.TestCase):
         fuzzer = payload['targets'][0]['fuzzers'][0]
         self.assertEqual('bench', fuzzer['metadata']['config']['benchmark'])
         self.assertEqual(1, len(fuzzer['extra_sections']))
+        chart = fuzzer['extra_sections'][0]['charts'][0]
+        self.assertEqual(
+            {
+                'havoc': [(60, 50.0)],
+                'splice': [(60, 50.0)],
+            },
+            {
+                series['id']: [(point['x'], point['y']) for point in series['points']]
+                for series in chart['series']
+            },
+        )
         normalized = _normalize_payload(payload)
         self.assertEqual(PAYLOAD_HASH, _payload_hash(normalized))
 

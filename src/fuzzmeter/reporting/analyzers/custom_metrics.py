@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections import defaultdict
 from typing import Any
 
@@ -84,6 +85,8 @@ def _sections_for_fuzzer(
                 if metric is None:
                     invalid_payloads += 1
                     continue
+                if metric.get('id') != 'afl-mutator-counts':
+                    continue
                 counts = _counter_map(metric)
                 if not counts:
                     continue
@@ -92,9 +95,7 @@ def _sections_for_fuzzer(
                 metric_points += 1
         if trial_history:
             raw_trial_histories += 1
-            cumulative = _cumulative_positive_delta_history(trial_history)
-            if cumulative:
-                trial_histories.append(cumulative)
+            trial_histories.append(trial_history)
 
     if not trial_histories:
         if invalid_payloads:
@@ -200,34 +201,10 @@ def _aggregate_trial_history(
     buckets: list[int],
     out: dict[int, dict[str, int]],
 ) -> None:
-    history = sorted(trial_history, key=lambda entry: entry[0])
-    cursor = 0
-    current_counts = None
-    for bucket in buckets:
-        while cursor < len(history) and history[cursor][0] <= bucket:
-            current_counts = history[cursor][1]
-            cursor += 1
-        if not current_counts:
-            continue
-        for mutator, count in current_counts.items():
+    for elapsed_seconds, counts in trial_history:
+        bucket = buckets[min(bisect_left(buckets, elapsed_seconds), len(buckets) - 1)]
+        for mutator, count in counts.items():
             out[bucket][mutator] += int(count)
-
-
-def _cumulative_positive_delta_history(
-    trial_history: list[tuple[int, dict[str, int]]],
-) -> list[tuple[int, dict[str, int]]]:
-    prev_counts: dict[str, int] = {}
-    cumulative_counts: dict[str, int] = defaultdict(int)
-    out = []
-    for elapsed_seconds, current_counts in sorted(trial_history, key=lambda entry: entry[0]):
-        for mutator in set(prev_counts) | set(current_counts):
-            delta = int(current_counts.get(mutator, 0)) - int(prev_counts.get(mutator, 0))
-            if delta > 0:
-                cumulative_counts[mutator] += delta
-        if cumulative_counts:
-            out.append((elapsed_seconds, dict(cumulative_counts)))
-        prev_counts = current_counts
-    return out
 
 
 def _mutator_series_from_histories(
@@ -277,5 +254,5 @@ def _mutator_series_from_histories(
         'mutator_count': len(mutators),
         'series_count': len(series),
         'top_mutators': mutators[:10],
-        'aggregation': 'cumulative_positive_deltas',
+        'aggregation': 'per_bucket_snapshot_counts',
     }
