@@ -110,7 +110,7 @@ class CoverageBaselineTest(unittest.TestCase):
         self.assertEqual(1, len(replay_kwargs['batches']))
         self.assertEqual(8.0, replay_kwargs['batches'][0].timeout_s)
         self.assertEqual(
-            [base_root / '_state' / '_batches_seed' / 'batch_000000.profdata'],
+            [base_root / '_snapshot' / '.artifacts' / 'coverage' / 'batches' / 'batch_000000.profdata'],
             merge_kwargs['profile_inputs'],
         )
         self.assertEqual('coverage_seed/fuzzer/bench/target/html/index.html', row['coverage_html_dir'])

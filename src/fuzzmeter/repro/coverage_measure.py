@@ -52,8 +52,7 @@ def build_coverage_replay_batches(
     fuzz_target: str,
     input_mode: str,
     inputs: list[Path],
-    state_dir: Path,
-    batch_tag: str | int,
+    artifact_dir: Path,
     timeout_s: float,
     container_prefix: str | None = None,
     trial_key: str | None = None,
@@ -62,8 +61,8 @@ def build_coverage_replay_batches(
     if not inputs:
         return [], []
 
-    batch_root = state_dir / f'_batches_{batch_tag}'
-    diagnostics_root = state_dir / f'_batch_diag_{batch_tag}'
+    batch_root = artifact_dir / 'batches'
+    diagnostics_root = artifact_dir / 'batch-diagnostics'
     input_batches = [
         inputs[index:index + DEFAULT_COVERAGE_BATCH_SIZE]
         for index in range(0, len(inputs), DEFAULT_COVERAGE_BATCH_SIZE)

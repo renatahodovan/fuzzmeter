@@ -40,8 +40,7 @@ class CoverageMeasureTest(unittest.TestCase):
                 fuzz_target='target',
                 input_mode='file',
                 inputs=[],
-                state_dir=Path(tmp_dir),
-                batch_tag='snap',
+                artifact_dir=Path(tmp_dir),
                 timeout_s=3.0,
             )
 
@@ -50,16 +49,15 @@ class CoverageMeasureTest(unittest.TestCase):
 
     def test_single_input_creates_one_batch_with_matching_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            state_dir = Path(tmp_dir)
-            inputs = [state_dir / 'input-0']
+            artifact_dir = Path(tmp_dir)
+            inputs = [artifact_dir / 'input-0']
 
             profdata_paths, batches = build_coverage_replay_batches(
                 image='coverage-image',
                 fuzz_target='target',
                 input_mode='stdin',
                 inputs=inputs,
-                state_dir=state_dir,
-                batch_tag='snap',
+                artifact_dir=artifact_dir,
                 timeout_s=7.5,
             )
 
@@ -73,16 +71,15 @@ class CoverageMeasureTest(unittest.TestCase):
 
     def test_exact_batch_size_creates_one_batch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            state_dir = Path(tmp_dir)
-            inputs = [state_dir / f'input-{index}' for index in range(256)]
+            artifact_dir = Path(tmp_dir)
+            inputs = [artifact_dir / f'input-{index}' for index in range(256)]
 
             profdata_paths, batches = build_coverage_replay_batches(
                 image='coverage-image',
                 fuzz_target='target',
                 input_mode='file',
                 inputs=inputs,
-                state_dir=state_dir,
-                batch_tag=4,
+                artifact_dir=artifact_dir,
                 timeout_s=1.0,
             )
 
@@ -92,16 +89,15 @@ class CoverageMeasureTest(unittest.TestCase):
 
     def test_one_more_than_batch_size_creates_second_batch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            state_dir = Path(tmp_dir)
-            inputs = [state_dir / f'input-{index}' for index in range(257)]
+            artifact_dir = Path(tmp_dir)
+            inputs = [artifact_dir / f'input-{index}' for index in range(257)]
 
             profdata_paths, batches = build_coverage_replay_batches(
                 image='coverage-image',
                 fuzz_target='target',
                 input_mode='file',
                 inputs=inputs,
-                state_dir=state_dir,
-                batch_tag=5,
+                artifact_dir=artifact_dir,
                 timeout_s=1.0,
             )
 
@@ -110,17 +106,16 @@ class CoverageMeasureTest(unittest.TestCase):
         self.assertEqual(inputs[256:], batches[1].inputs)
         self.assertEqual(profdata_paths, [batch.profdata_path for batch in batches])
 
-    def test_batch_and_diagnostics_paths_use_batch_tag(self) -> None:
+    def test_batch_and_diagnostics_paths_use_artifact_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            state_dir = Path(tmp_dir)
+            artifact_dir = Path(tmp_dir)
 
             profdata_paths, batches = build_coverage_replay_batches(
                 image='coverage-image',
                 fuzz_target='target',
                 input_mode='file',
-                inputs=[state_dir / f'input-{index}' for index in range(257)],
-                state_dir=state_dir,
-                batch_tag='tick-7',
+                inputs=[artifact_dir / f'input-{index}' for index in range(257)],
+                artifact_dir=artifact_dir,
                 timeout_s=1.0,
                 container_prefix='fm-run-cov-7-trial',
                 trial_key='trial',
@@ -128,13 +123,13 @@ class CoverageMeasureTest(unittest.TestCase):
 
         self.assertEqual(
             [
-                state_dir / '_batches_tick-7' / 'batch_000000.profdata',
-                state_dir / '_batches_tick-7' / 'batch_000001.profdata',
+                artifact_dir / 'batches' / 'batch_000000.profdata',
+                artifact_dir / 'batches' / 'batch_000001.profdata',
             ],
             profdata_paths,
         )
-        self.assertEqual(state_dir / '_batch_diag_tick-7' / '000000', batches[0].diagnostics_dir)
-        self.assertEqual(state_dir / '_batch_diag_tick-7' / '000001', batches[1].diagnostics_dir)
+        self.assertEqual(artifact_dir / 'batch-diagnostics' / '000000', batches[0].diagnostics_dir)
+        self.assertEqual(artifact_dir / 'batch-diagnostics' / '000001', batches[1].diagnostics_dir)
         self.assertEqual('fm-run-cov-7-trial-000000', batches[0].container_name)
         self.assertEqual('trial', batches[0].trial_key)
 

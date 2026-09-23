@@ -94,8 +94,7 @@ def measure_seed_baseline(
         fuzz_target=job.fuzz_target.fuzz_target,
         input_mode=job.fuzz_target.input_mode,
         inputs=inputs,
-        state_dir=state_dir,
-        batch_tag='seed',
+        artifact_dir=snapshot_dir / '.artifacts' / 'coverage',
         timeout_s=job.fuzz_target.target_timeout_s * 2,
         container_prefix=f'fm-{run_id}-cov-seed-{job.case.fuzzer.id}-{job.fuzz_target.benchmark.name}-{job.fuzz_target.fuzz_target}',
     )

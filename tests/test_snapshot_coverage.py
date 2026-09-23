@@ -42,7 +42,7 @@ class SnapshotCoverageTest(unittest.TestCase):
                 tick_idx=1,
             )
 
-            with patch('fuzzmeter.snapshot.coverage.bootstrap_from_seed_baseline'), \
+            with patch('fuzzmeter.snapshot.coverage.bootstrap_from_seed_baseline') as bootstrap, \
                  patch('fuzzmeter.snapshot.coverage.load_coverage_summary', return_value={}), \
                  patch('fuzzmeter.snapshot.coverage.apply_snapshot_summary'), \
                  patch('fuzzmeter.snapshot.coverage.replay_coverage_batches') as replay_batches:
@@ -61,6 +61,10 @@ class SnapshotCoverageTest(unittest.TestCase):
                 )
 
         self.assertEqual(0, replay_batches.call_count)
+        self.assertEqual(
+            trial.layout.snapshots_dir / '.state' / 'coverage',
+            bootstrap.call_args.kwargs['state_dir'],
+        )
 
     def test_trial_coverage_sets_path_is_stored_without_html_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

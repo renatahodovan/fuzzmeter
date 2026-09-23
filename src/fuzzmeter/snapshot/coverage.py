@@ -77,7 +77,8 @@ def process_snapshot_coverage(
             trial_coverage_root(run_dir, trial.config.case)
             / trial.config.trial_key
         )
-        state_dir = trial.layout.trial_dir / 'coverage_state'
+        state_dir = trial.layout.snapshots_dir / '.state' / 'coverage'
+        artifact_dir = snapshot.snapshot_dir / '.artifacts' / 'coverage'
         latest_root.mkdir(parents=True, exist_ok=True)
         state_dir.mkdir(parents=True, exist_ok=True)
 
@@ -102,8 +103,7 @@ def process_snapshot_coverage(
             fuzz_target=trial.config.fuzz_target.fuzz_target,
             input_mode=trial.config.fuzz_target.input_mode,
             inputs=inputs,
-            state_dir=state_dir,
-            batch_tag=snapshot.snapshot_id,
+            artifact_dir=artifact_dir,
             timeout_s=trial.config.fuzz_target.target_timeout_s * 2,
             container_prefix=f'fm-{run_id}-cov-{tick_idx}-{trial.config.trial_key}',
             trial_key=trial.config.trial_key,
@@ -163,7 +163,7 @@ def process_snapshot_coverage(
         for trial in campaign_trials:
             if trial.config.case is not case:
                 continue
-            profile_input = trial.layout.trial_dir / 'coverage_state' / 'merged.profdata'
+            profile_input = trial.layout.snapshots_dir / '.state' / 'coverage' / 'merged.profdata'
             if profile_input.is_file() and profile_input.stat().st_size > 64:
                 profile_inputs.append(profile_input)
         if not profile_inputs:
@@ -252,7 +252,7 @@ def merge_trial_coverage_outputs(
         case=trial_config.case,
         out_root=out_root,
         state_dir=coverage_state.state_dir,
-        work_dir=coverage_state.state_dir / f'_tmp_{snapshot.snapshot_id}_final',
+        work_dir=snapshot.snapshot_dir / '.artifacts' / 'coverage' / 'merge-work',
         profile_inputs=coverage_state.batch_profdata_paths,
         render_html=False,
         write_coverage_sets=write_export,
