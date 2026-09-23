@@ -5,7 +5,7 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-'''Characterization tests for host-side coverage replay batch planning.'''
+'''Characterization tests for host-side coverage batch planning.'''
 
 from __future__ import annotations
 
@@ -22,11 +22,11 @@ from fuzzmeter.repro.coverage_measure import (
     _preserve_previous_artifacts,
     _replace_out_root,
     _synchronize_coverage_set_provenance,
-    build_coverage_replay_batches,
+    build_coverage_batches,
     coverage_measurement_context,
+    execute_coverage_batch,
+    execute_coverage_batches,
     merge_coverage_outputs,
-    replay_coverage_batch,
-    replay_coverage_batches,
 )
 
 
@@ -35,7 +35,7 @@ class CoverageMeasureTest(unittest.TestCase):
 
     def test_empty_inputs_create_no_batches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            profdata_paths, batches = build_coverage_replay_batches(
+            batches = build_coverage_batches(
                 image='coverage-image',
                 fuzz_target='target',
                 input_mode='file',
@@ -44,7 +44,6 @@ class CoverageMeasureTest(unittest.TestCase):
                 timeout_s=3.0,
             )
 
-        self.assertEqual([], profdata_paths)
         self.assertEqual([], batches)
 
     def test_single_input_creates_one_batch_with_matching_fields(self) -> None:
@@ -52,7 +51,7 @@ class CoverageMeasureTest(unittest.TestCase):
             artifact_dir = Path(tmp_dir)
             inputs = [artifact_dir / 'input-0']
 
-            profdata_paths, batches = build_coverage_replay_batches(
+            batches = build_coverage_batches(
                 image='coverage-image',
                 fuzz_target='target',
                 input_mode='stdin',
@@ -67,14 +66,13 @@ class CoverageMeasureTest(unittest.TestCase):
         self.assertEqual('target', batches[0].fuzz_target)
         self.assertEqual('stdin', batches[0].input_mode)
         self.assertEqual(7.5, batches[0].timeout_s)
-        self.assertEqual(profdata_paths, [batch.profdata_path for batch in batches])
 
     def test_exact_batch_size_creates_one_batch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             artifact_dir = Path(tmp_dir)
             inputs = [artifact_dir / f'input-{index}' for index in range(256)]
 
-            profdata_paths, batches = build_coverage_replay_batches(
+            batches = build_coverage_batches(
                 image='coverage-image',
                 fuzz_target='target',
                 input_mode='file',
@@ -85,14 +83,13 @@ class CoverageMeasureTest(unittest.TestCase):
 
         self.assertEqual(1, len(batches))
         self.assertEqual(inputs, batches[0].inputs)
-        self.assertEqual(profdata_paths, [batch.profdata_path for batch in batches])
 
     def test_one_more_than_batch_size_creates_second_batch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             artifact_dir = Path(tmp_dir)
             inputs = [artifact_dir / f'input-{index}' for index in range(257)]
 
-            profdata_paths, batches = build_coverage_replay_batches(
+            batches = build_coverage_batches(
                 image='coverage-image',
                 fuzz_target='target',
                 input_mode='file',
@@ -104,13 +101,12 @@ class CoverageMeasureTest(unittest.TestCase):
         self.assertEqual(2, len(batches))
         self.assertEqual(inputs[:256], batches[0].inputs)
         self.assertEqual(inputs[256:], batches[1].inputs)
-        self.assertEqual(profdata_paths, [batch.profdata_path for batch in batches])
 
     def test_batch_and_diagnostics_paths_use_artifact_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             artifact_dir = Path(tmp_dir)
 
-            profdata_paths, batches = build_coverage_replay_batches(
+            batches = build_coverage_batches(
                 image='coverage-image',
                 fuzz_target='target',
                 input_mode='file',
@@ -126,14 +122,14 @@ class CoverageMeasureTest(unittest.TestCase):
                 artifact_dir / 'batches' / 'batch_000000.profdata',
                 artifact_dir / 'batches' / 'batch_000001.profdata',
             ],
-            profdata_paths,
+            [batch.profdata_path for batch in batches],
         )
         self.assertEqual(artifact_dir / 'batch-diagnostics' / '000000', batches[0].diagnostics_dir)
         self.assertEqual(artifact_dir / 'batch-diagnostics' / '000001', batches[1].diagnostics_dir)
         self.assertEqual('fm-run-cov-7-trial-000000', batches[0].container_name)
         self.assertEqual('trial', batches[0].trial_key)
 
-    def test_replay_coverage_batches_calls_progress_for_each_batch(self) -> None:
+    def test_execute_coverage_batches_calls_progress_for_each_batch(self) -> None:
         batches = [
             CoverageBatch(
                 image='coverage-image',
@@ -148,18 +144,18 @@ class CoverageMeasureTest(unittest.TestCase):
         ]
         on_batch_done = Mock()
 
-        with patch('fuzzmeter.repro.coverage_measure.replay_coverage_batch') as replay_batch:
-            replay_coverage_batches(
+        with patch('fuzzmeter.repro.coverage_measure.execute_coverage_batch') as execute_batch:
+            execute_coverage_batches(
                 docker_runtime=Mock(),
                 batches=batches,
                 jobs=2,
                 on_batch_done=on_batch_done,
             )
 
-        self.assertEqual(3, replay_batch.call_count)
+        self.assertEqual(3, execute_batch.call_count)
         self.assertEqual(3, on_batch_done.call_count)
 
-    def test_replay_coverage_batches_accepts_missing_progress_callback(self) -> None:
+    def test_execute_coverage_batches_accepts_missing_progress_callback(self) -> None:
         batches = [
             CoverageBatch(
                 image='coverage-image',
@@ -172,22 +168,22 @@ class CoverageMeasureTest(unittest.TestCase):
             )
         ]
 
-        with patch('fuzzmeter.repro.coverage_measure.replay_coverage_batch'):
-            replay_coverage_batches(
+        with patch('fuzzmeter.repro.coverage_measure.execute_coverage_batch'):
+            execute_coverage_batches(
                 docker_runtime=Mock(),
                 batches=batches,
                 jobs=1,
                 on_batch_done=None,
             )
 
-    def test_replay_coverage_batches_accepts_empty_batch_list(self) -> None:
-        replay_coverage_batches(
+    def test_execute_coverage_batches_accepts_empty_batch_list(self) -> None:
+        execute_coverage_batches(
             docker_runtime=Mock(),
             batches=[],
             jobs=2,
         )
 
-    def test_replay_coverage_batches_reports_every_failure(self) -> None:
+    def test_execute_coverage_batches_reports_every_failure(self) -> None:
         batches = [
             CoverageBatch(
                 image='coverage-image',
@@ -203,12 +199,12 @@ class CoverageMeasureTest(unittest.TestCase):
 
         with (
             patch(
-                'fuzzmeter.repro.coverage_measure.replay_coverage_batch',
+                'fuzzmeter.repro.coverage_measure.execute_coverage_batch',
                 side_effect=[RuntimeError('first failure'), ValueError('second failure')],
             ),
             self.assertRaises(CoveragePipelineError) as raised,
         ):
-            replay_coverage_batches(
+            execute_coverage_batches(
                 docker_runtime=Mock(),
                 batches=batches,
                 jobs=2,
@@ -217,7 +213,7 @@ class CoverageMeasureTest(unittest.TestCase):
         self.assertIn('first failure', str(raised.exception))
         self.assertIn('second failure', str(raised.exception))
 
-    def test_replay_coverage_batch_retries_pipeline_failures(self) -> None:
+    def test_execute_coverage_batch_retries_pipeline_failures(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             docker = Mock()
@@ -226,7 +222,7 @@ class CoverageMeasureTest(unittest.TestCase):
             docker.run.side_effect = [RuntimeError('first'), RuntimeError('second'), None]
 
             with patch('fuzzmeter.repro.coverage_measure.DockerClient', return_value=docker):
-                replay_coverage_batch(
+                execute_coverage_batch(
                     docker_runtime=Mock(),
                     image='coverage-image',
                     fuzz_target='target',
@@ -239,7 +235,7 @@ class CoverageMeasureTest(unittest.TestCase):
 
         self.assertEqual(3, docker.run.call_count)
 
-    def test_replay_coverage_batch_fails_after_three_attempts(self) -> None:
+    def test_execute_coverage_batch_fails_after_three_attempts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             docker = Mock()
@@ -249,7 +245,7 @@ class CoverageMeasureTest(unittest.TestCase):
 
             with patch('fuzzmeter.repro.coverage_measure.DockerClient', return_value=docker), \
                  self.assertRaisesRegex(CoveragePipelineError, 'failed after 3 attempts'):
-                replay_coverage_batch(
+                execute_coverage_batch(
                     docker_runtime=Mock(),
                     image='coverage-image',
                     fuzz_target='target',

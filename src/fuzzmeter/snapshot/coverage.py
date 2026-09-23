@@ -12,19 +12,18 @@ from __future__ import annotations
 import shutil
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import CampaignCase
-from ..db import DB, open_db
+from ..db import DB
 from ..db import snapshot as db_snapshot
 from ..docker import DockerRuntime
 from ..repro.coverage_measure import (
     CoverageBatch,
-    build_coverage_replay_batches,
+    build_coverage_batches,
     coverage_measurement_context,
+    execute_coverage_batches,
     merge_coverage_outputs,
-    replay_coverage_batches,
 )
 from ..repro.coverage_state import (
     apply_snapshot_summary,
@@ -40,20 +39,9 @@ from .progress import SnapshotProgress
 from .trial_snapshot import TrialCoverageSnapshot
 
 
-@dataclass(frozen=True)
-class TrialCoverageSnapshotState:
-    '''Store derived state needed to process one trial coverage snapshot.'''
-
-    snapshot: TrialCoverageSnapshot
-    state_dir: Path
-    batch_profdata_paths: list[Path]
-    batches: list[CoverageBatch]
-
-
 def process_snapshot_coverage(
     *,
     db: DB,
-    db_path: Path,
     run_dir: Path,
     run_id: str,
     tick_idx: int,
@@ -68,8 +56,10 @@ def process_snapshot_coverage(
 ) -> None:
     '''Process every coverage snapshot scheduled for a tick.'''
     coverage_jobs = jobs if coverage_jobs is None else coverage_jobs
-    coverage_states: list[TrialCoverageSnapshotState] = []
-    coverage_batches = []
+
+    # Plan every trial batch before sharing the coverage execution pool.
+    measurements: list[tuple[TrialCoverageSnapshot, list[CoverageBatch]]] = []
+    coverage_batches: list[CoverageBatch] = []
     for snapshot in snapshots:
         trial = snapshot.trial
         corpus_dir = snapshot.snapshot_dir / 'corpus'
@@ -78,7 +68,6 @@ def process_snapshot_coverage(
             / trial.config.trial_key
         )
         state_dir = trial.layout.snapshots_dir / '.state' / 'coverage'
-        artifact_dir = snapshot.snapshot_dir / '.artifacts' / 'coverage'
         latest_root.mkdir(parents=True, exist_ok=True)
         state_dir.mkdir(parents=True, exist_ok=True)
 
@@ -98,30 +87,25 @@ def process_snapshot_coverage(
             db.commit()
             continue
 
-        batch_profdata_paths, batches = build_coverage_replay_batches(
+        batches = build_coverage_batches(
             image=trial.config.case.images.coverage,
             fuzz_target=trial.config.fuzz_target.fuzz_target,
             input_mode=trial.config.fuzz_target.input_mode,
             inputs=inputs,
-            artifact_dir=artifact_dir,
+            artifact_dir=snapshot.snapshot_dir / '.artifacts' / 'coverage',
             timeout_s=trial.config.fuzz_target.target_timeout_s * 2,
             container_prefix=f'fm-{run_id}-cov-{tick_idx}-{trial.config.trial_key}',
             trial_key=trial.config.trial_key,
         )
-        coverage_state = TrialCoverageSnapshotState(
-            snapshot=snapshot,
-            state_dir=state_dir,
-            batch_profdata_paths=batch_profdata_paths,
-            batches=batches,
-        )
-        coverage_states.append(coverage_state)
+        measurements.append((snapshot, batches))
         coverage_batches.extend(batches)
 
     if progress is not None:
         progress.start_coverage(tick_idx=tick_idx, total=len(coverage_batches), phase='Batch')
 
+    # Execute all trial batches under one global coverage budget.
     if coverage_batches:
-        replay_coverage_batches(
+        execute_coverage_batches(
             docker_runtime=docker_runtime,
             batches=coverage_batches,
             jobs=coverage_jobs,
@@ -129,11 +113,12 @@ def process_snapshot_coverage(
         )
 
     if progress is not None:
-        progress.start_coverage(tick_idx=tick_idx, total=len(coverage_states), phase='Merge')
+        progress.start_coverage(tick_idx=tick_idx, total=len(measurements), phase='Merge')
 
-    run_parallel_jobs(
+    # Merge trials in parallel after every coverage batch has finished.
+    summaries = run_parallel_jobs(
         jobs=jobs,
-        total=len(coverage_states),
+        total=len(measurements),
         desc=f'#{tick_idx} snapshot coverage merge',
         position=1,
         leave=False,
@@ -141,15 +126,26 @@ def process_snapshot_coverage(
             executor.submit(
                 merge_trial_coverage_outputs,
                 docker_runtime=docker_runtime,
-                db_path=db_path,
                 run_dir=run_dir,
-                coverage_state=coverage_state,
+                snapshot=snapshot,
+                batches=batches,
                 write_export=write_export,
             )
-            for coverage_state in coverage_states
+            for snapshot, batches in measurements
         ],
         progress_step=progress.step_coverage if progress is not None else None,
     )
+
+    # Persist trial summaries only after every merge has succeeded.
+    for (snapshot, _), summary in zip(measurements, summaries, strict=True):
+        trial_config = snapshot.trial.config
+        apply_snapshot_summary(
+            db=db,
+            run_dir=run_dir,
+            snapshot_id=snapshot.snapshot_id,
+            out_root=trial_coverage_root(run_dir, trial_config.case) / trial_config.trial_key,
+            summary=summary,
+        )
     if progress is not None:
         progress.idle_coverage()
 
@@ -176,8 +172,8 @@ def process_snapshot_coverage(
         }
         campaign_batches = [
             batch
-            for coverage_state in coverage_states
-            for batch in coverage_state.batches
+            for _, batches in measurements
+            for batch in batches
             if batch.trial_key in campaign_trial_keys
         ]
 
@@ -237,23 +233,23 @@ def process_snapshot_coverage(
 def merge_trial_coverage_outputs(
     *,
     docker_runtime: DockerRuntime,
-    db_path: Path,
     run_dir: Path,
-    coverage_state: TrialCoverageSnapshotState,
+    snapshot: TrialCoverageSnapshot,
+    batches: list[CoverageBatch],
     write_export: bool,
-) -> None:
-    '''Merge one trial snapshot's batch coverage and store its summary.'''
-    snapshot = coverage_state.snapshot
+) -> dict:
+    '''Merge one trial snapshot's batch coverage and return its summary.'''
     trial_config = snapshot.trial.config
+    state_dir = snapshot.trial.layout.snapshots_dir / '.state' / 'coverage'
     out_root = trial_coverage_root(run_dir, trial_config.case) / trial_config.trial_key
-    summary = merge_coverage_outputs(
+    return merge_coverage_outputs(
         docker_runtime=docker_runtime,
         run_dir=run_dir,
         case=trial_config.case,
         out_root=out_root,
-        state_dir=coverage_state.state_dir,
+        state_dir=state_dir,
         work_dir=snapshot.snapshot_dir / '.artifacts' / 'coverage' / 'merge-work',
-        profile_inputs=coverage_state.batch_profdata_paths,
+        profile_inputs=[batch.profdata_path for batch in batches],
         render_html=False,
         write_coverage_sets=write_export,
         container_name=(
@@ -262,20 +258,12 @@ def merge_trial_coverage_outputs(
         ),
         trial_key=trial_config.trial_key,
         measurement_context=coverage_measurement_context(
-            batches=coverage_state.batches,
+            batches=batches,
             image=trial_config.case.images.coverage,
             snapshot_tick=snapshot.tick_idx,
             repetitions=1,
         ),
     )
-    with open_db(db_path) as worker_db:
-        apply_snapshot_summary(
-            db=worker_db,
-            run_dir=run_dir,
-            snapshot_id=snapshot.snapshot_id,
-            out_root=out_root,
-            summary=summary,
-        )
 
 
 def bootstrap_from_seed_baseline(

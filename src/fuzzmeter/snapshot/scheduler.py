@@ -379,7 +379,6 @@ class SnapshotScheduler:
             cur_time = time.time()
             process_snapshot_coverage(
                 db=db,
-                db_path=self.db_path,
                 run_dir=self.run_dir,
                 run_id=self.run_id,
                 tick_idx=tick_idx,

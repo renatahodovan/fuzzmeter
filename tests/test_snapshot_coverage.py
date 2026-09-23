@@ -27,9 +27,9 @@ from tests.support.trials import make_trial_config
 
 
 class SnapshotCoverageTest(unittest.TestCase):
-    '''Verify snapshot coverage replay scheduling behavior.'''
+    '''Verify snapshot coverage scheduling behavior.'''
 
-    def test_empty_corpus_snapshots_do_not_replay_coverage_batches(self) -> None:
+    def test_empty_corpus_snapshots_do_not_execute_coverage_batches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             trial = _trial_instance(root)
@@ -45,10 +45,9 @@ class SnapshotCoverageTest(unittest.TestCase):
             with patch('fuzzmeter.snapshot.coverage.bootstrap_from_seed_baseline') as bootstrap, \
                  patch('fuzzmeter.snapshot.coverage.load_coverage_summary', return_value={}), \
                  patch('fuzzmeter.snapshot.coverage.apply_snapshot_summary'), \
-                 patch('fuzzmeter.snapshot.coverage.replay_coverage_batches') as replay_batches:
+                 patch('fuzzmeter.snapshot.coverage.execute_coverage_batches') as execute_batches:
                 process_snapshot_coverage(
                     db=Mock(),
-                    db_path=root / 'state.db',
                     run_dir=root / 'run',
                     run_id='run',
                     tick_idx=1,
@@ -60,7 +59,7 @@ class SnapshotCoverageTest(unittest.TestCase):
                     write_export=True,
                 )
 
-        self.assertEqual(0, replay_batches.call_count)
+        self.assertEqual(0, execute_batches.call_count)
         self.assertEqual(
             trial.layout.snapshots_dir / '.state' / 'coverage',
             bootstrap.call_args.kwargs['state_dir'],

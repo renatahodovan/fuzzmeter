@@ -33,7 +33,7 @@ class CoveragePipelineError(RuntimeError):
 
 @dataclass(frozen=True)
 class CoverageBatch:
-    '''Describe one coverage replay batch.'''
+    '''Describe one batched coverage execution.'''
 
     image: str
     fuzz_target: str
@@ -46,7 +46,7 @@ class CoverageBatch:
     trial_key: str | None = None
 
 
-def build_coverage_replay_batches(
+def build_coverage_batches(
     *,
     image: str,
     fuzz_target: str,
@@ -56,10 +56,10 @@ def build_coverage_replay_batches(
     timeout_s: float,
     container_prefix: str | None = None,
     trial_key: str | None = None,
-) -> tuple[list[Path], list[CoverageBatch]]:
-    '''Create host-side coverage replay batches for one input set.'''
+) -> list[CoverageBatch]:
+    '''Create host-side coverage batches for one input set.'''
     if not inputs:
-        return [], []
+        return []
 
     batch_root = artifact_dir / 'batches'
     diagnostics_root = artifact_dir / 'batch-diagnostics'
@@ -70,7 +70,7 @@ def build_coverage_replay_batches(
     batch_root.mkdir(parents=True, exist_ok=True)
     batch_profdata_paths = [batch_root / f'batch_{index:06d}.profdata' for index in range(len(input_batches))]
 
-    return batch_profdata_paths, [
+    return [
         CoverageBatch(
             image=image,
             fuzz_target=fuzz_target,
@@ -86,21 +86,21 @@ def build_coverage_replay_batches(
     ]
 
 
-def replay_coverage_batches(
+def execute_coverage_batches(
     *,
     docker_runtime: DockerRuntime,
     batches: list[CoverageBatch],
     jobs: int,
     on_batch_done: Callable[[], None] | None = None,
 ) -> None:
-    '''Replay planned coverage batches in parallel on the host.'''
+    '''Execute planned coverage batches in parallel on the host.'''
     if not batches:
         return
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(batches), jobs)) as executor:
         futures = [
             executor.submit(
-                replay_coverage_batch,
+                execute_coverage_batch,
                 docker_runtime=docker_runtime,
                 image=batch.image,
                 fuzz_target=batch.fuzz_target,
@@ -126,10 +126,10 @@ def replay_coverage_batches(
 
     if failures:
         details = '\n'.join(f'{index}. {type(exc).__name__}: {exc}' for index, exc in enumerate(failures, 1))
-        raise CoveragePipelineError(f'Coverage replay failed in {len(failures)} batch(es):\n{details}')
+        raise CoveragePipelineError(f'Coverage execution failed in {len(failures)} batch(es):\n{details}')
 
 
-def replay_coverage_batch(
+def execute_coverage_batch(
     *,
     docker_runtime: DockerRuntime,
     image: str,
@@ -142,7 +142,7 @@ def replay_coverage_batch(
     container_name: str | None = None,
     trial_key: str | None = None,
 ) -> None:
-    '''Replay coverage inputs in one container and write their batch profile.'''
+    '''Execute coverage inputs in one container and write their batch profile.'''
     if not inputs:
         return
 
