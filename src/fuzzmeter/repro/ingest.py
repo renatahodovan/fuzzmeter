@@ -5,10 +5,11 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-'''Detect and materialize newly visible fuzzer output files for snapshots.'''
+'''Detect and copy newly visible fuzzer output files for snapshots.'''
 
 from __future__ import annotations
 
+import concurrent.futures as cf
 import logging
 import os
 import shutil
@@ -20,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+from ..config import CampaignCase
 from ..docker import DockerRuntime
 from ..fuzzers import HookRunner, HookSpec
 
@@ -33,6 +35,17 @@ class DetectedFile:
     rel_path: str
     abs_src: Path
     mtime_ns: int
+
+
+@dataclass(frozen=True)
+class InputSet:
+    '''Describe the files and processing context of one collected input set.'''
+
+    snapshot_dir: Path
+    input_dir: Path
+    input_files: tuple[DetectedFile, ...]
+    snapshot_preprocess: Path | None
+    case: CampaignCase
 
 
 def detect_new_files(
@@ -72,52 +85,106 @@ def detect_new_files(
     return detected
 
 
-def prepare_snapshot_inputs(
+def prepare_input_sets(
     *,
     docker_runtime: DockerRuntime,
-    snapshot_dir: Path,
-    input_dir: Path,
-    input_files: list[DetectedFile],
-    snapshot_preprocess: Path | None,
-    benchmark: str,
-    fuzz_target: str,
-    fuzzer: str,
-    runner_image: str,
-    jobs: int | None = None,
-) -> list[Path]:
-    '''Copy snapshot inputs and optionally run the snapshot preprocess hook on them.'''
-    copied = _copy_snapshot_inputs(input_dir=input_dir, input_files=input_files)
-    if snapshot_preprocess is None:
-        return copied
+    input_sets: list[InputSet],
+    jobs: int,
+) -> list[list[Path]]:
+    '''Copy collected input sets and run their preprocess hooks.'''
+    if not input_sets:
+        return []
 
-    HookRunner(docker_runtime=docker_runtime).run(
-        HookSpec(
-            name='snapshot_preprocess',
-            script=snapshot_preprocess,
-            env=_snapshot_preprocess_env(
-                snapshot_dir=snapshot_dir,
-                input_dir=input_dir,
-                artifact_dir=snapshot_dir / '.artifacts' / 'preprocess' / input_dir.name,
-                benchmark=benchmark,
-                fuzz_target=fuzz_target,
-                fuzzer=fuzzer,
-                runner_image=runner_image,
-                jobs=jobs,
-            ),
-            cwd=snapshot_dir,
+    # Copy every input set before assigning preprocess capacity.
+    with cf.ThreadPoolExecutor(max_workers=min(jobs, len(input_sets))) as executor:
+        copy_futures = [
+            executor.submit(
+                _copy_snapshot_inputs,
+                dst_dir=input_set.input_dir,
+                input_files=list(input_set.input_files),
+            )
+            for input_set in input_sets
+        ]
+        prepared = [future.result() for future in copy_futures]
+
+    preprocess_sets = [
+        (index, input_set)
+        for index, input_set in enumerate(input_sets)
+        if input_set.snapshot_preprocess is not None and prepared[index]
+    ]
+    if not preprocess_sets:
+        return prepared
+
+    max_workers = min(jobs, len(preprocess_sets))
+    # Give each input set one job, then favor sets with more remaining work.
+    input_set_jobs = {index: 1 for index, _ in preprocess_sets}
+    remaining_jobs = max(0, jobs - len(preprocess_sets))
+    while remaining_jobs:
+        expandable = [
+            index
+            for index, _ in preprocess_sets
+            if input_set_jobs[index] < len(prepared[index])
+        ]
+        if not expandable:
+            break
+        selected = max(
+            expandable,
+            key=lambda index: len(prepared[index]) / input_set_jobs[index],
         )
-    )
-    return [path for path in input_dir.rglob('*') if path.is_file()]
+        input_set_jobs[selected] += 1
+        remaining_jobs -= 1
+
+    runner = HookRunner(docker_runtime=docker_runtime)
+    with cf.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(
+                runner.run,
+                HookSpec(
+                    name='snapshot_preprocess',
+                    script=input_set.snapshot_preprocess,
+                    env=_snapshot_preprocess_env(
+                        snapshot_dir=input_set.snapshot_dir,
+                        input_dir=input_set.input_dir,
+                        artifact_dir=(
+                            input_set.snapshot_dir
+                            / '.artifacts'
+                            / 'preprocess'
+                            / input_set.input_dir.name
+                        ),
+                        benchmark=input_set.case.fuzz_target.benchmark.name,
+                        fuzz_target=input_set.case.fuzz_target.fuzz_target,
+                        fuzzer=input_set.case.fuzzer.id,
+                        runner_image=input_set.case.images.runner,
+                        jobs=input_set_jobs[index],
+                    ),
+                    cwd=input_set.snapshot_dir,
+                ),
+            )
+            for index, input_set in preprocess_sets
+        ]
+        for future in futures:
+            future.result()
+
+    # Re-scan hook outputs because preprocessing may add or remove files.
+    for index, input_set in preprocess_sets:
+        prepared[index] = sorted(
+            path
+            for path in input_set.input_dir.rglob('*')
+            if path.is_file()
+        )
+    return prepared
 
 
-def _copy_snapshot_inputs(*, input_dir: Path, input_files: list[DetectedFile]) -> list[Path]:
-    input_dir.mkdir(parents=True, exist_ok=True)
+def _copy_snapshot_inputs(*, dst_dir: Path, input_files: list[DetectedFile]) -> list[Path]:
+    if not input_files:
+        return []
+    dst_dir.mkdir(parents=True, exist_ok=True)
     copied = []
     for input_file in input_files:
-        dst = input_dir / input_file.rel_path
+        dst = dst_dir / input_file.rel_path
         dst.parent.mkdir(parents=True, exist_ok=True)
         try:
-            _materialize_snapshot_file(input_file.abs_src, dst)
+            _link_or_copy_snapshot_file(input_file.abs_src, dst)
             copied.append(dst)
         except OSError:
             continue
@@ -134,7 +201,7 @@ def _snapshot_preprocess_env(
     fuzz_target: str,
     fuzzer: str,
     runner_image: str,
-    jobs: int | None,
+    jobs: int,
 ) -> dict[str, str]:
     return {
         'FM_SNAPSHOT_DIR': str(snapshot_dir),
@@ -144,7 +211,7 @@ def _snapshot_preprocess_env(
         'FM_FUZZ_TARGET': fuzz_target,
         'FM_FUZZER': fuzzer,
         'FM_RUNNER_IMAGE': runner_image,
-        'FM_JOBS': str(max(1, int(jobs or 1))),
+        'FM_JOBS': str(jobs),
     }
 
 
@@ -192,8 +259,8 @@ def _file_update_time_ns(stat_result: os.stat_result) -> int:
     return max(mtime_ns, birthtime_ns)
 
 
-def _materialize_snapshot_file(src: Path, dst: Path) -> None:
-    '''Prefer no-copy snapshot materialization, falling back to a real copy.'''
+def _link_or_copy_snapshot_file(src: Path, dst: Path) -> None:
+    '''Prefer a hard link or copy-on-write clone, falling back to a full copy.'''
     try:
         os.link(src, dst)
         return

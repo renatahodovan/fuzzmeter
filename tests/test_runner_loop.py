@@ -541,15 +541,25 @@ class RunnerLoopTest(unittest.TestCase):
         barrier = threading.Barrier(2)
         trials = [_bare_trial_instance(db_id=idx, root=Path('/tmp'), start_ts=100, rep_idx=idx) for idx in (1, 2, 3)]
 
-        def _collect_trial_snapshot(**kwargs):
+        def _collect_trial_input_files(**kwargs):
             seen_threads.add(threading.get_ident())
             try:
                 barrier.wait(timeout=2)
             except threading.BrokenBarrierError:
                 pass
-            return None, None
+            trial = kwargs['trial']
+            return trial, trial.layout.snapshots_dir / 'snap_000001', None, {'corpus': [], 'crashes': []}
 
-        with patch('fuzzmeter.snapshot.collector._collect_trial_snapshot', side_effect=_collect_trial_snapshot):
+        with patch(
+            'fuzzmeter.snapshot.collector._collect_trial_input_files',
+            side_effect=_collect_trial_input_files,
+        ), patch(
+            'fuzzmeter.snapshot.collector.repro_ingest.prepare_input_sets',
+            return_value=[[], [], [], [], [], []],
+        ), patch(
+            'fuzzmeter.snapshot.collector._save_trial_snapshot',
+            return_value=(None, None),
+        ):
             coverage_snapshots, crash_snapshots = collect_snapshots(
                 db_path=Path('/tmp/unused.db'),
                 run_id='run',

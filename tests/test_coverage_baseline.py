@@ -83,7 +83,7 @@ class CoverageBaselineTest(unittest.TestCase):
             )
 
             with patch(
-                'fuzzmeter.repro.coverage_baseline.prepare_snapshot_inputs',
+                'fuzzmeter.repro.coverage_baseline.prepare_input_sets',
                 side_effect=_copy_prepared_inputs,
             ) as prepare_inputs, patch(
                 'fuzzmeter.repro.coverage_baseline.replay_coverage_batches',
@@ -135,13 +135,18 @@ def _seed_root(run_dir: Path, fuzzer: str, benchmark: str, fuzz_target: str) -> 
     return run_dir / 'seed_corpora' / f'{fuzzer}__{benchmark}__{fuzz_target}' / 'corpus'
 
 
-def _copy_prepared_inputs(**kwargs) -> None:
-    input_dir = kwargs['input_dir']
-    input_dir.mkdir(parents=True, exist_ok=True)
-    for input_file in kwargs['input_files']:
-        dst = input_dir / input_file.rel_path
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_bytes(input_file.abs_src.read_bytes())
+def _copy_prepared_inputs(**kwargs) -> list[list[Path]]:
+    prepared = []
+    for input_set in kwargs['input_sets']:
+        input_set.input_dir.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for input_file in input_set.input_files:
+            dst = input_set.input_dir / input_file.rel_path
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_bytes(input_file.abs_src.read_bytes())
+            paths.append(dst)
+        prepared.append(paths)
+    return prepared
 
 
 def _write_merge_outputs(**kwargs) -> dict[str, int]:

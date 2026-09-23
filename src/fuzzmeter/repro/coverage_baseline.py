@@ -27,7 +27,7 @@ from .coverage_measure import (
     replay_coverage_batches,
 )
 from .coverage_state import collect_inputs, load_measurement_provenance, seed_coverage_root
-from .ingest import DetectedFile, prepare_snapshot_inputs
+from .ingest import DetectedFile, InputSet, prepare_input_sets
 
 LOG = logging.getLogger(__name__)
 
@@ -71,16 +71,18 @@ def measure_seed_baseline(
     if not seed_input_files:
         return
 
-    prepare_snapshot_inputs(
+    prepare_input_sets(
         docker_runtime=docker_runtime,
-        snapshot_dir=snapshot_dir,
-        input_dir=corpus_dir,
-        input_files=seed_input_files,
-        snapshot_preprocess=job.snapshot_preprocess_script,
-        benchmark=job.fuzz_target.benchmark.name,
-        fuzz_target=job.fuzz_target.fuzz_target,
-        fuzzer=job.case.fuzzer.id,
-        runner_image=job.case.images.runner,
+        input_sets=[
+            InputSet(
+                snapshot_dir=snapshot_dir,
+                input_dir=corpus_dir,
+                input_files=tuple(seed_input_files),
+                snapshot_preprocess=job.snapshot_preprocess_script,
+                case=job.case,
+            )
+        ],
+        jobs=max(1, jobs),
     )
 
     state_dir = base_root / '_state'

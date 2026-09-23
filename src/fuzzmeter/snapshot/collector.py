@@ -44,43 +44,79 @@ def collect_snapshots(
     if not active_trials:
         return [], []
 
-    trial_jobs = min(len(active_trials), max(1, jobs))
-    preprocess_jobs = max(1, jobs // trial_jobs)
-
+    trial_jobs = min(len(active_trials), jobs)
     start_time = time.time()
-    if trial_jobs <= 1:
-        collected = [
-            _collect_trial_snapshot(
+
+    # Detect all trial inputs before assigning the shared preprocess budget.
+    with cf.ThreadPoolExecutor(max_workers=trial_jobs) as executor:
+        collection_futures = [
+            executor.submit(
+                _collect_trial_input_files,
                 db_path=db_path,
-                run_id=run_id,
-                docker_runtime=docker_runtime,
                 tick_idx=tick_idx,
                 end_ts=end_ts,
                 trial=trial,
                 replay_mode=replay_mode,
-                preprocess_jobs=preprocess_jobs,
             )
             for trial in active_trials
         ]
-    else:
-        with cf.ThreadPoolExecutor(max_workers=trial_jobs) as executor:
-            futures = [
-                executor.submit(
-                    _collect_trial_snapshot,
-                    db_path=db_path,
-                    run_id=run_id,
-                    docker_runtime=docker_runtime,
-                    tick_idx=tick_idx,
-                    end_ts=end_ts,
-                    trial=trial,
-                    replay_mode=replay_mode,
-                    preprocess_jobs=preprocess_jobs,
-                )
-                for trial in active_trials
-            ]
-            collected = [future.result() for future in futures]
+        collected = [future.result() for future in collection_futures]
 
-    coverage_results, crash_results = zip(*collected, strict=True)
+    # Flatten corpus and crash inputs so they share one preprocess scheduler.
+    snapshot_inputs = [
+        repro_ingest.InputSet(
+            snapshot_dir=snapshot_dir,
+            input_dir=snapshot_dir / kind,
+            input_files=tuple(input_files[kind]),
+            snapshot_preprocess=trial.config.snapshot_preprocess,
+            case=trial.config.case,
+        )
+        for trial, snapshot_dir, _, input_files in collected
+        for kind in ('corpus', 'crashes')
+    ]
+    prepared_sets = repro_ingest.prepare_input_sets(
+        docker_runtime=docker_runtime,
+        input_sets=snapshot_inputs,
+        jobs=jobs,
+    )
+    ready = []
+    # Input sets are flattened as corpus/crashes pairs for each collected trial.
+    for (
+        (trial, snapshot_dir, previous_snapshot, input_files),
+        corpus_files,
+        crash_files,
+    ) in zip(collected, prepared_sets[::2], prepared_sets[1::2], strict=True):
+        processed_by_kind = {
+            'corpus': corpus_files,
+            'crashes': crash_files,
+        }
+        for kind in ('corpus', 'crashes'):
+            if len(input_files[kind]) != len(processed_by_kind[kind]):
+                LOG.warning(
+                    '\t\tCould not process %s collected files.',
+                    len(input_files[kind]) - len(processed_by_kind[kind]),
+                )
+        ready.append((trial, snapshot_dir, previous_snapshot, processed_by_kind))
+
+    # Persist snapshots only after every trial's inputs have been prepared.
+    with cf.ThreadPoolExecutor(max_workers=trial_jobs) as executor:
+        finalize_futures = [
+            executor.submit(
+                _save_trial_snapshot,
+                db_path=db_path,
+                run_id=run_id,
+                tick_idx=tick_idx,
+                end_ts=end_ts,
+                trial=trial,
+                snapshot_dir=snapshot_dir,
+                previous_snapshot=previous_snapshot,
+                processed_by_kind=processed_by_kind,
+            )
+            for trial, snapshot_dir, previous_snapshot, processed_by_kind in ready
+        ]
+        finalized = [future.result() for future in finalize_futures]
+
+    coverage_results, crash_results = zip(*finalized, strict=True)
     coverage_snapshots = [snapshot for snapshot in coverage_results if snapshot is not None]
     crash_snapshots = [snapshot for snapshot in crash_results if snapshot is not None]
 
@@ -93,32 +129,54 @@ def collect_snapshots(
     return coverage_snapshots, crash_snapshots
 
 
-def _collect_trial_snapshot(
+def _collect_trial_input_files(
     *,
     db_path: Path,
-    run_id: str,
-    docker_runtime: DockerRuntime,
     tick_idx: int,
     end_ts: int,
     trial: TrialInstance,
     replay_mode: bool,
-    preprocess_jobs: int,
-) -> tuple[TrialCoverageSnapshot | None, TrialCrashSnapshot | None]:
+) -> tuple[TrialInstance, Path, dict[str, Any] | None, dict[str, list[repro_ingest.DetectedFile]]]:
+    '''Collect one trial's newly visible corpus and crash files.'''
     snapshot_dir = trial.layout.snapshots_dir / f'snap_{tick_idx:06d}'
 
     with open_db(db_path) as db:
         previous_snapshot = db_snapshot.latest_trial_snapshot(db, trial_row_id=trial.db_id)
 
     start_ts = trial.start_ts - 1 if previous_snapshot is None else int(previous_snapshot['ts'])
-    processed_by_kind = _prepare_trial_snapshot_inputs(
-        docker_runtime=docker_runtime,
-        snapshot_dir=snapshot_dir,
-        trial=trial,
-        replay_mode=replay_mode,
-        start_ts=start_ts,
-        end_ts=end_ts,
-        preprocess_jobs=preprocess_jobs,
-    )
+    input_files: dict[str, list[repro_ingest.DetectedFile]] = {}
+    local_end_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(end_ts))
+
+    for kind, src_root in (
+        ('corpus', trial.layout.corpus_dir),
+        ('crashes', trial.layout.crashes_dir),
+    ):
+        input_files[kind] = (
+            _detect_replay_files(kind=kind, trial=trial, src_root=src_root, start_ts=start_ts, end_ts=end_ts)
+            if replay_mode
+            else repro_ingest.detect_new_files(kind=kind, src_root=src_root, start_ts=start_ts, end_ts=end_ts)
+        )
+
+        LOG.debug(
+            f'\t\tDetected {len(input_files[kind])} new {kind} files for trial {trial.config.trial_key} '
+            f'from {local_end_time}'
+        )
+
+    return trial, snapshot_dir, previous_snapshot, input_files
+
+
+def _save_trial_snapshot(
+    *,
+    db_path: Path,
+    run_id: str,
+    tick_idx: int,
+    end_ts: int,
+    trial: TrialInstance,
+    snapshot_dir: Path,
+    previous_snapshot: dict[str, Any] | None,
+    processed_by_kind: dict[str, list[Path]],
+) -> tuple[TrialCoverageSnapshot | None, TrialCrashSnapshot | None]:
+    '''Store one collected trial snapshot and return its pending work.'''
     prev_corpus_count = 0 if previous_snapshot is None else _safe_int(previous_snapshot.get('corpus_files')) or 0
     new_corpus_count = len(processed_by_kind['corpus'])
     stats = _read_stats(trial, tick_ts=end_ts)
@@ -156,78 +214,13 @@ def _collect_trial_snapshot(
             previous_snapshot=previous_snapshot,
         )
 
-    crash_snapshot = _build_trial_crash_snapshot(
+    return coverage_snapshot, _build_trial_crash_snapshot(
         trial=trial,
         snapshot_id=snapshot_id,
         snapshot_dir=snapshot_dir,
         tick_idx=tick_idx,
         crash_files=processed_by_kind['crashes'],
     )
-
-    return coverage_snapshot, crash_snapshot
-
-
-def _prepare_trial_snapshot_inputs(
-    *,
-    docker_runtime: DockerRuntime,
-    snapshot_dir: Path,
-    trial: TrialInstance,
-    replay_mode: bool,
-    start_ts: int,
-    end_ts: int,
-    preprocess_jobs: int,
-) -> dict[str, list[Path]]:
-    processed_by_kind: dict[str, list[Path]] = {}
-    local_end_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(end_ts))
-
-    for kind, src_root in (
-        ('corpus', trial.layout.corpus_dir),
-        ('crashes', trial.layout.crashes_dir),
-    ):
-        input_dir = snapshot_dir / kind
-        new_files = (
-            _detect_replay_files(kind=kind, trial=trial, src_root=src_root, start_ts=start_ts, end_ts=end_ts)
-            if replay_mode
-            else repro_ingest.detect_new_files(kind=kind, src_root=src_root, start_ts=start_ts, end_ts=end_ts)
-        )
-
-        LOG.debug(
-            f'\t\tDetected {len(new_files)} new {kind} files for trial {trial.config.trial_key} '
-            f'from {local_end_time}'
-        )
-
-        processed_by_kind[kind] = []
-        if new_files:
-            cur_time = time.time()
-            processed_by_kind[kind] = repro_ingest.prepare_snapshot_inputs(
-                docker_runtime=docker_runtime,
-                snapshot_dir=snapshot_dir,
-                input_dir=input_dir,
-                input_files=new_files,
-                snapshot_preprocess=trial.config.snapshot_preprocess,
-                benchmark=trial.config.fuzz_target.benchmark.name,
-                fuzz_target=trial.config.fuzz_target.fuzz_target,
-                fuzzer=trial.config.case.fuzzer.id,
-                runner_image=trial.config.case.images.runner,
-                jobs=preprocess_jobs,
-            )
-            if trial.config.snapshot_preprocess:
-                LOG.debug(
-                    '\t\tPrepared snapshot inputs for %s in %.1f seconds with %s jobs for %s',
-                    trial.config.case.fuzzer.id,
-                    time.time() - cur_time,
-                    preprocess_jobs,
-                    kind,
-                )
-
-        collected_file_count = len(new_files)
-        if collected_file_count != len(processed_by_kind[kind]):
-            LOG.warning(
-                '\t\tCould not process %s collected files.',
-                collected_file_count - len(processed_by_kind[kind]),
-            )
-
-    return processed_by_kind
 
 
 def _build_trial_coverage_snapshot(
@@ -282,7 +275,7 @@ def _build_trial_crash_snapshot(
     snapshot_crashes_dir = snapshot_dir / 'crashes'
     snapshot_crash_files = [
         repro_ingest.DetectedFile(
-            rel_path=str(path.relative_to(snapshot_crashes_dir)).replace('\\', '/'),
+            rel_path=path.relative_to(snapshot_crashes_dir).as_posix(),
             abs_src=path,
             mtime_ns=path.stat().st_mtime_ns,
         )
@@ -328,7 +321,7 @@ def _replay_timeline_entries(*, trial: TrialInstance, kind: str) -> list[tuple[i
     raw = json.loads(timeline_path.read_text(encoding='utf-8'))
     raw_times = raw.get('file_times_ns') or {}
     root = trial.layout.corpus_dir if kind == 'corpus' else trial.layout.crashes_dir
-    prefix_path = str(root.relative_to(trial.layout.fuzz_dir)).replace('\\', '/')
+    prefix_path = root.relative_to(trial.layout.fuzz_dir).as_posix()
     prefix = f'{prefix_path}/'
     entries = [
         (int(logical_ns), rel_text[len(prefix):])

@@ -22,11 +22,11 @@ from fuzzers.aflplusplus.run import fuzz as aflplusplus_fuzzer
 from fuzzers.libfuzzer.run import fuzz as libfuzzer_fuzzer
 from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.fuzzers.models import OutputPaths
-from fuzzmeter.repro.ingest import DetectedFile, detect_new_files, prepare_snapshot_inputs
-from fuzzmeter.snapshot.collector import _collect_trial_snapshot, _detect_replay_files
+from fuzzmeter.repro.ingest import DetectedFile, InputSet, detect_new_files, prepare_input_sets
+from fuzzmeter.snapshot.collector import _detect_replay_files, collect_snapshots
 from fuzzmeter.snapshot.scheduler import SnapshotScheduler
 from fuzzmeter.trial.models import ReplayTrialInstance, TrialInstance, TrialLayout
-from tests.support.trials import make_trial_config
+from tests.support.trials import make_campaign_case, make_trial_config
 
 
 def _active_trial(
@@ -84,44 +84,84 @@ def _replay_trial(root: Path, *, start_ts: int, end_ts: int, db_id: int = 1, rep
 class SnapshotCollectorTest(unittest.TestCase):
     '''Verify snapshot collection and scheduling corner cases.'''
 
-    def test_prepare_snapshot_inputs_prefers_hardlink_when_possible(self) -> None:
+    def test_prepare_input_sets_schedule_same_snapshot_inputs_in_parallel(self) -> None:
+        '''Corpus and crash hooks share the global worker budget directly.'''
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
-            src = root / 'live' / 'id:000001'
-            src.parent.mkdir(parents=True)
-            src.write_text('input', encoding='utf-8')
-            detected = DetectedFile(
-                rel_path='id:000001',
-                abs_src=src,
-                mtime_ns=src.stat().st_mtime_ns,
-            )
+            source_dir = root / 'live'
+            source_dir.mkdir()
+            detected = []
+            for index in range(4):
+                src = source_dir / f'id:{index:06d}'
+                src.write_text(f'input {index}', encoding='utf-8')
+                detected.append(
+                    DetectedFile(
+                        rel_path=src.name,
+                        abs_src=src,
+                        mtime_ns=src.stat().st_mtime_ns,
+                    )
+                )
 
-            copied = prepare_snapshot_inputs(
-                docker_runtime=None,
-                snapshot_dir=root / 'snap',
-                input_dir=root / 'snap' / 'corpus',
-                input_files=[detected],
-                snapshot_preprocess=None,
-                benchmark='bench',
-                fuzz_target='target',
-                fuzzer='fuzzer',
-                runner_image='runner',
-            )
+            snap_a = root / 'snap_a'
+            empty_dir = root / 'empty' / 'corpus'
+            barrier = threading.Barrier(2)
 
-            dst = root / 'snap' / 'corpus' / 'id:000001'
-            self.assertEqual([dst], copied)
+            def wait_for_other_input_set(_spec) -> None:
+                barrier.wait(timeout=1)
+
+            with patch('fuzzmeter.repro.ingest.HookRunner') as hook_runner:
+                hook_runner.return_value.run.side_effect = wait_for_other_input_set
+                copied = prepare_input_sets(
+                    docker_runtime=None,
+                    input_sets=[
+                        InputSet(
+                            snapshot_dir=snap_a,
+                            input_dir=snap_a / 'corpus',
+                            input_files=tuple(detected[:3]),
+                            snapshot_preprocess=Path('/preprocess.py'),
+                            case=make_campaign_case(fuzzer='fuzzer-a'),
+                        ),
+                        InputSet(
+                            snapshot_dir=snap_a,
+                            input_dir=snap_a / 'crashes',
+                            input_files=(detected[3],),
+                            snapshot_preprocess=Path('/preprocess.py'),
+                            case=make_campaign_case(fuzzer='fuzzer-b'),
+                        ),
+                        InputSet(
+                            snapshot_dir=root / 'empty',
+                            input_dir=empty_dir,
+                            input_files=(),
+                            snapshot_preprocess=Path('/preprocess.py'),
+                            case=make_campaign_case(fuzzer='fuzzer-c'),
+                        ),
+                    ],
+                    jobs=5,
+                )
+
+            dst = snap_a / 'corpus' / 'id:000000'
+            self.assertEqual(
+                [snap_a / 'corpus' / item.rel_path for item in detected[:3]],
+                copied[0],
+            )
+            self.assertEqual([snap_a / 'crashes' / detected[3].rel_path], copied[1])
+            self.assertEqual([], copied[2])
+            self.assertFalse(empty_dir.exists())
             self.assertTrue(dst.is_file())
-            if src.stat().st_dev == dst.stat().st_dev:
-                self.assertEqual(src.stat().st_ino, dst.stat().st_ino)
+            if detected[0].abs_src.stat().st_dev == dst.stat().st_dev:
+                self.assertEqual(detected[0].abs_src.stat().st_ino, dst.stat().st_ino)
+            self.assertEqual(
+                ['1', '3'],
+                sorted(call.args[0].env['FM_JOBS'] for call in hook_runner.return_value.run.call_args_list),
+            )
 
-    def test_prepare_snapshot_inputs_separates_hook_artifacts(self) -> None:
+    def test_prepare_input_sets_separates_hook_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             src = root / 'live' / 'id:000001'
             src.parent.mkdir(parents=True)
             src.write_text('input', encoding='utf-8')
-            snapshot_dir = root / 'snap'
-            input_dir = snapshot_dir / 'corpus'
+            input_dir = root / 'snap' / 'corpus'
 
             def write_diagnostic(spec) -> None:
                 artifact_dir = Path(spec.env['FM_SNAPSHOT_ARTIFACT_DIR'])
@@ -130,27 +170,38 @@ class SnapshotCollectorTest(unittest.TestCase):
 
             with patch('fuzzmeter.repro.ingest.HookRunner') as hook_runner:
                 hook_runner.return_value.run.side_effect = write_diagnostic
-                prepared = prepare_snapshot_inputs(
+                prepared = prepare_input_sets(
                     docker_runtime=None,
-                    snapshot_dir=snapshot_dir,
-                    input_dir=input_dir,
-                    input_files=[
-                        DetectedFile(
-                            rel_path=src.name,
-                            abs_src=src,
-                            mtime_ns=src.stat().st_mtime_ns,
+                    input_sets=[
+                        InputSet(
+                            snapshot_dir=root / 'snap',
+                            input_dir=input_dir,
+                            input_files=(
+                                DetectedFile(
+                                    rel_path=src.name,
+                                    abs_src=src,
+                                    mtime_ns=src.stat().st_mtime_ns,
+                                ),
+                            ),
+                            snapshot_preprocess=Path('/preprocess.py'),
+                            case=make_campaign_case(fuzzer='fuzzer'),
                         )
                     ],
-                    snapshot_preprocess=Path('/preprocess.py'),
-                    benchmark='bench',
-                    fuzz_target='target',
-                    fuzzer='fuzzer',
-                    runner_image='runner',
+                    jobs=1,
                 )
 
-            artifact_dir = snapshot_dir / '.artifacts' / 'preprocess' / 'corpus'
-            self.assertEqual([input_dir / src.name], prepared)
-            self.assertEqual('failed', (artifact_dir / 'error.log').read_text(encoding='utf-8'))
+            self.assertEqual([[input_dir / src.name]], prepared)
+            self.assertEqual(
+                'failed',
+                (
+                    root
+                    / 'snap'
+                    / '.artifacts'
+                    / 'preprocess'
+                    / 'corpus'
+                    / 'error.log'
+                ).read_text(encoding='utf-8'),
+            )
             self.assertEqual([src.name], [path.name for path in input_dir.iterdir()])
 
     def test_detect_new_corpus_files_uses_update_time_interval(self) -> None:
@@ -210,15 +261,15 @@ class SnapshotCollectorTest(unittest.TestCase):
             with patch('fuzzmeter.snapshot.collector.time.time', return_value=120), \
                  patch('fuzzmeter.snapshot.collector._read_stats', return_value={}), \
                  patch('fuzzmeter.snapshot.collector.repro_ingest.detect_new_files', side_effect=_capture_detect_new_files):
-                _collect_trial_snapshot(
+                collect_snapshots(
                     db_path=db_path,
                     run_id='run-1',
                     docker_runtime=None,
                     tick_idx=2,
                     end_ts=100,
-                    trial=trial,
+                    active_trials=[trial],
                     replay_mode=False,
-                    preprocess_jobs=1,
+                    jobs=1,
                 )
 
             self.assertEqual(seen_intervals, [(-1, 100), (-1, 100)])
@@ -249,15 +300,15 @@ class SnapshotCollectorTest(unittest.TestCase):
             with patch('fuzzmeter.snapshot.collector._read_stats', return_value={'execs_done': 10}), \
                  patch('fuzzmeter.snapshot.collector._read_custom_metrics', return_value=[custom_metric]), \
                  patch('fuzzmeter.snapshot.collector.repro_ingest.detect_new_files', return_value=[]):
-                _collect_trial_snapshot(
+                collect_snapshots(
                     db_path=db_path,
                     run_id='run-1',
                     docker_runtime=None,
                     tick_idx=1,
                     end_ts=100,
-                    trial=trial,
+                    active_trials=[trial],
                     replay_mode=False,
-                    preprocess_jobs=1,
+                    jobs=1,
                 )
 
             db = DB.open(db_path)
