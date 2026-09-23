@@ -91,7 +91,6 @@ def reproduce_crash_batch(
     trial: TrialInstance,
     snapshot_crashes_dir: Path,
     crash_tests: list[DetectedFile],
-    repro_logs_dir: Path,
     batch_index: int,
     tick_idx: int,
 ) -> list[tuple[str, dict[str, Any], int]]:
@@ -138,12 +137,11 @@ def reproduce_crash_batch(
     for new_file, worker_output in zip(crash_tests, outputs, strict=False):
         output = (worker_output.get('stdout') or '') + (worker_output.get('stderr') or '')
         classified = _classify_crash_output(
-            trial=trial,
             new_file=new_file,
             output=output,
             returncode=worker_output['returncode'],
             timed_out=worker_output['timeout'],
-            repro_logs_dir=repro_logs_dir,
+            artifact_dir=snapshot_crashes_dir.parent / '.artifacts' / 'crash-repro',
         )
         if classified is not None:
             results.append(classified)
@@ -153,12 +151,11 @@ def reproduce_crash_batch(
 
 def _classify_crash_output(
     *,
-    trial: TrialInstance,
     new_file: DetectedFile,
     output: str,
     returncode: int,
     timed_out: bool,
-    repro_logs_dir: Path,
+    artifact_dir: Path,
 ) -> tuple[str, dict[str, Any], int] | None:
     issue = None
     for regex in (_ISSUE_ASAN, _ISSUE_MSAN, _ISSUE_UBSAN):
@@ -184,12 +181,16 @@ def _classify_crash_output(
     top_func = frames[0] if frames else 'unknown'
     bug_key = f'{issue}|{",".join(frames)}'
 
-    safe_bug_key = re.sub(r'\s+', '_', bug_key.replace('/', '_').replace('\\', '_'))
-    if len(safe_bug_key) > _MAX_COMPONENT:
-        safe_bug_key = safe_bug_key[:_MAX_COMPONENT] + '_' + hashlib.sha1(safe_bug_key.encode()).hexdigest()[:12]
-    output_dir = repro_logs_dir / trial.config.case.fuzzer.id / trial.config.fuzz_target.benchmark.name / trial.config.fuzz_target.fuzz_target / safe_bug_key
+    safe_input_id = re.sub(r'\s+', '_', new_file.rel_path.replace('/', '_').replace('\\', '_'))
+    if len(safe_input_id) > _MAX_COMPONENT:
+        safe_input_id = (
+            safe_input_id[:_MAX_COMPONENT]
+            + '_'
+            + hashlib.sha1(new_file.rel_path.encode()).hexdigest()[:12]
+        )
+    output_dir = artifact_dir / safe_input_id
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / f'{safe_bug_key[:40]}.log').write_text(output, encoding='utf-8', errors='replace')
+    (output_dir / 'output.log').write_text(output, encoding='utf-8', errors='replace')
 
     first_seen_ts = int(new_file.mtime_ns // 1_000_000_000)
     return (

@@ -399,7 +399,6 @@ class SnapshotScheduler:
             cur_time = time.time()
             process_snapshot_crashes(
                 db_path=self.db_path,
-                run_dir=self.run_dir,
                 run_id=self.run_id,
                 tick_idx=tick_idx,
                 jobs=self.jobs,

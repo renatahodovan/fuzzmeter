@@ -69,11 +69,21 @@ class ReproBugPersistenceTest(unittest.TestCase):
                             docker_runtime=Mock(), trial=trial,
                             snapshot_crashes_dir=crash_dir,
                             crash_tests=[DetectedFile('input', crash, 10_000_000_000)],
-                            repro_logs_dir=root / 'logs', batch_index=0, tick_idx=1,
+                            batch_index=0, tick_idx=1,
                         )
                     self.assertEqual([] if expected_key is None else [expected_key],
                                      [key for key, _, _ in results])
                     self.assertTrue(docker.run.call_args.kwargs['check'])
+            self.assertEqual(
+                'runtime error: signed integer overflow',
+                (
+                    crash_dir.parent
+                    / '.artifacts'
+                    / 'crash-repro'
+                    / 'input'
+                    / 'output.log'
+                ).read_text(encoding='utf-8'),
+            )
 
     def test_duplicate_bug_key_uses_earliest_reproduction_metadata_and_counts_hits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -137,7 +147,7 @@ class ReproBugPersistenceTest(unittest.TestCase):
                 for _ in range(2):
                     later_batch_finished.clear()
                     process_snapshot_crashes(
-                        db_path=db_path, run_dir=root, run_id='run', tick_idx=1,
+                        db_path=db_path, run_id='run', tick_idx=1,
                         jobs=2, snapshots=snapshots, docker_runtime=Mock(),
                     )
                     bug, hits = _bug_and_hits(db_path)

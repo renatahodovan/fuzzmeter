@@ -24,7 +24,6 @@ DEFAULT_CRASH_BATCH_SIZE = 64
 def process_snapshot_crashes(
     *,
     db_path: Path,
-    run_dir: Path,
     run_id: str,
     tick_idx: int,
     jobs: int,
@@ -56,7 +55,6 @@ def process_snapshot_crashes(
                 crash_tests=crash_tests,
                 batch_index=batch_index,
                 tick_idx=tick_idx,
-                repro_logs_dir=run_dir / 'repro_logs',
             )
             for snapshot, batch_index, crash_tests in crash_batches
         ],
