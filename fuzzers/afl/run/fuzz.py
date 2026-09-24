@@ -15,14 +15,12 @@
 
 import json
 import os
-import re
 import subprocess
 
 from pathlib import Path
 
+from fuzzers.afl.run import metrics
 from fuzzmeter.resources.instrumentation import utils
-
-_MUTATOR_RE = re.compile(r'(?:^|,)execs:\d+,(?:op:)?([^,]+)')
 
 
 def get_stats(output_corpus, fuzzer_log):  # pylint: disable=unused-argument
@@ -133,33 +131,10 @@ def get_custom_metrics(
     snapshot_dir: Path,
     cutoff_elapsed_s: int | None = None,
 ) -> dict | None:
-    """Return AFL custom mutator counts encoded in snapshot corpus names."""
+    '''Delegate custom metric collection to the AFL metrics module.'''
 
-    del trial_root, cutoff_elapsed_s
-    counts: dict[str, int] = {}
-    corpus_dir = Path(snapshot_dir) / 'corpus'
-    if not corpus_dir.is_dir():
-        return None
-    for path in corpus_dir.rglob('*'):
-        if not path.is_file():
-            continue
-        match = _MUTATOR_RE.search(path.name)
-        if not match:
-            continue
-        mutator = match.group(1).strip()
-        if not mutator or mutator.startswith('orig:'):
-            continue
-        counts[mutator] = counts.get(mutator, 0) + 1
-    if not counts:
-        return None
-    return {
-        'id': 'afl-mutator-counts',
-        'namespace': 'afl',
-        'kind': 'counter_map',
-        'title': 'AFL mutators',
-        'chart_title': 'Mutator usefulness ratio',
-        'chart_subtitle': 'Percentage distribution of AFL custom mutators across snapshot corpora.',
-        'counts': counts,
-        'total': sum(counts.values()),
-        'source': 'snapshot_corpus_filenames',
-    }
+    return metrics.get_custom_metrics(
+        trial_root,
+        snapshot_dir=snapshot_dir,
+        cutoff_elapsed_s=cutoff_elapsed_s,
+    )
