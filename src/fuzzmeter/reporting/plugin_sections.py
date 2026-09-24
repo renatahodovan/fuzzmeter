@@ -77,6 +77,11 @@ def attach_extra_sections(
                 base_name=fuzzer_base_by_name.get(fuzzer),
                 ctx=ctx,
             )
+            if loader.load_errors:
+                debug_info['load_errors'] = list(loader.load_errors)
+                if matched_plugin_name is None:
+                    debug_info['status'] = 'load_error'
+                    debug_info['error'] = loader.load_errors[-1]['error']
             fuzzer_entry['extra_sections'] = serialize_extra_sections(
                 [section for section in fuzzer_sections if section.scope == 'fuzzer'],
                 default_owner_fuzzer=fuzzer,

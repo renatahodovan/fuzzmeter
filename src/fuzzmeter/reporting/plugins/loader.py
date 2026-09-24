@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import importlib.util
+import logging
 import sys
 
 from pathlib import Path
@@ -18,6 +19,8 @@ from typing import Callable, Mapping, Sequence
 
 from ...fuzzers.loader import install_fuzzer_namespace
 from ..plugin_api import ExtraSection, ReportingContext, ReportingPlugin
+
+LOG = logging.getLogger(__name__)
 
 
 class NullReportingPlugin:
@@ -47,17 +50,24 @@ class ReportingPluginLoader:
 
     def __init__(self, fuzzer_dirs: Mapping[str, Path]) -> None:
         self.fuzzer_dirs = {name: Path(path) for name, path in fuzzer_dirs.items()}
+        self.load_errors: list[dict[str, str]] = []
 
     def load_first(self, fuzzer_names: Sequence[str]) -> tuple[ReportingPlugin, str | None]:
         '''Load the first available reporting plugin from the candidate fuzzer names.'''
 
+        self.load_errors = []
         for fuzzer_name in fuzzer_names:
             if not _is_safe_fuzzer_name(fuzzer_name):
                 continue
             path = self.fuzzer_dirs.get(fuzzer_name, Path()) / 'run' / 'reporting.py'
             if not path.is_file():
                 continue
-            module = self._load_module(path=path, module_name=f'fuzzers.{fuzzer_name}.run.reporting')
+            try:
+                module = self._load_module(path=path, module_name=f'fuzzers.{fuzzer_name}.run.reporting')
+            except Exception as exc:
+                LOG.exception('Could not load reporting plugin %s from %s: %s', fuzzer_name, path, exc)
+                self.load_errors.append({'plugin': fuzzer_name, 'error': str(exc)})
+                continue
             getter = getattr(module, 'get_reporting_plugin', None)
             if callable(getter):
                 plugin = getter()

@@ -148,6 +148,26 @@ class ReportingPayloadTest(unittest.TestCase):
         normalized = _normalize_payload(payload)
         self.assertEqual(PAYLOAD_HASH, _payload_hash(normalized))
 
+    def test_broken_reporting_plugin_does_not_prevent_payload_building(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / 'run'
+            run_dir.mkdir()
+            reporting_run_db(run_dir)
+            with DB.open(run_dir / 'fuzzmeter.db') as db:
+                db.exec("UPDATE snapshots SET stats_json = '{}' ")
+                db.commit()
+            fuzzer_dir = Path(tmp) / 'fuzzers' / 'fz'
+            reporting_path = fuzzer_dir / 'run' / 'reporting.py'
+            reporting_path.parent.mkdir(parents=True)
+            reporting_path.write_text('raise RuntimeError("broken plugin")\n', encoding='utf-8')
+
+            payload = build_payload(run_dir, run_id='run', fuzzer_dirs={'fz': fuzzer_dir})
+
+        fuzzer = payload['targets'][0]['fuzzers'][0]
+        self.assertEqual([], fuzzer['extra_sections'])
+        self.assertEqual('load_error', fuzzer['extra_section_debug'][0]['status'])
+        self.assertEqual('broken plugin', fuzzer['extra_section_debug'][0]['error'])
+
     def test_unique_bug_discoveries_are_counted_independently_per_trial(self) -> None:
         '''A shared bug contributes once to each repetition, in tick order.'''
         with tempfile.TemporaryDirectory() as tmp_dir:

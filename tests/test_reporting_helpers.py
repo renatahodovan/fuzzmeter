@@ -407,12 +407,21 @@ class ReportingPluginLoaderTest(unittest.TestCase):
 
     def test_import_time_error_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / 'fuzzers' / 'fz' / 'run' / 'reporting.py'
-            path.parent.mkdir(parents=True)
-            path.write_text('raise RuntimeError("boom")\n', encoding='utf-8')
+            fuzzers_root = Path(tmp) / 'fuzzers'
+            broken_path = fuzzers_root / 'fz' / 'run' / 'reporting.py'
+            fallback_path = fuzzers_root / 'base' / 'run' / 'reporting.py'
+            broken_path.parent.mkdir(parents=True)
+            fallback_path.parent.mkdir(parents=True)
+            broken_path.write_text('raise RuntimeError("boom")\n', encoding='utf-8')
+            fallback_path.write_text('def build_extra_sections(ctx):\n    return []\n', encoding='utf-8')
+            loader = ReportingPluginLoader({'fz': fuzzers_root / 'fz', 'base': fuzzers_root / 'base'})
 
-            with self.assertRaisesRegex(RuntimeError, 'boom'):
-                ReportingPluginLoader({'fz': Path(tmp) / 'fuzzers' / 'fz'}).load_first(['fz'])
+            with self.assertLogs('fuzzmeter.reporting.plugins.loader', level='ERROR'):
+                plugin, matched = loader.load_first(['fz', 'base'])
+
+        self.assertEqual('base', matched)
+        self.assertEqual([], plugin.build_extra_sections(_context()))
+        self.assertEqual([{'plugin': 'fz', 'error': 'boom'}], loader.load_errors)
 
     def test_invalid_candidate_names_do_not_escape_fuzzers_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
