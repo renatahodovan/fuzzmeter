@@ -20,6 +20,7 @@ from fuzzmeter.repro.coverage_measure import (
     CoverageBatch,
     CoveragePipelineError,
     _preserve_previous_artifacts,
+    _promote_dir,
     _replace_out_root,
     _synchronize_coverage_set_provenance,
     build_coverage_batches,
@@ -446,24 +447,79 @@ class CoverageMeasureTest(unittest.TestCase):
 
         self.assertEqual(carried, artifact['measurement_provenance'])
 
-    def test_replace_out_root_skips_unrelated_protected_directory_without_exception_flow(self) -> None:
+    def test_replace_out_root_leaves_directories_outside_the_root_in_place(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             out_root = root / 'out'
             tmp_root = root / 'tmp'
-            protected_dir = root / 'trial' / 'state'
+            state_dir = root / 'trial' / 'state'
             out_root.mkdir()
             tmp_root.mkdir()
-            protected_dir.mkdir(parents=True)
+            state_dir.mkdir(parents=True)
 
-            with patch('fuzzmeter.repro.coverage_measure.LOG.debug') as debug:
-                _replace_out_root(
+            _replace_out_root(out_root=out_root, tmp_root=tmp_root, carried=[state_dir])
+
+            state_kept = state_dir.is_dir()
+            tmp_left = tmp_root.exists()
+
+        self.assertTrue(state_kept)
+        self.assertFalse(tmp_left)
+
+    def test_coverage_merge_retry_recovers_after_failed_promotion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            out_root = root / 'campaign'
+            state_dir = out_root / '_state'
+            state_dir.mkdir(parents=True)
+            (state_dir / 'merged.profdata').write_bytes(b'o' * 80)
+            (out_root / 'html').mkdir()
+            (out_root / 'html' / 'index.html').write_text('old', encoding='utf-8')
+            profile = root / 'trial.profdata'
+            profile.write_bytes(b'p' * 80)
+            case = Mock()
+            case.images.coverage = 'coverage-image'
+            case.fuzz_target.benchmark.name = 'benchmark'
+            case.fuzz_target.fuzz_target = 'target'
+            docker = Mock()
+            docker.container_path.side_effect = str
+            docker.image_id.return_value = 'sha256:image'
+
+            def run_worker(**kwargs):
+                env = kwargs['env']
+                Path(env['FM_PROFDATA_PATH']).write_bytes(b'n' * 80)
+                out_dir = Path(env['FM_OUT_DIR'])
+                (out_dir / 'summary.json').write_text('{}', encoding='utf-8')
+                (out_dir / 'measurement-provenance.json').write_text('{}', encoding='utf-8')
+
+            docker.run.side_effect = run_worker
+            promotions = []
+
+            def fail_first_promotion(src, dst):
+                promotions.append(dst)
+                if len(promotions) == 1:
+                    raise OSError('transient rename failure')
+                _promote_dir(src, dst)
+
+            with patch('fuzzmeter.repro.coverage_measure.DockerClient', return_value=docker), \
+                 patch('fuzzmeter.repro.coverage_measure._promote_dir', side_effect=fail_first_promotion):
+                merge_coverage_outputs(
+                    docker_runtime=Mock(),
+                    run_dir=root,
+                    case=case,
                     out_root=out_root,
-                    tmp_root=tmp_root,
-                    protected_dir=protected_dir,
+                    state_dir=state_dir,
+                    work_dir=state_dir / 'work',
+                    profile_inputs=[profile],
+                    render_html=False,
+                    write_coverage_sets=False,
                 )
 
-        debug.assert_not_called()
+            profile_data = (state_dir / 'merged.profdata').read_bytes()
+            html = (out_root / 'html' / 'index.html').read_text(encoding='utf-8')
+
+        self.assertEqual(2, len(promotions))
+        self.assertEqual(b'n' * 80, profile_data)
+        self.assertEqual('old', html)
 
 
 if __name__ == '__main__':

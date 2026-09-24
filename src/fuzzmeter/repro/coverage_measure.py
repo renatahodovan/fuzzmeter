@@ -355,11 +355,9 @@ def _merge_coverage_outputs_once(
     state_candidate = state_dir / '.merged.profdata.candidate'
     shutil.copy2(candidate_profdata, state_candidate)
     candidate_profdata.unlink()
-    previous_html = out_root / 'html'
-    if not render_html and previous_html.is_dir():
-        # Keep serving the last rendered report until the next one replaces it.
-        previous_html.rename(tmp_root / 'html')
-    _replace_out_root(out_root=out_root, tmp_root=tmp_root, protected_dir=state_dir)
+    # Without a new render, keep serving the last report until the next one replaces it.
+    carried = [state_dir] if render_html else [state_dir, out_root / 'html']
+    _replace_out_root(out_root=out_root, tmp_root=tmp_root, carried=carried)
     state_candidate.replace(profdata_path)
     return summary
 
@@ -471,33 +469,21 @@ def _preserve_previous_artifacts(*, out_root: Path, tmp_root: Path, names: tuple
             LOG.debug('Could not preserve previous coverage artifact: %s', src)
 
 
-def _replace_out_root(*, out_root: Path, tmp_root: Path, protected_dir: Path | None = None) -> None:
-    saved_protected_dir = None
-    final_protected_dir = None
-    if protected_dir is not None:
-        protected_dir = protected_dir.resolve()
-        out_root_resolved = out_root.resolve()
-        if out_root_resolved in protected_dir.parents:
-            try:
-                final_protected_dir = protected_dir
-                preserved_name = f'.{out_root_resolved.name}.{protected_dir.name}.preserved'
-                saved_protected_dir = out_root_resolved.parent / preserved_name
-                shutil.rmtree(saved_protected_dir, ignore_errors=True)
-                if protected_dir.exists():
-                    protected_dir.rename(saved_protected_dir)
-            except OSError:
-                LOG.debug('Could not preserve protected dir %s under %s', protected_dir, out_root)
-                saved_protected_dir = None
-                final_protected_dir = None
-
-    if out_root.exists():
-        shutil.rmtree(out_root, ignore_errors=True)
-    _promote_dir(tmp_root, out_root)
-
-    if saved_protected_dir is not None and final_protected_dir is not None:
-        final_protected_dir.parent.mkdir(parents=True, exist_ok=True)
-        shutil.rmtree(final_protected_dir, ignore_errors=True)
-        saved_protected_dir.rename(final_protected_dir)
+def _replace_out_root(*, out_root: Path, tmp_root: Path, carried: list[Path]) -> None:
+    '''Publish tmp_root as out_root, taking the carried directories of the old root along.'''
+    moved = []
+    try:
+        for path in carried:
+            if out_root in path.parents and path.is_dir():
+                target = tmp_root / path.relative_to(out_root)
+                path.rename(target)
+                moved.append((path, target))
+        _promote_dir(tmp_root, out_root)
+    except Exception:
+        # _promote_dir restored the old root; give the carried directories back to it.
+        for path, target in reversed(moved):
+            target.rename(path)
+        raise
 
 
 def _promote_dir(src: Path, dst: Path) -> None:
