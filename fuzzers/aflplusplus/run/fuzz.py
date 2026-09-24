@@ -148,7 +148,7 @@ def get_custom_metrics(
     *,
     snapshot_dir: Path,
     cutoff_elapsed_s: int | None = None,
-) -> list[dict]:
+) -> dict[str, Any] | None:
     '''Return AFL++ custom metrics collected for one snapshot.'''
 
     return afl_fuzzer.get_custom_metrics(

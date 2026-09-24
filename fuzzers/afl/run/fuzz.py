@@ -127,14 +127,19 @@ def fuzz(input_corpus, output_corpus, target_binary, input_mode: str):
     run_afl_fuzz(input_corpus, output_corpus, target_binary, input_mode)
 
 
-def get_custom_metrics(trial_root: Path, *, snapshot_dir: Path, cutoff_elapsed_s: int | None = None) -> list[dict]:
+def get_custom_metrics(
+    trial_root: Path,
+    *,
+    snapshot_dir: Path,
+    cutoff_elapsed_s: int | None = None,
+) -> dict | None:
     """Return AFL custom mutator counts encoded in snapshot corpus names."""
 
     del trial_root, cutoff_elapsed_s
     counts: dict[str, int] = {}
     corpus_dir = Path(snapshot_dir) / 'corpus'
     if not corpus_dir.is_dir():
-        return []
+        return None
     for path in corpus_dir.rglob('*'):
         if not path.is_file():
             continue
@@ -146,18 +151,15 @@ def get_custom_metrics(trial_root: Path, *, snapshot_dir: Path, cutoff_elapsed_s
             continue
         counts[mutator] = counts.get(mutator, 0) + 1
     if not counts:
-        return []
-    return [
-        {
-            'schema_version': 1,
-            'id': 'afl-mutator-counts',
-            'namespace': 'afl',
-            'kind': 'counter_map',
-            'title': 'AFL mutators',
-            'chart_title': 'Mutator usefulness ratio',
-            'chart_subtitle': 'Percentage distribution of AFL custom mutators across snapshot corpora.',
-            'counts': counts,
-            'total': sum(counts.values()),
-            'source': 'snapshot_corpus_filenames',
-        }
-    ]
+        return None
+    return {
+        'id': 'afl-mutator-counts',
+        'namespace': 'afl',
+        'kind': 'counter_map',
+        'title': 'AFL mutators',
+        'chart_title': 'Mutator usefulness ratio',
+        'chart_subtitle': 'Percentage distribution of AFL custom mutators across snapshot corpora.',
+        'counts': counts,
+        'total': sum(counts.values()),
+        'source': 'snapshot_corpus_filenames',
+    }

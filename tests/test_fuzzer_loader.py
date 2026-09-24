@@ -18,6 +18,24 @@ from fuzzmeter.fuzzers.loader import FuzzerLoader
 
 
 class FuzzerLoaderTest(unittest.TestCase):
+    def test_custom_metrics_preserve_the_adapter_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fuzzer_dir = Path(tmp) / 'metrics'
+            run_dir = fuzzer_dir / 'run'
+            run_dir.mkdir(parents=True)
+            (run_dir / 'fuzz.py').write_text(
+                'def get_custom_metrics(trial_root, *, snapshot_dir, cutoff_elapsed_s=None):\n'
+                '    return {"nested": [1, "two"]}\n',
+                encoding='utf-8',
+            )
+
+            payload = FuzzerLoader({'metrics': fuzzer_dir}).load('metrics').custom_metrics(
+                Path('/trial'),
+                snapshot_dir=Path('/snapshot'),
+            )
+
+        self.assertEqual({'nested': [1, 'two']}, payload)
+
     def test_cross_fuzzer_imports_use_configured_root_namespace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             fuzzers_root = Path(tmp) / 'external-fuzzer-root'

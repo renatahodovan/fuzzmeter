@@ -26,6 +26,7 @@ from ..trial.models import TrialInstance
 from .trial_snapshot import TrialCoverageSnapshot, TrialCrashSnapshot
 
 LOG = logging.getLogger(__name__)
+CUSTOM_METRICS_WARN_BYTES = 1024 * 1024
 
 
 def collect_snapshots(
@@ -181,10 +182,19 @@ def _save_trial_snapshot(
     new_corpus_count = len(processed_by_kind['corpus'])
     stats = _read_stats(trial, tick_ts=end_ts)
     custom_metrics = _read_custom_metrics(trial, snapshot_dir=snapshot_dir, tick_ts=end_ts)
-    if custom_metrics:
+    if custom_metrics is not None:
         stats = dict(stats)
-        stats['custom_metrics_schema_version'] = 1
         stats['custom_metrics'] = custom_metrics
+        custom_metrics_size = len(
+            json.dumps(custom_metrics, sort_keys=True, separators=(',', ':'), default=str).encode('utf-8')
+        )
+        if custom_metrics_size > CUSTOM_METRICS_WARN_BYTES:
+            LOG.warning(
+                'Custom metrics payload for trial_row_id=%s is %s bytes; the soft limit is %s bytes.',
+                trial.db_id,
+                custom_metrics_size,
+                CUSTOM_METRICS_WARN_BYTES,
+            )
 
     with open_db(db_path) as db:
         snapshot_id = db_snapshot.save_snapshot_data(
@@ -351,9 +361,9 @@ def _read_stats(trial: TrialInstance, *, tick_ts: int) -> dict[str, Any]:
         return {}
 
 
-def _read_custom_metrics(trial: TrialInstance, *, snapshot_dir: Path, tick_ts: int) -> list[dict[str, Any]]:
+def _read_custom_metrics(trial: TrialInstance, *, snapshot_dir: Path, tick_ts: int) -> Any:
     try:
-        metrics = (
+        return (
             FuzzerLoader(trial.fuzzer_dirs)
             .load(trial.config.case.fuzzer.name)
             .custom_metrics(
@@ -361,9 +371,7 @@ def _read_custom_metrics(trial: TrialInstance, *, snapshot_dir: Path, tick_ts: i
                 snapshot_dir=snapshot_dir,
                 cutoff_elapsed_s=tick_ts - trial.start_ts,
             )
-            or []
         )
-        return metrics if isinstance(metrics, list) else []
     except Exception as exc:
         LOG.warning(
             'Failed to get custom metrics from %s adapter for trial_row_id=%s: %s',
@@ -371,7 +379,7 @@ def _read_custom_metrics(trial: TrialInstance, *, snapshot_dir: Path, tick_ts: i
             trial.db_id,
             exc,
         )
-        return []
+        return None
 
 
 def _safe_int(value: Any) -> int | None:

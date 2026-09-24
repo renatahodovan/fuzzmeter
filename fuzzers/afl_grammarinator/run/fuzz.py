@@ -45,7 +45,7 @@ def get_custom_metrics(
     *,
     snapshot_dir: Path,
     cutoff_elapsed_s: int | None = None,
-) -> list[dict]:
+) -> dict[str, Any] | None:
     '''Return Grammarinator AFL custom mutator metrics for one snapshot.'''
 
     return aflplusplus_fuzzer.get_custom_metrics(

@@ -16,7 +16,6 @@ from typing import Any
 from fuzzmeter.reporting.metrics import safe_int
 from fuzzmeter.reporting.plugin_api import ChartSeries, ChartSpec, DataPoint, ExtraSection, ReportingContext
 
-CUSTOM_METRICS_SCHEMA_VERSION = 1
 MUTATOR_COLORS = [
     '#1F77B4', '#D62728', '#2CA02C', '#FF7F0E', '#9467BD',
     '#8C564B', '#E377C2', '#7F7F7F', '#BCBD22', '#17BECF',
@@ -64,14 +63,14 @@ def _mutator_report(ctx: ReportingContext) -> tuple[list[ChartSeries], dict[str,
     for trial in ctx.trials:
         trial_history = []
         for point in ctx.timeseries(trial.trial_id).get('points') or []:
-            for metric in _custom_metrics_from_point(point):
-                if metric is None or metric.get('id') != 'afl-mutator-counts':
-                    continue
-                counts = _counter_map(metric)
-                if not counts:
-                    continue
-                elapsed_seconds = safe_int(point.get('elapsed_s')) or safe_int(point.get('idx')) or 0
-                trial_history.append((int(elapsed_seconds), counts))
+            metric = _custom_metrics_from_point(point)
+            if metric is None:
+                continue
+            counts = _counter_map(metric)
+            if not counts:
+                continue
+            elapsed_seconds = safe_int(point.get('elapsed_s')) or safe_int(point.get('idx')) or 0
+            trial_history.append((int(elapsed_seconds), counts))
         if trial_history:
             trial_histories.append(trial_history)
 
@@ -80,21 +79,17 @@ def _mutator_report(ctx: ReportingContext) -> tuple[list[ChartSeries], dict[str,
     return _mutator_series_from_histories(trial_histories)
 
 
-def _custom_metrics_from_point(point: dict[str, Any]) -> list[dict[str, Any] | None]:
+def _custom_metrics_from_point(point: dict[str, Any]) -> dict[str, Any] | None:
     stats = point.get('stats')
     if not isinstance(stats, dict):
-        return []
-    if safe_int(stats.get('custom_metrics_schema_version')) != CUSTOM_METRICS_SCHEMA_VERSION:
-        return []
-    metrics = stats.get('custom_metrics')
-    if not isinstance(metrics, list):
-        return [None]
-    return [metric if isinstance(metric, dict) else None for metric in metrics]
+        return None
+    metric = stats.get('custom_metrics')
+    if not isinstance(metric, dict):
+        return None
+    return metric
 
 
 def _counter_map(metric: dict[str, Any]) -> dict[str, int]:
-    if metric.get('kind') != 'counter_map':
-        return {}
     counts = metric.get('counts')
     if not isinstance(counts, dict):
         return {}

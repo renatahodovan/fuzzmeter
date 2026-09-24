@@ -83,19 +83,14 @@ class FuzzerModule:
         *,
         snapshot_dir: Path,
         cutoff_elapsed_s: int | None = None,
-    ) -> list[dict[str, Any]]:
-        '''Return snapshot-time custom metrics provided by the fuzzer adapter.'''
+    ) -> Any:
+        '''Return the opaque snapshot-time payload provided by the fuzzer adapter.'''
 
         getter = getattr(self._module, 'get_custom_metrics', None)
         if not callable(getter):
-            return []
+            return None
         with io.StringIO() as captured_stdout, redirect_stdout(captured_stdout):
-            out = getter(trial_root, snapshot_dir=snapshot_dir, cutoff_elapsed_s=cutoff_elapsed_s)
-        if isinstance(out, list):
-            return [item for item in out if isinstance(item, dict)]
-        if isinstance(out, dict):
-            return [out]
-        return []
+            return getter(trial_root, snapshot_dir=snapshot_dir, cutoff_elapsed_s=cutoff_elapsed_s)
 
     def snapshot_preprocess_script(self) -> Path | None:
         getter = getattr(self._module, 'snapshot_preprocess_script', None)

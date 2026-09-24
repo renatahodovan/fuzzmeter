@@ -298,7 +298,9 @@ class SnapshotCollectorTest(unittest.TestCase):
                 'counts': {'havoc': 2},
             }
             with patch('fuzzmeter.snapshot.collector._read_stats', return_value={'execs_done': 10}), \
-                 patch('fuzzmeter.snapshot.collector._read_custom_metrics', return_value=[custom_metric]), \
+                 patch('fuzzmeter.snapshot.collector._read_custom_metrics', return_value=custom_metric), \
+                 patch('fuzzmeter.snapshot.collector.CUSTOM_METRICS_WARN_BYTES', 1), \
+                 patch('fuzzmeter.snapshot.collector.LOG.warning') as warning, \
                  patch('fuzzmeter.snapshot.collector.repro_ingest.detect_new_files', return_value=[]):
                 collect_snapshots(
                     db_path=db_path,
@@ -318,8 +320,9 @@ class SnapshotCollectorTest(unittest.TestCase):
                 db.close()
 
             stats = json.loads(str(stats_json))
-            self.assertEqual(1, stats['custom_metrics_schema_version'])
-            self.assertEqual([custom_metric], stats['custom_metrics'])
+            self.assertNotIn('custom_metrics_schema_version', stats)
+            self.assertEqual(custom_metric, stats['custom_metrics'])
+            warning.assert_called_once()
 
     def test_collect_trial_snapshot_uses_tick_time_for_replay_file_cutoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
