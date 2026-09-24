@@ -22,6 +22,23 @@ from typing import Any, ClassVar, Mapping
 from .models import OutputPaths
 
 
+def install_fuzzer_namespace(fuzzer_dirs: Mapping[str, Path]) -> None:
+    '''Expose configured fuzzer roots through the synthetic ``fuzzers`` package.'''
+
+    roots = [str(Path(path).parent) for path in fuzzer_dirs.values()]
+    package = sys.modules.get('fuzzers')
+    if package is None:
+        package = ModuleType('fuzzers')
+        package.__path__ = roots  # type: ignore[attr-defined]
+        sys.modules['fuzzers'] = package
+        return
+
+    if set(getattr(package, '__path__', [])) != set(roots):
+        for module_name in [name for name in sys.modules if name.startswith('fuzzers.')]:
+            del sys.modules[module_name]
+    package.__path__ = roots  # type: ignore[attr-defined]
+
+
 class FuzzerModule:
     def __init__(self, *, fuzzer_dir: Path, module: ModuleType) -> None:
         self.fuzzer_dir = Path(fuzzer_dir)
@@ -165,7 +182,7 @@ class FuzzerLoader:
                 raise RuntimeError(f'Cannot load module: {path}')
 
             try:
-                self._install_fuzzer_namespace()
+                install_fuzzer_namespace(self.fuzzer_dirs)
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
             except Exception as exc:
@@ -173,18 +190,3 @@ class FuzzerLoader:
 
             self._module_cache[cache_key] = module
             return module
-
-    def _install_fuzzer_namespace(self) -> None:
-        roots = [str(path.parent) for path in self.fuzzer_dirs.values()]
-        package = sys.modules.get('fuzzers')
-        if package is None:
-            package = ModuleType('fuzzers')
-            package.__path__ = roots  # type: ignore[attr-defined]
-            sys.modules['fuzzers'] = package
-            return
-
-        paths = list(getattr(package, '__path__', []))
-        for root in reversed(roots):
-            if root not in paths:
-                paths.insert(0, root)
-        package.__path__ = paths  # type: ignore[attr-defined]

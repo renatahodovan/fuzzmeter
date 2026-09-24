@@ -338,6 +338,53 @@ class ReportingPluginLoaderTest(unittest.TestCase):
         self.assertIsInstance(plugin, FunctionReportingPlugin)
         self.assertEqual('fz', matched)
 
+    def test_plugin_can_import_another_configured_fuzzer_module(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fuzzers_root = Path(tmp) / 'fuzzers'
+            plugin_path = fuzzers_root / 'fz' / 'run' / 'reporting.py'
+            helper_path = fuzzers_root / 'reporting_helper' / 'run' / 'fuzz.py'
+            plugin_path.parent.mkdir(parents=True)
+            helper_path.parent.mkdir(parents=True)
+            helper_path.write_text('VALUE = "imported"\n', encoding='utf-8')
+            plugin_path.write_text(
+                'from fuzzers.reporting_helper.run.fuzz import VALUE\n'
+                'def build_extra_sections(ctx):\n'
+                '    return [] if VALUE == "imported" else None\n',
+                encoding='utf-8',
+            )
+
+            plugin, matched = ReportingPluginLoader(
+                {'fz': fuzzers_root / 'fz', 'reporting_helper': fuzzers_root / 'reporting_helper'}
+            ).load_first(['fz'])
+
+        self.assertEqual('fz', matched)
+        self.assertEqual([], plugin.build_extra_sections(_context()))
+
+    def test_cross_fuzzer_imports_switch_to_the_current_fuzzer_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            roots = [Path(tmp) / name for name in ('first', 'second')]
+            for root, value in zip(roots, ('first', 'second'), strict=True):
+                plugin_path = root / 'plugin' / 'run' / 'reporting.py'
+                helper_path = root / 'shared' / 'run' / 'fuzz.py'
+                plugin_path.parent.mkdir(parents=True)
+                helper_path.parent.mkdir(parents=True)
+                helper_path.write_text(f'VALUE = {value!r}\n', encoding='utf-8')
+                plugin_path.write_text(
+                    'from fuzzers.shared.run.fuzz import VALUE\n'
+                    'def build_extra_sections(ctx):\n'
+                    '    return [VALUE]\n',
+                    encoding='utf-8',
+                )
+
+            plugins = [
+                ReportingPluginLoader({'plugin': root / 'plugin', 'shared': root / 'shared'})
+                .load_first(['plugin'])[0]
+                for root in roots
+            ]
+
+        self.assertEqual(['first'], plugins[0].build_extra_sections(_context()))
+        self.assertEqual(['second'], plugins[1].build_extra_sections(_context()))
+
     def test_getter_plugin_is_loaded_before_function_entrypoint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'fuzzers' / 'fz' / 'run' / 'reporting.py'

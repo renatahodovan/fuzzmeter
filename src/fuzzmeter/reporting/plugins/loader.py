@@ -16,6 +16,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Callable, Mapping, Sequence
 
+from ...fuzzers.loader import install_fuzzer_namespace
 from ..plugin_api import ExtraSection, ReportingContext, ReportingPlugin
 
 
@@ -68,6 +69,7 @@ class ReportingPluginLoader:
         return NullReportingPlugin(), None
 
     def _load_module(self, *, path: Path, module_name: str) -> ModuleType:
+        install_fuzzer_namespace(self.fuzzer_dirs)
         spec = importlib.util.spec_from_file_location(module_name, path)
         if spec is None or spec.loader is None:
             raise RuntimeError(f'Cannot load module: {path}')
