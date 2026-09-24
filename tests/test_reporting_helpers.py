@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 import unittest
 
@@ -16,6 +17,8 @@ from pathlib import Path
 from typing import get_args
 from unittest.mock import patch
 
+from fuzzers.afl.run.reporting import build_extra_sections as build_afl_sections
+from fuzzers.aflplusplus.run.reporting import build_extra_sections as build_aflplusplus_sections
 from fuzzmeter.config.models import RUN_CONFIG_FILE, read_run_config
 from fuzzmeter.reporting.data.coverage_data import CoverageData
 from fuzzmeter.reporting.plugin_api import (
@@ -266,6 +269,29 @@ class WebPayloadTest(unittest.TestCase):
 
 class ReportingPluginLoaderTest(unittest.TestCase):
     '''Verify fuzzer reporting plugin discovery and adaptation.'''
+
+    def test_aflplusplus_reexports_the_afl_reporting_plugin(self) -> None:
+        self.assertIs(build_afl_sections, build_aflplusplus_sections)
+
+    def test_aflplusplus_reexport_loads_through_the_run_namespace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            context_root = Path(tmp) / 'context'
+            repository_root = Path(__file__).resolve().parents[1]
+            for fuzzer in ('afl', 'aflplusplus'):
+                source = repository_root / 'fuzzers' / fuzzer / 'run' / 'reporting.py'
+                destination = context_root / fuzzer / 'run' / 'reporting.py'
+                destination.parent.mkdir(parents=True)
+                shutil.copy2(source, destination)
+
+            plugin, matched = ReportingPluginLoader(
+                {
+                    'afl': context_root / 'afl',
+                    'aflplusplus': context_root / 'aflplusplus',
+                }
+            ).load_first(['aflplusplus'])
+
+        self.assertEqual('aflplusplus', matched)
+        self.assertEqual([], plugin.build_extra_sections(_context()))
 
     def test_missing_plugin_returns_null_plugin(self) -> None:
         plugin, matched = ReportingPluginLoader({}).load_first(['missing'])

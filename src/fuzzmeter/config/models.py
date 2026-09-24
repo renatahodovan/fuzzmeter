@@ -32,7 +32,6 @@ class Fuzzer:
     parent: Fuzzer | None = None
     allowed_fuzz_targets: tuple[str, ...] | None = None
     source_dependencies: list[Fuzzer] = field(default_factory=list)
-    reporting_parents: list[Fuzzer] = field(default_factory=list)
     local_repo_env: str | None = None
 
     build_config: dict[str, Any] = field(default_factory=dict)
@@ -52,8 +51,6 @@ class Fuzzer:
             if name in names:
                 return
             names.append(name)
-            for reporting_parent in fuzzer.reporting_parents:
-                add(reporting_parent.name, reporting_parent)
             if fuzzer.parent:
                 add(fuzzer.parent.name, fuzzer.parent)
 
@@ -85,14 +82,6 @@ class Fuzzer:
     @property
     def dependencies(self) -> list[Fuzzer]:
         """Return the ordered fuzzer closure needed to build this fuzzer."""
-        return self._closure(reporting=False)
-
-    @property
-    def resources(self) -> list[Fuzzer]:
-        """Return the fuzzer closure whose directories a run must be able to read."""
-        return self._closure(reporting=True)
-
-    def _closure(self, *, reporting: bool) -> list[Fuzzer]:
         result: list[Fuzzer] = []
         seen: set[str] = set()
 
@@ -103,7 +92,7 @@ class Fuzzer:
                 return
             seen.add(item.name)
             result.append(item)
-            for dependency in (*item.source_dependencies, *(item.reporting_parents if reporting else ())):
+            for dependency in item.source_dependencies:
                 add(dependency)
 
         add(self)
@@ -208,7 +197,7 @@ class CampaignConfig:
     def fuzzer_dirs(self) -> dict[str, Path]:
         dir_list: dict[str, Path] = {}
         for case in self.cases:
-            for fuzzer in case.fuzzer.resources:
+            for fuzzer in case.fuzzer.dependencies:
                 dir_list[fuzzer.name] = fuzzer.src_dir
         return dir_list
 

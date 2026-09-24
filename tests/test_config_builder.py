@@ -270,10 +270,9 @@ fuzz_targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'base', 'source_dependencies:\n  - support\n')
-            _write_fuzzer(root, 'selected', 'parent: base\nreporting_parent: reporter\n')
+            _write_fuzzer(root, 'selected', 'parent: base\n')
             _write_fuzzer(root, 'support', '')
             _write_fuzzer(root, 'blackbox', '')
-            _write_fuzzer(root, 'reporter', '')
             _write_fuzzer(root, 'unused', '')
             run_dir = root / 'fuzzers' / 'base' / 'run'
             run_dir.mkdir()
@@ -290,7 +289,7 @@ fuzz_targets:
 ''',
             )
 
-        self.assertEqual({'base', 'blackbox', 'reporter', 'selected', 'support'}, set(config.fuzzer_dirs))
+        self.assertEqual({'base', 'blackbox', 'selected', 'support'}, set(config.fuzzer_dirs))
 
     def test_source_dependencies_must_be_a_list(self) -> None:
         """Verify malformed source dependency configuration fails at load time."""
@@ -497,8 +496,7 @@ fuzz_targets:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             _write_fuzzer(root, 'grand', '')
-            _write_fuzzer(root, 'reported', '')
-            _write_fuzzer(root, 'base', 'parent: grand\nreporting_parent: reported\n')
+            _write_fuzzer(root, 'base', 'parent: grand\n')
             _write_benchmark(root, 'jerryscript', 'jerry')
 
             config = _load_campaign_config(
@@ -514,7 +512,7 @@ fuzz_targets:
             config.write_run_config(root)
             candidates, bases = read_run_config(root)
 
-        self.assertEqual({'variant': ['variant', 'base', 'reported', 'grand']}, candidates)
+        self.assertEqual({'variant': ['variant', 'base', 'grand']}, candidates)
         self.assertEqual({'variant': 'base'}, bases)
 
     def test_target_timeout_is_stored_on_campaign_case(self) -> None:

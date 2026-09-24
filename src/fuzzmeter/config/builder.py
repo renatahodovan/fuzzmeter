@@ -227,9 +227,6 @@ def _load_fuzzer_from_config(
     source_names = data.get('source_dependencies') or []
     if not isinstance(source_names, list) or not all(isinstance(name, str) and name for name in source_names):
         raise ValueError('source_dependencies must be defined as a list of non-empty strings.')
-    reporting_parent = data.get('reporting_parent')
-    if reporting_parent is not None:
-        _check_id_format(reporting_parent, 'reporting_parent')
     allowed = data.get('allowed_fuzz_targets') or []
     if not isinstance(allowed, list) or not all(isinstance(spec, str) and spec for spec in allowed):
         raise ValueError('allowed_fuzz_targets must be defined as a list of non-empty strings.')
@@ -253,10 +250,6 @@ def _load_fuzzer_from_config(
         _load_fuzzer_from_config(name, fuzzer_entries, fuzzer_dirs)
         for name in source_names
     ]
-    if reporting_parent:
-        fuzzer.reporting_parents = [
-            _load_fuzzer_from_config(reporting_parent, fuzzer_entries, fuzzer_dirs)
-        ]
     fuzzer_entries[fuzzer_name] = fuzzer
     return fuzzer
 

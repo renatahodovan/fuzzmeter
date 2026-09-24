@@ -228,7 +228,7 @@ The most important campaign fields are:
 Besides ``id``, ``parent``, ``build``, and ``runtime``, a fuzzer entry can
 carry ``allowed_fuzz_targets`` (restrict the entry to some of the campaign fuzz
 targets), ``replay_trials`` (see `Replay Mode`_), ``source_dependencies``,
-``reporting_parent``, and ``local_repo_env``.
+and ``local_repo_env``.
 
 Fuzzer entries can derive from existing fuzzers and override only the parts
 that change::
