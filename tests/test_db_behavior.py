@@ -379,6 +379,8 @@ class DatabaseBehaviorTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = Path(tmp_dir) / 'fuzzmeter.db'
             with _open_test_db(db_path) as db:
+                db_snapshot.insert_tick(db, run_id='run', idx=3, ts=30)
+                db_snapshot.mark_tick_completed(db, run_id='run', idx=3)
                 agg_id = db_snapshot.upsert_agg_snapshot(
                     db,
                     run_id='run',
@@ -405,6 +407,20 @@ class DatabaseBehaviorTest(unittest.TestCase):
                     ''',
                     (agg_id,),
                 )
+                db_snapshot.insert_tick(db, run_id='run', idx=4, ts=40)
+                db_snapshot.mark_tick_failed(db, run_id='run', idx=4, error='coverage failed')
+                db_snapshot.upsert_agg_snapshot(
+                    db,
+                    run_id='run',
+                    fuzzer='fz',
+                    benchmark='bench',
+                    fuzz_target='target',
+                    idx=4,
+                    ts=40,
+                )
+
+            with ReportingDB(db_path) as reporting_db:
+                latest = reporting_db.latest_agg_snapshots_by_fuzzer_target('run')
 
         self.assertEqual(
             {
@@ -413,6 +429,7 @@ class DatabaseBehaviorTest(unittest.TestCase):
             },
             row,
         )
+        self.assertEqual(3, latest[('fz', 'bench', 'target')].idx)
 
     def test_readonly_connection_enables_foreign_keys_and_rejects_writes(self) -> None:
         '''Read-only DB connections keep reporting and web reads non-mutating.'''
@@ -482,6 +499,8 @@ class DatabaseBehaviorTest(unittest.TestCase):
             with _open_test_db(db_path) as db:
                 trial_id = _ensure_trial(db)
                 db_trials.set_trial_status(db, trial_id=trial_id, status='done', ended_ts=200)
+                db_snapshot.insert_tick(db, run_id='run', idx=1, ts=200)
+                db_snapshot.mark_tick_completed(db, run_id='run', idx=1)
                 snapshot_id = db_snapshot.save_snapshot_data(
                     db,
                     _snapshot_record(trial_id=trial_id, tick_idx=1, end_ts=200, corpus_files=1),
@@ -501,6 +520,12 @@ class DatabaseBehaviorTest(unittest.TestCase):
                         first_seen_ts=200,
                         first_seen_snapshot_id=snapshot_id,
                     ),
+                )
+                db_snapshot.insert_tick(db, run_id='run', idx=2, ts=210)
+                db_snapshot.mark_tick_failed(db, run_id='run', idx=2, error='coverage failed')
+                db_snapshot.save_snapshot_data(
+                    db,
+                    _snapshot_record(trial_id=trial_id, tick_idx=2, end_ts=210, corpus_files=2),
                 )
 
             with ReportingDB(db_path) as reporting_db:
@@ -524,6 +549,11 @@ class DatabaseBehaviorTest(unittest.TestCase):
             with _open_test_db(db_path) as db:
                 trial_id = _ensure_trial(db)
                 for idx in (1, 3, 2):
+                    db_snapshot.insert_tick(db, run_id='run', idx=idx, ts=100 + idx)
+                    if idx == 3:
+                        db_snapshot.mark_tick_failed(db, run_id='run', idx=idx, error='coverage failed')
+                    else:
+                        db_snapshot.mark_tick_completed(db, run_id='run', idx=idx)
                     db_snapshot.save_snapshot_data(
                         db,
                         _snapshot_record(
@@ -540,6 +570,7 @@ class DatabaseBehaviorTest(unittest.TestCase):
                 empty = reporting_db.latest_snapshots_by_trial([trial_id + 1])
 
         self.assertEqual(max(rows, key=lambda row: row.idx), latest[trial_id])
+        self.assertEqual([1, 2], [row.idx for row in rows])
         self.assertEqual({}, empty)
 
     def test_telemetry_rows_read_back_a_sample_of_an_exited_container(self) -> None:

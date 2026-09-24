@@ -18,7 +18,13 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from fuzzmeter.db import DB, ensure_schema
-from fuzzmeter.db.snapshot import CoverageSummary, update_agg_snapshot_coverage, upsert_agg_snapshot
+from fuzzmeter.db.snapshot import (
+    CoverageSummary,
+    insert_tick,
+    mark_tick_completed,
+    update_agg_snapshot_coverage,
+    upsert_agg_snapshot,
+)
 from fuzzmeter.reporting.analyzers import coverage_curves, coverage_matrices
 from fuzzmeter.reporting.metrics import (
     clean_floats,
@@ -374,6 +380,8 @@ class CoverageReportingTest(unittest.TestCase):
                     ('run', 'fz', 'bench', 'target', 1, 2, 1, 3, 'done'),
                 )
                 trial_id = int(db.scalar('SELECT trial_id FROM trials'))
+                insert_tick(db, run_id='run', idx=1, ts=3)
+                mark_tick_completed(db, run_id='run', idx=1)
                 db.exec(
                     '''
                     INSERT INTO snapshots(

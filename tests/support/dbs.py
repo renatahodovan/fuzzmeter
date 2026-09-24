@@ -10,6 +10,7 @@ from typing import Any
 from fuzzmeter.db import DB, ensure_schema, open_db
 from fuzzmeter.db import metadata as db_metadata
 from fuzzmeter.db import runs as db_runs
+from fuzzmeter.db import snapshot as db_snapshot
 from fuzzmeter.db.resource_telemetry import TelemetrySample
 from fuzzmeter.db.snapshot import AggSnapshotRow, SnapshotRow
 from fuzzmeter.db.trials import TrialRow
@@ -123,6 +124,8 @@ def run_listing_db(
                 (run_id, 'fz', 'bench', 'target-b', 0, 'running', created_ts),
             )
             trial_id = int(db.scalar('SELECT trial_id FROM trials WHERE fuzz_target=?', ('target-a',)))
+            db_snapshot.insert_tick(db, run_id=run_id, idx=1, ts=100)
+            db_snapshot.mark_tick_completed(db, run_id=run_id, idx=1)
             db.exec(
                 '''
                 INSERT INTO snapshots(snapshot_id, trial_id, idx, ts)
@@ -170,6 +173,9 @@ def reporting_run_db(run_dir: Path) -> None:
             ),
         )
         trial_id = int(db.scalar('SELECT trial_id FROM trials'))
+        for idx, ts in ((1, 130), (2, 170)):
+            db_snapshot.insert_tick(db, run_id='run', idx=idx, ts=ts)
+            db_snapshot.mark_tick_completed(db, run_id='run', idx=idx)
         _insert_snapshot(
             db,
             snapshot_id=10,

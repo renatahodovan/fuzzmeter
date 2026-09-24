@@ -86,7 +86,13 @@ class ReportingDB:
         overview['config_src'] = self.scalar('SELECT config_src FROM runs WHERE run_id=? LIMIT 1', (run_id,))
         overview['trials'] = int(self.scalar('SELECT COUNT(*) FROM trials WHERE run_id=?', (run_id,)) or 0)
         overview['snapshots'] = int(self.scalar(
-            'SELECT COUNT(*) FROM snapshots s JOIN trials t ON t.trial_id=s.trial_id WHERE t.run_id=?',
+            '''
+            SELECT COUNT(*)
+            FROM snapshots s
+            JOIN trials t ON t.trial_id=s.trial_id
+            JOIN snapshot_ticks st ON st.run_id=t.run_id AND st.idx=s.idx
+            WHERE t.run_id=? AND st.status='completed'
+            ''',
             (run_id,),
         ) or 0)
         overview['failed_snapshot_ticks'] = int(self.scalar(
@@ -165,10 +171,12 @@ class ReportingDB:
             SELECT {SNAPSHOT_SELECT}
             FROM snapshots AS s
             JOIN (
-                SELECT trial_id, MAX(idx) AS max_idx
-                FROM snapshots
-                WHERE trial_id IN ({placeholders})
-                GROUP BY trial_id
+                SELECT s0.trial_id, MAX(s0.idx) AS max_idx
+                FROM snapshots AS s0
+                JOIN trials AS t0 ON t0.trial_id=s0.trial_id
+                JOIN snapshot_ticks AS st0 ON st0.run_id=t0.run_id AND st0.idx=s0.idx
+                WHERE s0.trial_id IN ({placeholders}) AND st0.status='completed'
+                GROUP BY s0.trial_id
             ) AS m
               ON m.trial_id = s.trial_id AND m.max_idx = s.idx
             ''',
@@ -188,8 +196,10 @@ class ReportingDB:
                 f'''
                 SELECT {SNAPSHOT_SELECT}
                 FROM snapshots AS s
-                WHERE trial_id IN ({placeholders})
-                ORDER BY trial_id, idx
+                JOIN trials AS t ON t.trial_id=s.trial_id
+                JOIN snapshot_ticks AS st ON st.run_id=t.run_id AND st.idx=s.idx
+                WHERE s.trial_id IN ({placeholders}) AND st.status='completed'
+                ORDER BY s.trial_id, s.idx
                 ''',
                 tuple(int(tid) for tid in trial_ids),
             )
@@ -223,10 +233,11 @@ class ReportingDB:
             SELECT {AGG_SNAPSHOT_SELECT}
             FROM agg_snapshots AS a
             JOIN (
-                SELECT fuzzer, benchmark, fuzz_target, MAX(idx) AS max_idx
-                FROM agg_snapshots
-                WHERE run_id=? AND idx>?
-                GROUP BY fuzzer, benchmark, fuzz_target
+                SELECT a0.fuzzer, a0.benchmark, a0.fuzz_target, MAX(a0.idx) AS max_idx
+                FROM agg_snapshots AS a0
+                JOIN snapshot_ticks AS st0 ON st0.run_id=a0.run_id AND st0.idx=a0.idx
+                WHERE a0.run_id=? AND a0.idx>? AND st0.status='completed'
+                GROUP BY a0.fuzzer, a0.benchmark, a0.fuzz_target
             ) AS latest
               ON latest.fuzzer = a.fuzzer
              AND latest.benchmark = a.benchmark
