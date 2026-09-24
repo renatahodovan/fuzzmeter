@@ -368,7 +368,7 @@ class CoverageMeasureTest(unittest.TestCase):
                     out_root=root / 'coverage' / 'trial',
                     state_dir=state_dir,
                     work_dir=state_dir / 'work',
-                    profile_inputs=[batch_profile],
+                    profile_inputs=[published_profile, batch_profile],
                 )
 
             current_profile = published_profile.read_bytes()

@@ -249,7 +249,11 @@ def merge_trial_coverage_outputs(
         out_root=out_root,
         state_dir=state_dir,
         work_dir=snapshot.snapshot_dir / '.artifacts' / 'coverage' / 'merge-work',
-        profile_inputs=[batch.profdata_path for batch in batches],
+        # Trial batches only measure new corpus, so carry the cumulative profile forward.
+        profile_inputs=[
+            state_dir / 'merged.profdata',
+            *(batch.profdata_path for batch in batches),
+        ],
         render_html=False,
         write_coverage_sets=write_export,
         container_name=(

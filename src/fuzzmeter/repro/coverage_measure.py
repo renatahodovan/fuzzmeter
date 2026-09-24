@@ -275,7 +275,7 @@ def _merge_coverage_outputs_once(
     docker = DockerClient(docker_runtime)
     image = case.images.coverage
     profdata_path = state_dir / 'merged.profdata'
-    merge_profiles = _usable_profiles([profdata_path, *profile_inputs])
+    merge_profiles = _usable_profiles(profile_inputs)
 
     src_root = run_dir / 'coverage_src' / case.fuzz_target.benchmark.name / case.fuzz_target.fuzz_target
     tmp_root = out_root.parent / f'.{out_root.name}.tmp'

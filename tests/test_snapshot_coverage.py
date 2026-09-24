@@ -19,8 +19,9 @@ from unittest.mock import Mock, patch
 from fuzzmeter.db import DB, ensure_schema
 from fuzzmeter.db import snapshot as db_snapshot
 from fuzzmeter.fuzzers.models import OutputPaths
+from fuzzmeter.repro.coverage_measure import CoverageBatch
 from fuzzmeter.repro.coverage_state import apply_snapshot_summary
-from fuzzmeter.snapshot.coverage import process_snapshot_coverage
+from fuzzmeter.snapshot.coverage import merge_trial_coverage_outputs, process_snapshot_coverage
 from fuzzmeter.snapshot.trial_snapshot import TrialCoverageSnapshot
 from fuzzmeter.trial.models import TrialInstance, TrialLayout
 from tests.support.trials import make_trial_config
@@ -28,6 +29,42 @@ from tests.support.trials import make_trial_config
 
 class SnapshotCoverageTest(unittest.TestCase):
     '''Verify snapshot coverage scheduling behavior.'''
+
+    def test_trial_merge_includes_previous_cumulative_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            trial = _trial_instance(root)
+            snapshot = TrialCoverageSnapshot(
+                trial=trial,
+                snapshot_id=1,
+                snapshot_dir=root / 'snapshot',
+                tick_idx=1,
+            )
+            batch = CoverageBatch(
+                image='coverage-image',
+                fuzz_target='target',
+                input_mode='file',
+                inputs=[root / 'input'],
+                profdata_path=root / 'batch.profdata',
+                diagnostics_dir=root / 'diagnostics',
+                timeout_s=1.0,
+            )
+
+            with patch('fuzzmeter.snapshot.coverage.merge_coverage_outputs', return_value={}) as merge:
+                merge_trial_coverage_outputs(
+                    docker_runtime=Mock(),
+                    run_dir=root / 'run',
+                    snapshot=snapshot,
+                    batches=[batch],
+                    write_export=False,
+                )
+
+            state_dir = trial.layout.snapshots_dir / '.state' / 'coverage'
+
+        self.assertEqual(
+            [state_dir / 'merged.profdata', batch.profdata_path],
+            merge.call_args.kwargs['profile_inputs'],
+        )
 
     def test_empty_corpus_snapshots_do_not_execute_coverage_batches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
