@@ -104,12 +104,18 @@ class SnapshotCollectorTest(unittest.TestCase):
 
             snap_a = root / 'snap_a'
             empty_dir = root / 'empty' / 'corpus'
+            missing = DetectedFile(
+                rel_path='missing',
+                abs_src=source_dir / 'missing',
+                mtime_ns=0,
+            )
             barrier = threading.Barrier(2)
 
             def wait_for_other_input_set(_spec) -> None:
                 barrier.wait(timeout=1)
 
-            with patch('fuzzmeter.repro.ingest.HookRunner') as hook_runner:
+            with self.assertLogs('fuzzmeter.repro.ingest', level='WARNING') as logs, \
+                 patch('fuzzmeter.repro.ingest.HookRunner') as hook_runner:
                 hook_runner.return_value.run.side_effect = wait_for_other_input_set
                 copied = prepare_input_sets(
                     docker_runtime=None,
@@ -117,7 +123,7 @@ class SnapshotCollectorTest(unittest.TestCase):
                         InputSet(
                             snapshot_dir=snap_a,
                             input_dir=snap_a / 'corpus',
-                            input_files=tuple(detected[:3]),
+                            input_files=(*detected[:3], missing),
                             snapshot_preprocess=Path('/preprocess.py'),
                             case=make_campaign_case(fuzzer='fuzzer-a'),
                         ),
@@ -153,6 +159,10 @@ class SnapshotCollectorTest(unittest.TestCase):
             self.assertEqual(
                 ['1', '3'],
                 sorted(call.args[0].env['FM_JOBS'] for call in hook_runner.return_value.run.call_args_list),
+            )
+            self.assertIn(
+                f'Could not copy 1 of 4 snapshot input files to {snap_a / "corpus"}.',
+                logs.output[0],
             )
 
     def test_prepare_input_sets_separates_hook_artifacts(self) -> None:

@@ -189,6 +189,14 @@ def _copy_snapshot_inputs(*, dst_dir: Path, input_files: list[DetectedFile]) -> 
         except OSError:
             continue
 
+    failed = len(input_files) - len(copied)
+    if failed:
+        LOG.warning(
+            'Could not copy %d of %d snapshot input files to %s.',
+            failed,
+            len(input_files),
+            dst_dir,
+        )
     return copied
 
 

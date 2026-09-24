@@ -83,7 +83,7 @@ def collect_snapshots(
     ready = []
     # Input sets are flattened as corpus/crashes pairs for each collected trial.
     for (
-        (trial, snapshot_dir, previous_snapshot, input_files),
+        (trial, snapshot_dir, previous_snapshot, _),
         corpus_files,
         crash_files,
     ) in zip(collected, prepared_sets[::2], prepared_sets[1::2], strict=True):
@@ -91,12 +91,6 @@ def collect_snapshots(
             'corpus': corpus_files,
             'crashes': crash_files,
         }
-        for kind in ('corpus', 'crashes'):
-            if len(input_files[kind]) != len(processed_by_kind[kind]):
-                LOG.warning(
-                    '\t\tCould not process %s collected files.',
-                    len(input_files[kind]) - len(processed_by_kind[kind]),
-                )
         ready.append((trial, snapshot_dir, previous_snapshot, processed_by_kind))
 
     # Persist snapshots only after every trial's inputs have been prepared.
