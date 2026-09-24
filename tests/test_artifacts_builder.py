@@ -18,11 +18,25 @@ from unittest.mock import patch
 from fuzzmeter.artifacts.builder import _build_images
 from fuzzmeter.config import Benchmark, CampaignConfig, CampaignSettings
 from fuzzmeter.config.models import CampaignCase, Fuzzer, FuzzTarget
+from fuzzmeter.paths import resolve_run_fuzzer_dirs
 from tests.support.bake import target_block
 
 
 class ArtifactBuilderTest(unittest.TestCase):
     '''Verify campaign image build orchestration.'''
+
+    def test_resolve_run_fuzzer_dirs_finds_copied_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            run_dir = Path(tmp_dir)
+            contexts_root = run_dir / 'fuzzer_resources' / 'run'
+            first = contexts_root / 'derived' / 'base'
+            second = contexts_root / 'derived' / 'derived'
+            first.mkdir(parents=True)
+            second.mkdir()
+
+            resolved = resolve_run_fuzzer_dirs(run_dir)
+
+        self.assertEqual({'base': first, 'derived': second}, resolved)
 
     def test_buildx_bake_uses_configured_roots_and_absolute_contexts(self) -> None:
         '''Verify that generated bake contexts do not rely on a repository cwd.'''

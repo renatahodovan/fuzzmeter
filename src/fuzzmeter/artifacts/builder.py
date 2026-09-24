@@ -22,7 +22,12 @@ from ..composite.collect import collect_records, save_records
 from ..config import CampaignConfig
 from ..docker import DockerRuntime, generate_run_bake_hcl
 from ..docker.bake import INSTRUMENTATION_PROFILES
-from ..paths import docker_resources, entrypoint_resources, instrumentation_resources
+from ..paths import (
+    docker_resources,
+    entrypoint_resources,
+    instrumentation_resources,
+    run_fuzzer_resources_root,
+)
 from .extract import extract_fuzz_binaries
 from .seeds import measure_seed_baselines, prepare_seed_corpora
 
@@ -31,7 +36,7 @@ logger = logging.getLogger('fuzzmeter')
 
 def _build_images(*, campaign_config: CampaignConfig, run_dir: Path) -> None:
     '''Build all docker images needed by a run.'''
-    resources_root = run_dir / 'fuzzer_resources'
+    resources_root = run_fuzzer_resources_root(run_dir)
     build_root = resources_root / 'build'
     run_root = resources_root / 'run'
     instrumentation_root = resources_root / 'instrumentation'

@@ -7,7 +7,11 @@
 
 """Expose fuzzer adapter loading and hook interfaces."""
 
-from .hooks import HookRunner, HookSpec
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
+
 from .loader import FuzzerLoader, FuzzerModule
 from .models import OutputPaths
 
@@ -18,3 +22,11 @@ __all__ = [
     'HookSpec',
     'OutputPaths',
 ]
+
+
+def __getattr__(name: str) -> Any:
+    '''Load hook interfaces only for callers that use hook execution.'''
+
+    if name in {'HookRunner', 'HookSpec'}:
+        return getattr(import_module('.hooks', __name__), name)
+    raise AttributeError(name)

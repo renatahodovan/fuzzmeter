@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from ..db.snapshot import AggSnapshotRow, CoverageSummary
+from ..paths import resolve_run_fuzzer_dirs
 from .analyzers import bug_analysis, coverage_curves, target_matrices, trial_analysis
 from .analyzers.custom_metrics import attach_custom_metric_sections, has_custom_metric_sections
 from .analyzers.trial_analysis import TrialReport
@@ -61,14 +62,13 @@ class _PayloadBuilder:
         *,
         run_id: str | None = None,
         file_url_prefix: str | None = None,
-        fuzzer_dirs: dict[str, Path] | None = None,
     ):
         self.run_dir = run_dir
         self.file_url_prefix = file_url_prefix
         self._data = RunData(run_dir / 'fuzzmeter.db').load(run_dir_name=run_dir.name, run_id=run_id)
         self.run_id = self._data.run_id
         self._coverage_data = CoverageData(run_dir)
-        self._fuzzer_dirs = fuzzer_dirs
+        self._fuzzer_dirs = resolve_run_fuzzer_dirs(run_dir)
 
     def build(self) -> dict[str, Any]:
         '''Build the complete report payload.'''
@@ -92,7 +92,7 @@ class _PayloadBuilder:
             agg_snapshots=self._data.latest_agg_snapshots,
         )
 
-        if self._fuzzer_dirs is not None and not has_custom_metric_sections(targets):
+        if self._fuzzer_dirs and not has_custom_metric_sections(targets):
             LOG.info('Collect extra sections')
             attach_extra_sections(
                 fuzzer_dirs=self._fuzzer_dirs,
@@ -367,7 +367,6 @@ def build_payload(
     *,
     run_id: str | None = None,
     file_url_prefix: str | None = None,
-    fuzzer_dirs: dict[str, Path] | None = None,
 ) -> dict[str, Any]:
     '''Build the JSON payload consumed by the web report.
 
@@ -378,5 +377,4 @@ def build_payload(
         run_dir,
         run_id=run_id,
         file_url_prefix=file_url_prefix,
-        fuzzer_dirs=fuzzer_dirs,
     ).build()

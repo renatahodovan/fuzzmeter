@@ -131,7 +131,7 @@ def _execute_run(parser, args):
         return 130
 
     logger.info('Experiment completed: %s', run_dir)
-    report_dir = write_report(run_dir, out_dir=run_dir / 'report', fuzzer_dirs=campaign_config.fuzzer_dirs)
+    report_dir = write_report(run_dir, out_dir=run_dir / 'report')
     logger.info('Static report generated to: %s', report_dir)
     return 0
 
@@ -145,12 +145,7 @@ def _execute_report(args):
         logger.error('Invalid run directory: %s', exc)
         return 1
     out_dir = args.out_dir.expanduser().resolve() if args.out_dir else run_dir / 'report'
-    try:
-        fuzzer_dirs = _resolve_resource_dirs(args.fuzzers, checkout_subdir='fuzzers', label='Fuzzer')
-    except (FileNotFoundError, NotADirectoryError, PermissionError, OSError, ValueError) as exc:
-        logger.error('Invalid fuzzer directories: %s', exc)
-        return 1
-    report_dir = write_report(run_dir, out_dir=out_dir, fuzzer_dirs=fuzzer_dirs or None)
+    report_dir = write_report(run_dir, out_dir=out_dir)
     logger.info('Static report generated to: %s', report_dir)
     return 0
 
@@ -205,9 +200,6 @@ def main(argv: list[str] | None = None) -> int:
                            help='Run directory containing fuzzmeter.db')
     ap_report.add_argument('--out', dest='out_dir', type=Path, default=None,
                            help='Report output directory')
-    ap_report.add_argument('--fuzzers', type=Path, action='append', nargs='+',
-                           metavar='FUZZER_DIR', help='Fuzzer definition directories for reporting plugins')
-
     ap_srv = sub.add_parser('serve', help='Run the dynamic DB-backed web UI')
     ap_srv.add_argument('--root', type=Path, action='append', nargs='+', required=True,
                         metavar='RUN_DIR', help='Run directories containing fuzzmeter.db')

@@ -9,8 +9,20 @@
 
 from __future__ import annotations
 
-from .composite import build_composite_payload
-from .payload import build_payload
-from .static_report import write_report
+from importlib import import_module
+from typing import Any
 
 __all__ = ['build_composite_payload', 'build_payload', 'write_report']
+
+
+def __getattr__(name: str) -> Any:
+    '''Load public reporting entry points without importing unrelated pipelines.'''
+
+    modules = {
+        'build_composite_payload': '.composite',
+        'build_payload': '.payload',
+        'write_report': '.static_report',
+    }
+    if name in modules:
+        return getattr(import_module(modules[name], __name__), name)
+    raise AttributeError(name)

@@ -178,9 +178,6 @@ The subcommands accept a few more options:
    * - ``report --out <dir>``
      - Report output directory. Defaults to ``report/`` inside the run
        directory.
-   * - ``report --fuzzers <dir>...``
-     - Fuzzer definition directories, needed for fuzzer-defined report
-       sections.
    * - ``serve --host <host>``, ``serve --port <port>``
      - Web UI interface and port. The default host is ``0.0.0.0``, which
        exposes the UI on every interface; pass ``127.0.0.1`` to keep it local.
@@ -447,6 +444,10 @@ Important paths are:
      - Per-trial coverage exports and HTML coverage reports.
    * - ``coverage_seed/``
      - Optional seed-corpus baseline coverage.
+   * - ``fuzzer_resources/run/``
+     - Persistent copies of the fuzzer adapters and reporting plugins used by
+       the run. This directory is part of the exported run and must not be
+       cleaned; static, dynamic, and composite reports load plugins from it.
    * - ``report/``
      - Static HTML report export.
 

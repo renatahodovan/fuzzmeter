@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ...db.snapshot import AggSnapshotRow
-from ...repro.coverage_sets import read_covered_keys
+from ...resources.entrypoints.coverage_sets import read_covered_keys
 from ..analyzers.trial_analysis import TrialReport
 
 

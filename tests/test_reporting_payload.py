@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -115,6 +116,22 @@ vm.runInNewContext(bundle, sandbox, { filename: process.argv[1] });
 class ReportingPayloadTest(unittest.TestCase):
     """Verify full report payload stability for a deterministic run fixture."""
 
+    def test_payload_import_does_not_load_execution_pipelines(self) -> None:
+        subprocess.run(
+            [
+                sys.executable,
+                '-c',
+                'import sys\n'
+                'import fuzzmeter.reporting.payload\n'
+                'blocked = ("fuzzmeter.docker", "fuzzmeter.artifacts.seeds", '
+                '"fuzzmeter.repro", "fuzzmeter.composite")\n'
+                'loaded = [name for name in sys.modules '
+                'if any(name == prefix or name.startswith(prefix + ".") for prefix in blocked)]\n'
+                'assert not loaded, loaded\n',
+            ],
+            check=True,
+        )
+
     def test_payload_carries_only_the_sections_the_report_reads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
@@ -156,12 +173,12 @@ class ReportingPayloadTest(unittest.TestCase):
             with DB.open(run_dir / 'fuzzmeter.db') as db:
                 db.exec("UPDATE snapshots SET stats_json = '{}' ")
                 db.commit()
-            fuzzer_dir = Path(tmp) / 'fuzzers' / 'fz'
+            fuzzer_dir = run_dir / 'fuzzer_resources' / 'run' / 'fz' / 'fz'
             reporting_path = fuzzer_dir / 'run' / 'reporting.py'
             reporting_path.parent.mkdir(parents=True)
             reporting_path.write_text('raise RuntimeError("broken plugin")\n', encoding='utf-8')
 
-            payload = build_payload(run_dir, run_id='run', fuzzer_dirs={'fz': fuzzer_dir})
+            payload = build_payload(run_dir, run_id='run')
 
         fuzzer = payload['targets'][0]['fuzzers'][0]
         self.assertEqual([], fuzzer['extra_sections'])
