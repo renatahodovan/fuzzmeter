@@ -218,7 +218,9 @@ The most important campaign fields are:
    * - ``run.snapshot.jobs``
      - Part of the job budget reserved for snapshot measurement workers,
        ``1`` by default. It must stay below ``run.parallel_jobs``; ``0`` lets
-       the run split the budget itself.
+       the run split the budget itself. Coverage merges load the whole coverage
+       mapping, so they never run wider than this budget. Replay runs measure
+       with the whole ``run.parallel_jobs`` but merge within this budget too.
    * - ``run.snapshot.export_every_ticks``
      - Render the HTML coverage export only on every Nth snapshot tick. ``0``
        skips it except where a report needs it.
