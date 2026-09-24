@@ -19,7 +19,6 @@ from typing import Any
 from ..db.snapshot import AggSnapshotRow, CoverageSummary
 from ..paths import resolve_run_fuzzer_dirs
 from .analyzers import bug_analysis, coverage_curves, target_matrices, trial_analysis
-from .analyzers.custom_metrics import attach_custom_metric_sections, has_custom_metric_sections
 from .analyzers.trial_analysis import TrialReport
 from .data.coverage_data import CoverageData
 from .data.run_data import RunData
@@ -83,8 +82,6 @@ class _PayloadBuilder:
         bugs = self.collect_bugs()
         LOG.info('Collect target view')
         targets = self.collect_target_view(trials, timeseries, bugs)
-        LOG.info('Collect persisted custom metrics')
-        attach_custom_metric_sections(targets, timeseries)
         LOG.info('Collect uniqueness matrices')
         targets = self.create_matrices(targets, trials)
         measurement_provenance = attach_measurement_provenance(
@@ -92,7 +89,7 @@ class _PayloadBuilder:
             agg_snapshots=self._data.latest_agg_snapshots,
         )
 
-        if self._fuzzer_dirs and not has_custom_metric_sections(targets):
+        if self._fuzzer_dirs:
             LOG.info('Collect extra sections')
             attach_extra_sections(
                 fuzzer_dirs=self._fuzzer_dirs,

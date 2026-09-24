@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+
 from pathlib import Path
 from typing import Any
 
@@ -144,6 +146,12 @@ def run_listing_db(
 
 def reporting_run_db(run_dir: Path) -> None:
     '''Create the deterministic database used by report payload tests.'''
+    reporting_path = run_dir / 'fuzzer_resources' / 'run' / 'fz' / 'fz' / 'run' / 'reporting.py'
+    reporting_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        Path(__file__).resolve().parents[2] / 'fuzzers' / 'afl' / 'run' / 'reporting.py',
+        reporting_path,
+    )
     db = DB.open(run_dir / 'fuzzmeter.db')
     try:
         ensure_schema(db)

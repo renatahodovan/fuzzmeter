@@ -15,7 +15,7 @@ import sys
 
 from pathlib import Path
 from types import ModuleType
-from typing import Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from ...fuzzers.loader import install_fuzzer_namespace
 from ..plugin_api import ExtraSection, ReportingContext, ReportingPlugin
@@ -35,14 +35,24 @@ class NullReportingPlugin:
 class FunctionReportingPlugin:
     '''Adapt a build_extra_sections function to the plugin protocol.'''
 
-    def __init__(self, fn: Callable[[ReportingContext], list[ExtraSection]]) -> None:
+    def __init__(
+        self,
+        fn: Callable[[ReportingContext], list[ExtraSection]],
+        debug_fn: Callable[[ReportingContext], dict[str, Any]] | None = None,
+    ) -> None:
         self._fn = fn
+        self._debug_fn = debug_fn
 
     def build_extra_sections(self, ctx: ReportingContext) -> list[ExtraSection]:
         '''Return extra sections built by the wrapped function.'''
 
         sections = self._fn(ctx)
         return sections if isinstance(sections, list) else []
+
+    def build_debug_info(self, ctx: ReportingContext) -> dict[str, Any]:
+        '''Return optional diagnostics supplied beside the function entry point.'''
+
+        return self._debug_fn(ctx) if self._debug_fn is not None else {}
 
 
 class ReportingPluginLoader:
@@ -75,7 +85,8 @@ class ReportingPluginLoader:
                     return plugin, fuzzer_name
             fn = getattr(module, 'build_extra_sections', None)
             if callable(fn):
-                return FunctionReportingPlugin(fn), fuzzer_name
+                debug_fn = getattr(module, 'build_debug_info', None)
+                return FunctionReportingPlugin(fn, debug_fn if callable(debug_fn) else None), fuzzer_name
         return NullReportingPlugin(), None
 
     def _load_module(self, *, path: Path, module_name: str) -> ModuleType:

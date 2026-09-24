@@ -5,7 +5,7 @@
 # This file may not be copied, modified, or distributed except
 # according to those terms.
 
-'''Build custom report sections from metrics persisted in snapshot stats.'''
+'''Render report sections for metrics owned by the AFL adapter.'''
 
 from __future__ import annotations
 
@@ -13,118 +13,23 @@ from bisect import bisect_left
 from collections import defaultdict
 from typing import Any
 
-from ..metrics import safe_int
-from ..plugin_api import ChartSeries, ChartSpec, DataPoint, ExtraSection
-from ..web_payload import serialize_extra_sections
+from fuzzmeter.reporting.metrics import safe_int
+from fuzzmeter.reporting.plugin_api import ChartSeries, ChartSpec, DataPoint, ExtraSection, ReportingContext
 
 CUSTOM_METRICS_SCHEMA_VERSION = 1
 MUTATOR_COLORS = [
-    '#1F77B4',
-    '#D62728',
-    '#2CA02C',
-    '#FF7F0E',
-    '#9467BD',
-    '#8C564B',
-    '#E377C2',
-    '#7F7F7F',
-    '#BCBD22',
-    '#17BECF',
-    '#393B79',
-    '#637939',
-    '#8C6D31',
-    '#843C39',
-    '#7B4173',
+    '#1F77B4', '#D62728', '#2CA02C', '#FF7F0E', '#9467BD',
+    '#8C564B', '#E377C2', '#7F7F7F', '#BCBD22', '#17BECF',
+    '#393B79', '#637939', '#8C6D31', '#843C39', '#7B4173',
 ]
 
 
-def attach_custom_metric_sections(targets: list[dict[str, Any]], timeseries: dict[str, Any]) -> None:
-    '''Attach DB-backed custom metric sections to target fuzzer entries.'''
+def build_extra_sections(ctx: ReportingContext) -> list[ExtraSection]:
+    '''Build the AFL mutator usefulness chart from persisted snapshot metrics.'''
 
-    points_by_trial = {
-        int(entry['trial_id']): list(entry.get('points') or [])
-        for entry in (timeseries.get('per_trial') or {}).values()
-        if entry.get('trial_id') is not None
-    }
-    for target in targets:
-        for fuzzer_entry in target.get('fuzzers') or []:
-            sections, debug = _sections_for_fuzzer(fuzzer_entry, points_by_trial)
-            if sections:
-                fuzzer_entry['extra_sections'] = [
-                    *(fuzzer_entry.get('extra_sections') or []),
-                    *serialize_extra_sections(sections, default_owner_fuzzer=str(fuzzer_entry.get('fuzzer') or '')),
-                ]
-            if debug:
-                fuzzer_entry['extra_section_debug'] = [
-                    *(fuzzer_entry.get('extra_section_debug') or []),
-                    debug,
-                ]
-
-
-def has_custom_metric_sections(targets: list[dict[str, Any]]) -> bool:
-    '''Return whether any target or fuzzer already has custom sections.'''
-
-    return any(
-        bool(target.get('extra_sections'))
-        or any(bool(fuzzer.get('extra_sections')) for fuzzer in target.get('fuzzers') or [])
-        for target in targets
-    )
-
-
-def _sections_for_fuzzer(
-    fuzzer_entry: dict[str, Any],
-    points_by_trial: dict[int, list[dict[str, Any]]],
-) -> tuple[list[ExtraSection], dict[str, Any] | None]:
-    trial_histories = []
-    invalid_payloads = 0
-    metric_points = 0
-    raw_trial_histories = 0
-    for trial in fuzzer_entry.get('trials') or []:
-        trial_history = []
-        for point in points_by_trial.get(int(trial.get('trial_id') or 0), []):
-            for metric in _custom_metrics_from_point(point):
-                if metric is None:
-                    invalid_payloads += 1
-                    continue
-                if metric.get('id') != 'afl-mutator-counts':
-                    continue
-                counts = _counter_map(metric)
-                if not counts:
-                    continue
-                elapsed_seconds = safe_int(point.get('elapsed_s')) or safe_int(point.get('idx')) or 0
-                trial_history.append((int(elapsed_seconds), counts))
-                metric_points += 1
-        if trial_history:
-            raw_trial_histories += 1
-            trial_histories.append(trial_history)
-
-    if not trial_histories:
-        if invalid_payloads:
-            return [], {
-                'fuzzer': fuzzer_entry.get('fuzzer'),
-                'status': 'invalid_custom_metrics',
-                'invalid_payloads': invalid_payloads,
-                'fuzzer_sections': 0,
-            }
-        return [], None
-
-    series, debug = _mutator_series_from_histories(trial_histories)
-    debug.update(
-        {
-            'fuzzer': fuzzer_entry.get('fuzzer'),
-            'status': 'ok',
-            'data_source': 'snapshot_stats_json',
-            'metric_points': metric_points,
-            'invalid_payloads': invalid_payloads,
-            'raw_trial_histories': raw_trial_histories,
-            'trial_histories': len(trial_histories),
-            'fuzzer_sections': 1 if series else 0,
-            'target_sections': 0,
-        }
-    )
+    series, _ = _mutator_report(ctx)
     if not series:
-        debug['reason'] = 'no_mutator_matches'
-        return [], debug
-
+        return []
     return [
         ExtraSection(
             id='afl-mutators',
@@ -144,7 +49,35 @@ def _sections_for_fuzzer(
                 )
             ],
         )
-    ], debug
+    ]
+
+
+def build_debug_info(ctx: ReportingContext) -> dict[str, Any]:
+    '''Describe AFL mutator chart bucketing and rendered series counts.'''
+
+    _, debug = _mutator_report(ctx)
+    return debug
+
+
+def _mutator_report(ctx: ReportingContext) -> tuple[list[ChartSeries], dict[str, int | None]]:
+    trial_histories = []
+    for trial in ctx.trials:
+        trial_history = []
+        for point in ctx.timeseries(trial.trial_id).get('points') or []:
+            for metric in _custom_metrics_from_point(point):
+                if metric is None or metric.get('id') != 'afl-mutator-counts':
+                    continue
+                counts = _counter_map(metric)
+                if not counts:
+                    continue
+                elapsed_seconds = safe_int(point.get('elapsed_s')) or safe_int(point.get('idx')) or 0
+                trial_history.append((int(elapsed_seconds), counts))
+        if trial_history:
+            trial_histories.append(trial_history)
+
+    if not trial_histories:
+        return [], {'bucket_size_seconds': None, 'time_points': 0, 'series_count': 0}
+    return _mutator_series_from_histories(trial_histories)
 
 
 def _custom_metrics_from_point(point: dict[str, Any]) -> list[dict[str, Any] | None]:
@@ -209,7 +142,7 @@ def _aggregate_trial_history(
 
 def _mutator_series_from_histories(
     trial_histories: list[list[tuple[int, dict[str, int]]]],
-) -> tuple[list[ChartSeries], dict[str, Any]]:
+) -> tuple[list[ChartSeries], dict[str, int]]:
     counts_by_time: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     max_elapsed_seconds = max(elapsed for history in trial_histories for elapsed, _ in history)
     bucket_size = _bucket_size(max_elapsed_seconds)
@@ -223,11 +156,10 @@ def _mutator_series_from_histories(
             mutator_totals[mutator] += int(count)
 
     mutators = [name for name, _ in sorted(mutator_totals.items(), key=lambda item: (-item[1], item[0]))]
-    sorted_times = sorted(counts_by_time)
     series = []
     for index, mutator in enumerate(mutators):
         points = []
-        for elapsed_seconds in sorted_times:
+        for elapsed_seconds in sorted(counts_by_time):
             time_counts = counts_by_time[elapsed_seconds]
             total = sum(time_counts.values())
             if total <= 0:
@@ -250,9 +182,6 @@ def _mutator_series_from_histories(
             )
     return series, {
         'bucket_size_seconds': bucket_size,
-        'time_points': len(sorted_times),
-        'mutator_count': len(mutators),
+        'time_points': len(counts_by_time),
         'series_count': len(series),
-        'top_mutators': mutators[:10],
-        'aggregation': 'per_bucket_snapshot_counts',
     }

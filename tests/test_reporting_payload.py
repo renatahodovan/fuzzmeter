@@ -24,9 +24,10 @@ from fuzzmeter.db import bug as db_bug
 from fuzzmeter.db.report_views import ReportingDB
 from fuzzmeter.reporting import build_payload, write_report
 from fuzzmeter.reporting.provenance import attach_measurement_provenance
+from fuzzmeter.web.services.report_service import load_report_payload
 from tests.support.dbs import agg_snapshot_row, reporting_run_db
 
-PAYLOAD_HASH = 'b877b6831081cef80f10880ddd1552b8c1edeaf652191a6d787ed806e3ede685'
+PAYLOAD_HASH = 'a7d6397408df3d4c3598b2335b07d9007414af7da9f9018257e20b0537e38a64'
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _BUNDLE_SMOKE_SCRIPT = r'''
 import fs from 'node:fs';
@@ -153,6 +154,13 @@ class ReportingPayloadTest(unittest.TestCase):
         self.assertEqual(1, len(fuzzer['extra_sections']))
         chart = fuzzer['extra_sections'][0]['charts'][0]
         self.assertEqual(
+            {'bucket_size_seconds': 60, 'time_points': 1, 'series_count': 2},
+            {
+                key: fuzzer['extra_section_debug'][0][key]
+                for key in ('bucket_size_seconds', 'time_points', 'series_count')
+            },
+        )
+        self.assertEqual(
             {
                 'havoc': [(60, 50.0)],
                 'splice': [(60, 50.0)],
@@ -175,7 +183,7 @@ class ReportingPayloadTest(unittest.TestCase):
                 db.commit()
             fuzzer_dir = run_dir / 'fuzzer_resources' / 'run' / 'fz' / 'fz'
             reporting_path = fuzzer_dir / 'run' / 'reporting.py'
-            reporting_path.parent.mkdir(parents=True)
+            reporting_path.parent.mkdir(parents=True, exist_ok=True)
             reporting_path.write_text('raise RuntimeError("broken plugin")\n', encoding='utf-8')
 
             payload = build_payload(run_dir, run_id='run')
@@ -366,6 +374,21 @@ class ReportingPayloadTest(unittest.TestCase):
                 'id="comparisonModeAll"',
                 (report_dir / 'report.html').read_text(encoding='utf-8'),
             )
+
+    def test_static_and_live_reports_use_the_same_fuzzer_plugin_sections(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / 'run'
+            run_dir.mkdir()
+            reporting_run_db(run_dir)
+
+            live_payload = load_report_payload([run_dir], 'run')
+            report_dir = write_report(run_dir, out_dir=run_dir / 'report')
+            static_payload = json.loads((report_dir / 'data.json').read_text(encoding='utf-8'))
+
+        live_sections = live_payload['targets'][0]['fuzzers'][0]['extra_sections']
+        static_sections = static_payload['targets'][0]['fuzzers'][0]['extra_sections']
+        self.assertEqual(live_sections, static_sections)
+        self.assertEqual('mutator-usefulness-ratio', live_sections[0]['charts'][0]['id'])
 
     def test_write_report_static_bundle_parses_and_smoke_loads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
