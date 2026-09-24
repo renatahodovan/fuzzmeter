@@ -355,6 +355,10 @@ def _merge_coverage_outputs_once(
     state_candidate = state_dir / '.merged.profdata.candidate'
     shutil.copy2(candidate_profdata, state_candidate)
     candidate_profdata.unlink()
+    previous_html = out_root / 'html'
+    if not render_html and previous_html.is_dir():
+        # Keep serving the last rendered report until the next one replaces it.
+        previous_html.rename(tmp_root / 'html')
     _replace_out_root(out_root=out_root, tmp_root=tmp_root, protected_dir=state_dir)
     state_candidate.replace(profdata_path)
     return summary

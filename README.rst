@@ -222,8 +222,10 @@ The most important campaign fields are:
        mapping, so they never run wider than this budget. Replay runs measure
        with the whole ``run.parallel_jobs`` but merge within this budget too.
    * - ``run.snapshot.export_every_ticks``
-     - Render the HTML coverage export only on every Nth snapshot tick. ``0``
-       skips it except where a report needs it.
+     - Render the campaign HTML coverage report and write the coverage sets
+       behind relative and unique coverage only on every Nth snapshot tick.
+       ``0`` does it only on the final tick. In between, the previous ones
+       are kept.
    * - ``run.memory`` and ``run.memory_swap``
      - Optional Docker memory limits.
 

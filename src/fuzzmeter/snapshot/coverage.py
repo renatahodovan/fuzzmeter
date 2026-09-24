@@ -185,6 +185,7 @@ def process_snapshot_coverage(
             state_dir=state_dir,
             work_dir=state_dir / '_work',
             profile_inputs=profile_inputs,
+            render_html=write_export,
             write_coverage_sets=write_export,
             container_name=f'fm-{run_id}-cov-{tick_idx}-{fuzzer}-{benchmark}-{fuzz_target}-campaign',
             measurement_context=coverage_measurement_context(
