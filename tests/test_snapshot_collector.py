@@ -307,11 +307,26 @@ class SnapshotCollectorTest(unittest.TestCase):
                 'kind': 'counter_map',
                 'counts': {'havoc': 2},
             }
+            detected_corpus = [
+                DetectedFile(rel_path=f'corpus-{index}', abs_src=root / f'corpus-{index}', mtime_ns=index)
+                for index in range(2)
+            ]
+            detected_crashes = [
+                DetectedFile(rel_path='crash', abs_src=root / 'crash', mtime_ns=1)
+            ]
+
+            def detect_files(*, kind, **_kwargs):
+                return detected_corpus if kind == 'corpus' else detected_crashes
+
             with patch('fuzzmeter.snapshot.collector._read_stats', return_value={'execs_done': 10}), \
                  patch('fuzzmeter.snapshot.collector._read_custom_metrics', return_value=custom_metric), \
                  patch('fuzzmeter.snapshot.collector.CUSTOM_METRICS_WARN_BYTES', 1), \
                  patch('fuzzmeter.snapshot.collector.LOG.warning') as warning, \
-                 patch('fuzzmeter.snapshot.collector.repro_ingest.detect_new_files', return_value=[]):
+                 patch('fuzzmeter.snapshot.collector.repro_ingest.detect_new_files', side_effect=detect_files), \
+                 patch(
+                     'fuzzmeter.snapshot.collector.repro_ingest.prepare_input_sets',
+                     return_value=[[root / 'prepared-corpus'], []],
+                 ):
                 collect_snapshots(
                     db_path=db_path,
                     run_id='run-1',
@@ -325,13 +340,15 @@ class SnapshotCollectorTest(unittest.TestCase):
 
             db = DB.open(db_path)
             try:
-                stats_json = db.scalar('SELECT stats_json FROM snapshots WHERE trial_id=? AND idx=?', (1, 1))
+                snapshot = db.q('SELECT * FROM snapshots WHERE trial_id=? AND idx=?', (1, 1))[0]
             finally:
                 db.close()
 
-            stats = json.loads(str(stats_json))
+            stats = json.loads(str(snapshot['stats_json']))
             self.assertNotIn('custom_metrics_schema_version', stats)
             self.assertEqual(custom_metric, stats['custom_metrics'])
+            self.assertEqual(2, snapshot['corpus_files'])
+            self.assertEqual(1, snapshot['crashes'])
             warning.assert_called_once()
 
     def test_collect_trial_snapshot_uses_tick_time_for_replay_file_cutoff(self) -> None:

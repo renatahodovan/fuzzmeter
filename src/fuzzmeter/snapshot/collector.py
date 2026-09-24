@@ -83,7 +83,7 @@ def collect_snapshots(
     ready = []
     # Input sets are flattened as corpus/crashes pairs for each collected trial.
     for (
-        (trial, snapshot_dir, previous_snapshot, _),
+        (trial, snapshot_dir, previous_snapshot, detected_by_kind),
         corpus_files,
         crash_files,
     ) in zip(collected, prepared_sets[::2], prepared_sets[1::2], strict=True):
@@ -91,7 +91,7 @@ def collect_snapshots(
             'corpus': corpus_files,
             'crashes': crash_files,
         }
-        ready.append((trial, snapshot_dir, previous_snapshot, processed_by_kind))
+        ready.append((trial, snapshot_dir, previous_snapshot, detected_by_kind, processed_by_kind))
 
     # Persist snapshots only after every trial's inputs have been prepared.
     with cf.ThreadPoolExecutor(max_workers=trial_jobs) as executor:
@@ -105,9 +105,10 @@ def collect_snapshots(
                 trial=trial,
                 snapshot_dir=snapshot_dir,
                 previous_snapshot=previous_snapshot,
+                detected_by_kind=detected_by_kind,
                 processed_by_kind=processed_by_kind,
             )
-            for trial, snapshot_dir, previous_snapshot, processed_by_kind in ready
+            for trial, snapshot_dir, previous_snapshot, detected_by_kind, processed_by_kind in ready
         ]
         finalized = [future.result() for future in finalize_futures]
 
@@ -169,11 +170,12 @@ def _save_trial_snapshot(
     trial: TrialInstance,
     snapshot_dir: Path,
     previous_snapshot: dict[str, Any] | None,
+    detected_by_kind: dict[str, list[repro_ingest.DetectedFile]],
     processed_by_kind: dict[str, list[Path]],
 ) -> tuple[TrialCoverageSnapshot | None, TrialCrashSnapshot | None]:
     '''Store one collected trial snapshot and return its pending work.'''
     prev_corpus_count = 0 if previous_snapshot is None else _safe_int(previous_snapshot.get('corpus_files')) or 0
-    new_corpus_count = len(processed_by_kind['corpus'])
+    prepared_corpus_count = len(processed_by_kind['corpus'])
     stats = _read_stats(trial, tick_ts=end_ts)
     custom_metrics = _read_custom_metrics(trial, snapshot_dir=snapshot_dir, tick_ts=end_ts)
     if custom_metrics is not None:
@@ -197,10 +199,10 @@ def _save_trial_snapshot(
                 trial_db_id=trial.db_id,
                 tick_idx=tick_idx,
                 end_ts=end_ts,
-                corpus_files=prev_corpus_count + new_corpus_count,
+                corpus_files=prev_corpus_count + len(detected_by_kind['corpus']),
                 execs_done=_safe_int(stats.get('execs_done')),
                 stats=stats,
-                crashes=len(processed_by_kind['crashes']),
+                crashes=len(detected_by_kind['crashes']),
                 hangs=0,
             ),
         )
@@ -214,7 +216,7 @@ def _save_trial_snapshot(
             snapshot_id=snapshot_id,
             snapshot_dir=snapshot_dir,
             tick_idx=tick_idx,
-            new_corpus_count=new_corpus_count,
+            prepared_corpus_count=prepared_corpus_count,
             previous_snapshot=previous_snapshot,
         )
 
@@ -235,10 +237,10 @@ def _build_trial_coverage_snapshot(
     snapshot_id: int,
     snapshot_dir: Path,
     tick_idx: int,
-    new_corpus_count: int,
+    prepared_corpus_count: int,
     previous_snapshot: dict[str, Any] | None,
 ) -> TrialCoverageSnapshot | None:
-    if new_corpus_count > 0:
+    if prepared_corpus_count > 0:
         return TrialCoverageSnapshot(
             trial=trial,
             snapshot_id=snapshot_id,
