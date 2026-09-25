@@ -101,15 +101,23 @@ def get_bug_id(
 
 
 def ensure_bug(db: DB, record: BugRecord) -> int:
-    '''Insert one bug row when missing and return its database id.'''
+    '''Insert one bug row or update its earliest occurrence, then return its id.'''
 
     db.exec(
         '''
-        INSERT OR IGNORE INTO bugs(
+        INSERT INTO bugs(
           run_id,fuzzer,benchmark,fuzz_target,bug_key,
           issue_type,top_func,frames_json,output,
           first_seen_ts,first_seen_snapshot_id
         ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(run_id,fuzzer,benchmark,fuzz_target,bug_key) DO UPDATE SET
+          issue_type=excluded.issue_type,
+          top_func=excluded.top_func,
+          frames_json=excluded.frames_json,
+          output=excluded.output,
+          first_seen_ts=excluded.first_seen_ts,
+          first_seen_snapshot_id=excluded.first_seen_snapshot_id
+        WHERE excluded.first_seen_ts < bugs.first_seen_ts
         ''',
         (
             record.run_id,

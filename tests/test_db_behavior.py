@@ -323,6 +323,10 @@ class DatabaseBehaviorTest(unittest.TestCase):
                 db,
                 _snapshot_record(trial_id=trial_id, tick_idx=1, end_ts=10, corpus_files=1, crashes=1),
             )
+            earlier_snapshot_id = db_snapshot.save_snapshot_data(
+                db,
+                _snapshot_record(trial_id=trial_id, tick_idx=2, end_ts=20, corpus_files=1, crashes=1),
+            )
             first_bug_id = db_bug.ensure_bug(
                 db,
                 db_bug.BugRecord(
@@ -355,20 +359,40 @@ class DatabaseBehaviorTest(unittest.TestCase):
                     first_seen_snapshot_id=snapshot_id,
                 ),
             )
+            earlier_bug_id = db_bug.ensure_bug(
+                db,
+                db_bug.BugRecord(
+                    run_id='run',
+                    fuzzer='fz',
+                    benchmark='bench',
+                    fuzz_target='target',
+                    bug_key='asan|top',
+                    issue_type='earlier',
+                    top_func='earlier_top',
+                    frames=['earlier_top'],
+                    output='earlier output',
+                    first_seen_ts=5,
+                    first_seen_snapshot_id=earlier_snapshot_id,
+                ),
+            )
             db_bug.upsert_bug_hits(db, bug_id=first_bug_id, snapshot_id=snapshot_id, hits=2)
             db_bug.upsert_bug_hits(db, bug_id=first_bug_id, snapshot_id=snapshot_id, hits=5)
 
-            bug_row = db.q1('SELECT bug_id, issue_type, top_func, output, first_seen_ts FROM bugs')
+            bug_row = db.q1(
+                'SELECT bug_id, issue_type, top_func, output, first_seen_ts, first_seen_snapshot_id FROM bugs'
+            )
             hit_row = db.q1('SELECT bug_id, snapshot_id, hits FROM bug_hits')
 
         self.assertEqual(first_bug_id, second_bug_id)
+        self.assertEqual(first_bug_id, earlier_bug_id)
         self.assertEqual(
             {
                 'bug_id': first_bug_id,
-                'issue_type': 'asan',
-                'top_func': 'top',
-                'output': 'first output',
-                'first_seen_ts': 10,
+                'issue_type': 'earlier',
+                'top_func': 'earlier_top',
+                'output': 'earlier output',
+                'first_seen_ts': 5,
+                'first_seen_snapshot_id': earlier_snapshot_id,
             },
             bug_row,
         )
