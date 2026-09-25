@@ -282,26 +282,35 @@ def _run_replay_experiment(
     merge_jobs = max(merge_jobs, 1)
     LOG.info('Using replay prep_workers=%s snap_jobs=%s merge_jobs=%s', prep_jobs, snap_jobs, merge_jobs)
 
-    with ThreadPoolExecutor(max_workers=prep_jobs) as executor:
-        futures = [
-            executor.submit(
-                prepare_replay_trial,
-                db_path=db_path,
-                docker_runtime=docker_runtime,
-                run_dir=run_dir,
-                run_id=run_id,
-                cfg=cfg,
-            )
-            for cfg in trial_configs
-        ]
-        prepared_trials = _wait_for_futures(futures)
+    try:
+        with ThreadPoolExecutor(max_workers=prep_jobs) as executor:
+            futures = [
+                executor.submit(
+                    prepare_replay_trial,
+                    db_path=db_path,
+                    docker_runtime=docker_runtime,
+                    run_dir=run_dir,
+                    run_id=run_id,
+                    cfg=cfg,
+                )
+                for cfg in trial_configs
+            ]
+            prepared_trials = _wait_for_futures(futures)
 
-    if not prepared_trials:
-        raise RuntimeError('Could not find any replayable artifacts.')
+        if not prepared_trials:
+            raise RuntimeError('Could not find any replayable artifacts.')
 
-    for trial in prepared_trials:
-        if trial.end_ts - trial.start_ts <= 0:
-            raise ValueError('The length of the replayable data in %s is 0 or shorter.' % trial.layout.fuzz_dir)
+        for trial in prepared_trials:
+            if trial.end_ts - trial.start_ts <= 0:
+                raise ValueError('The length of the replayable data in %s is 0 or shorter.' % trial.layout.fuzz_dir)
+    except (KeyboardInterrupt, SystemExit):
+        with open_db(db_path) as db:
+            db_trials.set_running_trial_statuses(db, run_id=run_id, status='interrupted')
+        raise
+    except Exception:
+        with open_db(db_path) as db:
+            db_trials.set_running_trial_statuses(db, run_id=run_id, status='failed_replay')
+        raise
 
     scheduler = ReplaySnapshotScheduler(
         db_path=db_path,

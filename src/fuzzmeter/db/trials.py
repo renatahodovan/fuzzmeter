@@ -112,3 +112,11 @@ def set_trial_status(db: DB, *, trial_id: int, status: str, ended_ts: int | None
         db.exec('UPDATE trials SET status=? WHERE trial_id=?', (status, trial_id))
     else:
         db.exec('UPDATE trials SET status=?, ended_ts=? WHERE trial_id=?', (status, ended_ts, trial_id))
+
+
+def set_running_trial_statuses(db: DB, *, run_id: str, status: str) -> None:
+    '''Close trial rows left running by a failed run phase.'''
+    db.exec(
+        "UPDATE trials SET status=? WHERE run_id=? AND status='running'",
+        (status, run_id),
+    )
