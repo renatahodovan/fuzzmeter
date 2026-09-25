@@ -131,16 +131,8 @@ def reproduce_crash_batch(
     )
 
     outputs = json.loads(output_json.read_text(encoding='utf-8', errors='replace'))
-    if len(outputs) != len(crash_tests):
-        LOG.warning(
-            'Crash repro worker returned %d outputs for %d inputs in %s',
-            len(outputs),
-            len(crash_tests),
-            output_json,
-        )
-
     results: list[tuple[str, dict[str, Any], int]] = []
-    for new_file, worker_output in zip(crash_tests, outputs, strict=False):
+    for new_file, worker_output in zip(crash_tests, outputs, strict=True):
         output = (worker_output.get('stdout') or '') + (worker_output.get('stderr') or '')
         classified = _classify_crash_output(
             new_file=new_file,
