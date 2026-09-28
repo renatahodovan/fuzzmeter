@@ -272,20 +272,17 @@ class ReportingDB:
     def metadata_rows(self, run_id: str) -> list[MetadataRecord]:
         '''Return composite metadata rows for a run.'''
 
-        try:
-            rows = self.rows(
-                '''
-                SELECT run_id, fuzzer, benchmark, fuzz_target, metadata_schema_version,
-                       repetitions, runtime_seconds, environment_digest, config_digest,
-                       source_digest, metadata_json, created_at
-                FROM metadata
-                WHERE run_id=?
-                ORDER BY benchmark, fuzz_target, fuzzer
-                ''',
-                (run_id,),
-            )
-        except sqlite3.OperationalError:
-            return []
+        rows = self.rows(
+            '''
+            SELECT run_id, fuzzer, benchmark, fuzz_target, metadata_schema_version,
+                   repetitions, runtime_seconds, environment_digest, config_digest,
+                   source_digest, metadata_json, created_at
+            FROM metadata
+            WHERE run_id=?
+            ORDER BY benchmark, fuzz_target, fuzzer
+            ''',
+            (run_id,),
+        )
         return [MetadataRecord.from_row(row) for row in rows]
 
     def bug_hits_by_snapshot(self) -> dict[int, int]:
