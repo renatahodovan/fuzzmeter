@@ -129,7 +129,7 @@
                   class="sort-btn"
                   type="button"
                   data-sort-key="relcov_score"
-                  title="Average novelty- and reliability-weighted branch coverage score across visible targets."
+                  title="Average novelty- and reliability-weighted branch coverage score across visible targets, computed against all fuzzers of the run."
                 >
                   <span>RelCovScore</span>
                   <span class="sort-arrow" data-sort-arrow="relcov_score"></span>
@@ -140,7 +140,7 @@
                   class="sort-btn"
                   type="button"
                   data-sort-key="exclusive_coverage_count"
-                  title="Sum of branch coverage reached only by this fuzzer across visible targets, using the report-wide reliability mode."
+                  title="Sum of branch coverage that no other fuzzer of the run reached, across visible targets, using the report-wide reliability mode."
                 >
                   <span>Exclusive coverage</span>
                   <span class="sort-arrow" data-sort-arrow="exclusive_coverage_count"></span>
@@ -151,7 +151,7 @@
                   class="sort-btn"
                   type="button"
                   data-sort-key="relbug_score"
-                  title="Average novelty- and reliability-weighted bug discovery score across visible targets."
+                  title="Average novelty- and reliability-weighted bug discovery score across visible targets, computed against all fuzzers of the run."
                 >
                   <span>RelBugScore</span>
                   <span class="sort-arrow" data-sort-arrow="relbug_score"></span>
@@ -173,7 +173,7 @@
                   class="sort-btn"
                   type="button"
                   data-sort-key="exclusive_bug_count"
-                  title="Sum of bug counts that only this fuzzer found across visible targets, using the report-wide reliability mode."
+                  title="Sum of bugs that no other fuzzer of the run found, across visible targets, using the report-wide reliability mode."
                 >
                   <span>Exclusive bugs</span>
                   <span class="sort-arrow" data-sort-arrow="exclusive_bug_count"></span>

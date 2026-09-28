@@ -285,6 +285,11 @@ class ReportFrontendTest(unittest.TestCase):
             assert.equal(strictSummary.rankings[0].exclusive_coverage_count, 2);
             assert.equal(strictSummary.rankings[0].exclusive_coverage_count_bound, 'exact');
             assert.equal(strictSummary.rankings[0].exclusive_bug_count, 0);
+
+            // Run-wide scores stay visible when the filter leaves a single fuzzer.
+            const alphaOnly = computeSummary([{ ...enriched, fuzzers: [enriched.fuzzers[0]] }], 'any');
+            assert.equal(alphaOnly.rankings[0].relcov_score, 2);
+            assert.equal(alphaOnly.rankings[0].relbug_score, 0);
         '''
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],

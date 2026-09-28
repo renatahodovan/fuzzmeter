@@ -195,7 +195,6 @@ export function computeSummary(targets, comparisonMode = FM_APP.state.comparison
   const fuzzers = Array.from(new Set(
     targets.flatMap((target) => (target.fuzzers || []).map((entry) => entry.fuzzer)),
   )).sort();
-  const hasPairwiseFuzzers = fuzzers.length > 1;
   const scores = new Map(fuzzers.map((fuzzer) => [fuzzer, []]));
   const aucScores = new Map(fuzzers.map((fuzzer) => [fuzzer, []]));
   const relcovScores = new Map(fuzzers.map((fuzzer) => [fuzzer, []]));
@@ -230,10 +229,10 @@ export function computeSummary(targets, comparisonMode = FM_APP.state.comparison
       if (bestAuc != null && bestAuc > 0 && Number.isFinite(Number(aucValue))) {
         aucScores.get(entry.fuzzer)?.push(100 * Number(aucValue) / bestAuc);
       }
-      if (hasPairwiseFuzzers && Number.isFinite(Number(target[relcovScoreByFuzzer]?.[entry.fuzzer]))) {
+      if (Number.isFinite(Number(target[relcovScoreByFuzzer]?.[entry.fuzzer]))) {
         relcovScores.get(entry.fuzzer)?.push(Number(target[relcovScoreByFuzzer][entry.fuzzer]));
       }
-      if (hasPairwiseFuzzers && Number.isFinite(Number(target[relbugScoreByFuzzer]?.[entry.fuzzer]))) {
+      if (Number.isFinite(Number(target[relbugScoreByFuzzer]?.[entry.fuzzer]))) {
         relbugScores.get(entry.fuzzer)?.push(Number(target[relbugScoreByFuzzer][entry.fuzzer]));
       }
       addComparisonTotal(exclusiveCoverage, entry.fuzzer, entry.exclusive_coverage, comparisonMode);
@@ -307,8 +306,6 @@ export function deriveReportData(rawData, selectedFuzzers) {
           ? cloneMatrixForSelected(target[uniqueBugMatrix], selectedSet)
           : emptyMatrix(),
         [relbugMatrix]: hasPairwiseFuzzers ? cloneMatrixForSelected(target[relbugMatrix], selectedSet) : emptyMatrix(),
-        [relcovScoreByFuzzer]: hasPairwiseFuzzers ? target[relcovScoreByFuzzer] : {},
-        [relbugScoreByFuzzer]: hasPairwiseFuzzers ? target[relbugScoreByFuzzer] : {},
         extra_sections: filterExtraSections(target.extra_sections, selectedSet),
       });
       enrichedTarget.fuzzers = enrichedTarget.fuzzers.map((entry) => ({
