@@ -346,6 +346,24 @@ class ReportingDB:
             )
         ]
 
+    def bug_first_seen_elapsed_by_bug(self, run_id: str) -> dict[int, int]:
+        '''Return first discovery times relative to the discovering trial.'''
+
+        rows = self.rows(
+            '''
+            SELECT b.bug_id AS bug_id, b.first_seen_ts - t.started_ts AS elapsed_seconds
+            FROM bugs AS b
+            JOIN snapshots AS s ON s.snapshot_id=b.first_seen_snapshot_id
+            JOIN trials AS t ON t.trial_id=s.trial_id
+            WHERE b.run_id=?
+            ''',
+            (run_id,),
+        )
+        return {
+            int(row['bug_id']): max(0, int(row['elapsed_seconds']))
+            for row in rows
+        }
+
     def bug_hits_by_bug(self) -> dict[int, int]:
         '''Return total hit counts keyed by bug id.'''
 

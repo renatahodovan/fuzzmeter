@@ -31,6 +31,7 @@ from ..set_comparison import (
 def collect_bugs(
     *,
     bugs: list[BugRow],
+    bug_first_seen_elapsed_by_bug: dict[int, int],
     bug_hits_by_bug: dict[int, int],
     bug_trials_by_bug: dict[int, list[int]],
 ) -> list[dict[str, Any]]:
@@ -50,6 +51,7 @@ def collect_bugs(
             'output': bug.output,
             'first_seen_ts': bug.first_seen_ts,
             'first_seen_snapshot_id': bug.first_seen_snapshot_id,
+            'first_seen_elapsed_seconds': bug_first_seen_elapsed_by_bug.get(bug.bug_id),
             'first_seen_at': dt(bug.first_seen_ts),
             'hits_total': int(bug_hits_by_bug.get(bug.bug_id, 0)),
             'trial_ids': sorted({int(trial_id) for trial_id in bug_trials_by_bug.get(bug.bug_id, [])}),
@@ -132,18 +134,6 @@ def compute_unique_bug_table(target: dict[str, Any]) -> dict[str, Any]:
     '''Compute bug-by-fuzzer first-discovery table data.'''
 
     fuzzers = [str(entry.get('fuzzer')) for entry in (target.get('fuzzers') or []) if entry.get('fuzzer')]
-    trials = [
-        trial
-        for entry in (target.get('fuzzers') or [])
-        for trial in (entry.get('trials') or [])
-        if isinstance(trial, dict)
-    ]
-    started_candidates = [
-        int(trial.get('started_ts'))
-        for trial in trials
-        if isinstance(trial.get('started_ts'), int)
-    ]
-    target_started_ts = min(started_candidates) if started_candidates else None
 
     bugs_by_key: dict[str, dict[str, Any]] = {}
     for entry in target.get('fuzzers') or []:
@@ -167,7 +157,7 @@ def compute_unique_bug_table(target: dict[str, Any]) -> dict[str, Any]:
                     'output': bug.get('output'),
                     'global_first_seen_ts': first_seen_ts,
                     'global_first_seen_at': bug.get('first_seen_at'),
-                    'found_by_fuzzer': {},
+                    'first_seen_elapsed_by_fuzzer': {},
                     'hits_by_fuzzer': {},
                 },
             )
@@ -178,14 +168,13 @@ def compute_unique_bug_table(target: dict[str, Any]) -> dict[str, Any]:
                 row['top_func'] = bug.get('top_func')
                 row['frames'] = list(bug.get('frames') or [])
                 row['output'] = bug.get('output')
-            current_fuzzer_ts = row['found_by_fuzzer'].get(fuzzer)
-            if current_fuzzer_ts is None or first_seen_ts < current_fuzzer_ts:
-                row['found_by_fuzzer'][fuzzer] = first_seen_ts
+            first_seen_elapsed = bug.get('first_seen_elapsed_seconds')
+            if isinstance(first_seen_elapsed, int):
+                current_fuzzer_elapsed = row['first_seen_elapsed_by_fuzzer'].get(fuzzer)
+                if current_fuzzer_elapsed is None or first_seen_elapsed < current_fuzzer_elapsed:
+                    row['first_seen_elapsed_by_fuzzer'][fuzzer] = first_seen_elapsed
             row['hits_by_fuzzer'][fuzzer] = int(bug.get('hits_total') or 0)
 
-    if target_started_ts is None:
-        first_seen_candidates = [row['global_first_seen_ts'] for row in bugs_by_key.values()]
-        target_started_ts = min(first_seen_candidates) if first_seen_candidates else None
     last_snapshot_elapsed_seconds = max(
         [
             int(trial.get('elapsed_seconds'))
@@ -200,16 +189,17 @@ def compute_unique_bug_table(target: dict[str, Any]) -> dict[str, Any]:
     max_elapsed_seconds = 0
     ordered_bugs = sorted(
         bugs_by_key.values(),
-        key=lambda row: (int(row['global_first_seen_ts']), str(row['bug_key'])),
+        key=lambda row: (
+            min(row['first_seen_elapsed_by_fuzzer'].values(), default=float('inf')),
+            str(row['bug_key']),
+        ),
     )
     for index, bug in enumerate(ordered_bugs, start=1):
         cells: list[int | None] = []
         hit_counts: list[int] = []
         for fuzzer in fuzzers:
-            first_seen_ts = bug['found_by_fuzzer'].get(fuzzer)
-            elapsed_seconds = None
-            if target_started_ts is not None and first_seen_ts is not None:
-                elapsed_seconds = max(0, int(first_seen_ts) - int(target_started_ts))
+            elapsed_seconds = bug['first_seen_elapsed_by_fuzzer'].get(fuzzer)
+            if elapsed_seconds is not None:
                 max_elapsed_seconds = max(max_elapsed_seconds, elapsed_seconds)
             cells.append(elapsed_seconds)
             hit_counts.append(int(bug.get('hits_by_fuzzer', {}).get(fuzzer, 0)))
@@ -234,7 +224,6 @@ def compute_unique_bug_table(target: dict[str, Any]) -> dict[str, Any]:
         'rows': rows,
         'has_data': bool(rows),
         'last_snapshot_elapsed_seconds': last_snapshot_elapsed_seconds or max_elapsed_seconds,
-        'started_ts': target_started_ts,
         'max_elapsed_seconds': max_elapsed_seconds,
     }
 

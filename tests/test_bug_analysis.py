@@ -30,6 +30,7 @@ class BugAnalysisTest(unittest.TestCase):
     def test_collect_bugs_parses_frames_and_output(self):
         bugs = bug_analysis.collect_bugs(
             bugs=[_bug_row(bug_id=7, frames_json='["frame_a", "frame_b"]', output='assert failed\n', first_seen_ts=123)],
+            bug_first_seen_elapsed_by_bug={7: 23},
             bug_hits_by_bug={7: 3},
             bug_trials_by_bug={7: [5, 4, 5]},
         )
@@ -49,6 +50,7 @@ class BugAnalysisTest(unittest.TestCase):
                     'output': 'assert failed',
                     'first_seen_ts': 123,
                     'first_seen_snapshot_id': 0,
+                    'first_seen_elapsed_seconds': 23,
                     'first_seen_at': '1970-01-01 00:02:03 UTC',
                     'hits_total': 3,
                     'trial_ids': [4, 5],
@@ -60,6 +62,7 @@ class BugAnalysisTest(unittest.TestCase):
     def test_collect_bugs_drops_invalid_frames_json(self):
         bugs = bug_analysis.collect_bugs(
             bugs=[_bug_row(bug_id=7, frames_json='[not-json', output='', first_seen_ts=123)],
+            bug_first_seen_elapsed_by_bug={},
             bug_hits_by_bug={7: 3},
             bug_trials_by_bug={7: [5]},
         )
@@ -67,7 +70,7 @@ class BugAnalysisTest(unittest.TestCase):
         self.assertEqual([], bugs[0]['frames'])
         self.assertIsNone(bugs[0]['output'])
 
-    def test_compute_unique_bug_table_uses_earliest_output_hits_and_last_snapshot_time(self):
+    def test_compute_unique_bug_table_uses_trial_relative_discovery_times(self):
         table = bug_analysis.compute_unique_bug_table(
             {
                 'key': 'bench:target',
@@ -82,9 +85,21 @@ class BugAnalysisTest(unittest.TestCase):
                                 'top_func': 'func_a',
                                 'frames': ['frame_a'],
                                 'output': 'alpha output',
-                                'first_seen_ts': 110,
+                                'first_seen_ts': 3610,
+                                'first_seen_elapsed_seconds': 10,
                                 'first_seen_at': 'alpha-first',
                                 'hits_total': 4,
+                            },
+                            {
+                                'bug_key': 'bug-2',
+                                'issue_type': 'asan',
+                                'top_func': 'func_c',
+                                'frames': ['frame_c'],
+                                'output': 'second output',
+                                'first_seen_ts': 50,
+                                'first_seen_elapsed_seconds': 30,
+                                'first_seen_at': 'second-first',
+                                'hits_total': 2,
                             }
                         ],
                     },
@@ -99,6 +114,7 @@ class BugAnalysisTest(unittest.TestCase):
                                 'frames': ['frame_b'],
                                 'output': 'beta output',
                                 'first_seen_ts': 105,
+                                'first_seen_elapsed_seconds': 20,
                                 'first_seen_at': 'beta-first',
                                 'hits_total': 9,
                             }
@@ -120,8 +136,20 @@ class BugAnalysisTest(unittest.TestCase):
                     'output': 'beta output',
                     'global_first_seen_ts': 105,
                     'global_first_seen_at': 'beta-first',
-                    'cells': [5, 0],
+                    'cells': [10, 20],
                     'hit_counts': [4, 9],
+                },
+                {
+                    'index': 2,
+                    'bug_key': 'bug-2',
+                    'issue_type': 'asan',
+                    'top_func': 'func_c',
+                    'frames': ['frame_c'],
+                    'output': 'second output',
+                    'global_first_seen_ts': 50,
+                    'global_first_seen_at': 'second-first',
+                    'cells': [30, None],
+                    'hit_counts': [2, 0],
                 }
             ],
             table['rows'],

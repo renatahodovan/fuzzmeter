@@ -268,6 +268,7 @@ class _PayloadBuilder:
 
         return bug_analysis.collect_bugs(
             bugs=self._data.bugs,
+            bug_first_seen_elapsed_by_bug=self._data.bug_first_seen_elapsed_by_bug,
             bug_hits_by_bug=self._data.bug_hits_by_bug,
             bug_trials_by_bug=self._data.bug_trials_by_bug,
         )

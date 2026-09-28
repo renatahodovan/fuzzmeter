@@ -315,6 +315,7 @@ def run_data_snapshot(**overrides: Any) -> RunDataSnapshot:
         'unique_bug_delta_by_snapshot': {},
         'bug_stats_by_trial': {},
         'bugs': [],
+        'bug_first_seen_elapsed_by_bug': {},
         'bug_hits_by_bug': {},
         'bug_trials_by_bug': {},
         **overrides,

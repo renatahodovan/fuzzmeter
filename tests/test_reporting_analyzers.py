@@ -526,12 +526,18 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
                 {
                     'fuzzer': 'alpha',
                     'trials': [{'trial_id': 1, 'elapsed_seconds': 30}],
-                    'bugs': [{'bug_key': 'bug-a', 'first_seen_ts': 110, 'hits_total': 2, 'trial_ids': [1]}],
+                    'bugs': [{
+                        'bug_key': 'bug-a', 'first_seen_ts': 110,
+                        'first_seen_elapsed_seconds': 10, 'hits_total': 2, 'trial_ids': [1],
+                    }],
                 },
                 {
                     'fuzzer': 'beta',
                     'trials': [{'trial_id': 2, 'elapsed_seconds': 20}],
-                    'bugs': [{'bug_key': 'bug-b', 'first_seen_ts': 120, 'hits_total': 3, 'trial_ids': [2]}],
+                    'bugs': [{
+                        'bug_key': 'bug-b', 'first_seen_ts': 120,
+                        'first_seen_elapsed_seconds': 20, 'hits_total': 3, 'trial_ids': [2],
+                    }],
                 },
             ],
         }

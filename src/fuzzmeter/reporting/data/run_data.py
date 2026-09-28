@@ -38,6 +38,7 @@ class RunDataSnapshot:
     unique_bug_delta_by_snapshot: dict[int, int]
     bug_stats_by_trial: dict[int, tuple[int, int]]
     bugs: list[BugRow]
+    bug_first_seen_elapsed_by_bug: dict[int, int]
     bug_hits_by_bug: dict[int, int]
     bug_trials_by_bug: dict[int, list[int]]
 
@@ -74,6 +75,7 @@ class RunData:
                 unique_bug_delta_by_snapshot=db.unique_bug_delta_by_snapshot(),
                 bug_stats_by_trial=db.bug_stats_by_trial(resolved_run_id),
                 bugs=db.bug_rows(resolved_run_id),
+                bug_first_seen_elapsed_by_bug=db.bug_first_seen_elapsed_by_bug(resolved_run_id),
                 bug_hits_by_bug=db.bug_hits_by_bug(),
                 bug_trials_by_bug=db.bug_trials_by_bug(),
             )
