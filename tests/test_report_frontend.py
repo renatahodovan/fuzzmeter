@@ -175,6 +175,31 @@ class ReportFrontendTest(unittest.TestCase):
             check=True,
         )
 
+    def test_bug_table_filter_orders_rows_by_visible_fuzzers(self) -> None:
+        script = r'''
+            import assert from 'node:assert/strict';
+            import { cloneUniqueBugTableForSelected } from './src/fuzzmeter/web/static/report/filters.js';
+
+            const table = cloneUniqueBugTableForSelected({
+              fuzzers: ['hidden', 'visible'],
+              rows: [
+                { index: 1, bug_key: 'early-for-hidden', cells: [1, 100], hit_counts: [1, 1] },
+                { index: 2, bug_key: 'early-for-visible', cells: [null, 10], hit_counts: [0, 1] },
+                { index: 3, bug_key: 'hidden-only', cells: [5, null], hit_counts: [1, 0] },
+              ],
+            }, new Set(['visible']));
+
+            assert.deepEqual(table.rows.map((row) => [row.index, row.bug_key]), [
+              [1, 'early-for-visible'],
+              [2, 'early-for-hidden'],
+            ]);
+        '''
+        subprocess.run(
+            ['node', '--no-warnings', '--input-type=module', '-e', script],
+            cwd=REPO_ROOT,
+            check=True,
+        )
+
     def test_frontend_derives_summary_scores_and_metric_ranks(self) -> None:
         script = r'''
             import assert from 'node:assert/strict';

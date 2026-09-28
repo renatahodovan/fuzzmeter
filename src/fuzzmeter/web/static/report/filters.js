@@ -100,6 +100,11 @@ export function cloneUniqueBugTableForSelected(tableData, selectedSet) {
       };
     })
     .filter(Boolean)
+    // Reorder by the visible fuzzers only; the stable sort keeps the backend order on ties.
+    .sort((left, right) => (
+      Math.min(...left.cells.filter((value) => value !== null))
+      - Math.min(...right.cells.filter((value) => value !== null))
+    ))
     .map((row, index) => ({
       ...row,
       index: index + 1,
