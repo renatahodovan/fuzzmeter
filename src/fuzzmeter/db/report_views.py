@@ -51,6 +51,8 @@ class ReportingDB:
 
     def __enter__(self) -> 'ReportingDB':
         self.con = open_readonly_connection(self.db_path)
+        # One read transaction per context, so every query sees the same WAL snapshot.
+        self.con.execute('BEGIN')
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
