@@ -398,6 +398,8 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
                 trial_report(
                     trial_id=1,
                     elapsed_seconds=10,
+                    execs_done=30,
+                    unique_bugs_total=2,
                     branches_cov=5,
                     branches_total=10,
                     branches_pct=50.0,
@@ -406,7 +408,9 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
             points_by_trial={
                 1: [
                     {'idx': 1, 'execs_done': 10, 'unique_bugs_total': 1},
-                    {'idx': 2, 'execs_done': 30, 'unique_bugs_total': 2, 'resource_memory_mib': 4},
+                    {'idx': 2, 'execs_done': 30, 'unique_bugs_total': 2},
+                    # Telemetry of a tick whose snapshot data is not published.
+                    {'idx': 3, 'unique_bugs_total': 2, 'resource_memory_mib': 4},
                 ]
             },
             cov_metrics=COV_METRICS,
@@ -417,6 +421,7 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         self.assertEqual([50.0], finals['branches_pct'])
         self.assertEqual([30.0], finals['execs_done'])
         self.assertEqual([3.0], finals['execs_per_sec'])
+        self.assertEqual([2.0], finals['unique_bugs_total'])
         self.assertEqual([4.0], finals['resource_memory_mib'])
 
     def test_build_trial_rows_computes_auc_and_execution_rate(self) -> None:
@@ -425,6 +430,8 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
                 trial_report(
                     trial_id=1,
                     elapsed_seconds=10,
+                    execs_done=100,
+                    corpus_files_total=7,
                     branches_cov=10,
                     branches_pct=50.0,
                     regions_cov=5,
@@ -451,11 +458,13 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
                         'regions_pct': 25.0,
                         'execs_done': 100,
                     },
+                    {'idx': 3, 'elapsed_s': 10, 'resource_memory_mib': 4},
                 ]
             },
         )
 
         self.assertEqual(10.0, rows[0]['execs_per_sec'])
+        self.assertEqual(7, rows[0]['corpus_files_total'])
         self.assertEqual(70.0, rows[0]['branches_cov_auc'])
         self.assertEqual(7.0, rows[0]['branches_cov_auc_norm'])
         self.assertEqual(70.0, rows[0]['convergence_pct'])
@@ -470,6 +479,7 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
                     trial_id=1,
                     build_config={'opt': 'a'},
                     runtime_config={'jobs': 1},
+                    execs_done=10,
                     branches_cov=5,
                     branches_total=10,
                     branches_pct=50.0,

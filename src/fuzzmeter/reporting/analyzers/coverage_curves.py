@@ -153,12 +153,13 @@ def aggregate_finals(
         trial_points = points_by_trial.get(trial.trial_id, [])
         if not trial_points:
             continue
+        # The last point can be telemetry of a tick without snapshot data; the trial holds the final measurement.
+        for key in ('corpus_files_total', 'execs_done', 'unique_bugs_total', 'bug_hits_total'):
+            value = getattr(trial, key)
+            if value is not None:
+                finals[key].append(float(value))
         last_point = trial_points[-1]
         for key in (
-            'corpus_files_total',
-            'execs_done',
-            'unique_bugs_total',
-            'bug_hits_total',
             'crashes_total',
             'resource_cpu_percent',
             'resource_memory_mib',
@@ -171,9 +172,8 @@ def aggregate_finals(
         elapsed_seconds = trial.elapsed_seconds
         if elapsed_seconds is not None:
             finals.setdefault('elapsed_seconds', []).append(float(elapsed_seconds))
-            execs_done = safe_int(last_point.get('execs_done'))
-            if execs_done is not None and elapsed_seconds > 0:
-                finals['execs_per_sec'].append(execs_done / elapsed_seconds)
+            if trial.execs_done is not None and elapsed_seconds > 0:
+                finals['execs_per_sec'].append(trial.execs_done / elapsed_seconds)
     return finals
 
 
@@ -288,7 +288,7 @@ def build_trial_rows(
         points = sorted(points_by_trial.get(trial_id, []), key=lambda point: int(point.get('idx') or 0))
         last_point = points[-1] if points else {}
         elapsed_seconds = trial.elapsed_seconds
-        execs_done = safe_int(last_point.get('execs_done'))
+        execs_done = trial.execs_done
         execs_per_sec = None
         if execs_done is not None and elapsed_seconds is not None and elapsed_seconds > 0:
             execs_per_sec = execs_done / elapsed_seconds
@@ -348,9 +348,9 @@ def build_trial_rows(
                 'branches_pct_auc': branches_pct_auc,
                 'branches_pct_auc_norm': branches_pct_auc_norm,
                 'convergence_pct': convergence_pct,
-                'corpus_files_total': safe_int(last_point.get('corpus_files_total')),
-                'unique_bugs_total': safe_int(last_point.get('unique_bugs_total')),
-                'bug_hits_total': safe_int(last_point.get('bug_hits_total')),
+                'corpus_files_total': trial.corpus_files_total,
+                'unique_bugs_total': trial.unique_bugs_total,
+                'bug_hits_total': trial.bug_hits_total,
                 'crashes_total': safe_int(last_point.get('crashes_total')),
             }
         )
