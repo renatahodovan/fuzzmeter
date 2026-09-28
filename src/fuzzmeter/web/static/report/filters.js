@@ -215,7 +215,7 @@ export function computeSummary(targets, comparisonMode = FM_APP.state.comparison
       .filter((value) => Number.isFinite(Number(value)))
       .map(Number);
     const aucMedians = (target.fuzzers || [])
-      .map((entry) => entry.final?.branches_cov_auc_median)
+      .map((entry) => entry.final?.branches_cov_auc_norm_median)
       .filter((value) => Number.isFinite(Number(value)))
       .map(Number);
     const best = medians.length ? Math.max(...medians) : null;
@@ -225,7 +225,7 @@ export function computeSummary(targets, comparisonMode = FM_APP.state.comparison
       if (best != null && best > 0 && Number.isFinite(Number(medianValue))) {
         scores.get(entry.fuzzer)?.push(100 * Number(medianValue) / best);
       }
-      const aucValue = entry.final?.branches_cov_auc_median;
+      const aucValue = entry.final?.branches_cov_auc_norm_median;
       if (bestAuc != null && bestAuc > 0 && Number.isFinite(Number(aucValue))) {
         aucScores.get(entry.fuzzer)?.push(100 * Number(aucValue) / bestAuc);
       }

@@ -227,7 +227,7 @@ function buildWinnerCards(data) {
     },
     {
       title: 'Early Coverage',
-      description: 'Reaches a large share of final coverage early in the run.',
+      description: 'Reaches high branch coverage early: the highest coverage averaged over the whole run.',
       winner: bestRowByKey(rankingRows.map((row) => ({ fuzzer: row.fuzzer, auc_score: row.auc_score })), 'auc_score'),
       formatter: (value) => `${fmt(value, 2)} score`,
       key: 'auc_score',

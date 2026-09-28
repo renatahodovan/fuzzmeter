@@ -214,6 +214,7 @@ class ReportFrontendTest(unittest.TestCase):
                   final: {
                     regions_pct_median: 80.0,
                     branches_cov_auc_median: 10.0,
+                    branches_cov_auc_norm_median: 1.0,
                     accumulated_bug_count: 2,
                     execs_done_median: 100,
                   },
@@ -231,6 +232,7 @@ class ReportFrontendTest(unittest.TestCase):
                   final: {
                     regions_pct_median: 40.0,
                     branches_cov_auc_median: 5.0,
+                    branches_cov_auc_norm_median: 2.0,
                     accumulated_bug_count: 1,
                     execs_done_median: 50,
                   },
@@ -256,7 +258,7 @@ class ReportFrontendTest(unittest.TestCase):
               {
                 fuzzer: 'alpha',
                 coverage_score: 100,
-                auc_score: 100,
+                auc_score: 50,
                 relcov_score: 2,
                 relbug_score: 0,
                 exclusive_coverage_count: 3,
@@ -269,7 +271,7 @@ class ReportFrontendTest(unittest.TestCase):
               {
                 fuzzer: 'beta',
                 coverage_score: 50,
-                auc_score: 50,
+                auc_score: 100,
                 relcov_score: 1,
                 relbug_score: 1,
                 exclusive_coverage_count: 1,

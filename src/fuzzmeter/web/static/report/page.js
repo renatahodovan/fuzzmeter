@@ -364,9 +364,17 @@ function renderFuzzerTable(section) {
   if (fuzzerTable.sourceHead) fuzzerTable.sourceHead.hidden = !showSource;
   if (fuzzerTable.compatibilityHead) fuzzerTable.compatibilityHead.hidden = !showCompatibility;
 
+  // Same AUC score as the overview ranking: time-averaged coverage relative to the best visible median.
+  const bestAucNorm = Math.max(0, ...(target.fuzzers || [])
+    .map((fuzzer) => Number(fuzzer.final?.branches_cov_auc_norm_median))
+    .filter(Number.isFinite));
+  const aucScores = (fuzzer) => (fuzzer.trials || []).map((trial) => (
+    bestAucNorm > 0 && Number.isFinite(Number(trial.branches_cov_auc_norm))
+      ? 100 * Number(trial.branches_cov_auc_norm) / bestAucNorm
+      : null
+  ));
   const rows = (target.fuzzers || []).map((fuzzer) => {
     const branch10kValues = (fuzzer.trials || []).map((trial) => per10kExec(trial.branches_cov, trial.execs_done));
-    const convergenceValues = (fuzzer.trials || []).map((trial) => trial.convergence_pct);
     const exclusiveCoverage = exclusiveCoverageStats(target, fuzzer);
     const selectedCoverage = comparisonMetric(exclusiveCoverage, FM_APP.state.comparisonMode);
     const selectedBugs = comparisonMetric(fuzzer.exclusive_bugs, FM_APP.state.comparisonMode);
@@ -377,7 +385,7 @@ function renderFuzzerTable(section) {
       execs_per_sec_median: median(fuzzer.distribution?.execs_per_sec),
       execs_done_median: median(fuzzer.distribution?.execs_done),
       branch_per_10k_median: median(branch10kValues),
-      convergence_median: median(convergenceValues),
+      auc_score_median: median(aucScores(fuzzer)),
       exclusive_coverage_total: selectedCoverage.value,
       corpus_median: median(fuzzer.distribution?.corpus_files_total),
       unique_bug_total: Number(fuzzer.final?.accumulated_bug_count ?? dedupeBugCount(fuzzer.bugs)),
@@ -426,8 +434,8 @@ function renderFuzzerTable(section) {
     );
     appendDerivedAggregateCell(
       tr,
-      (fuzzer.trials || []).map((trial) => trial.convergence_pct),
-      (value) => fmtPct(value, 1),
+      aucScores(fuzzer),
+      (value) => fmt(value, 1),
       ['min', 'max'],
       'median',
     );
