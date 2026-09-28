@@ -11,13 +11,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..keys import FINAL_DIST_KEYS
+from ..keys import FINAL_DIST_KEYS, SNAPSHOT_COVERAGE_FIELDS
 from ..metrics import (
     dt,
     maximum,
     mean,
     median,
     minimum,
+    pct,
     safe_int,
     trapezoid_auc,
 )
@@ -251,6 +252,7 @@ def _trial_auc(
     *,
     y_key: str,
     duration_s: int | None,
+    start_value: float,
 ) -> tuple[float | None, float | None]:
     points: list[tuple[float, float]] = []
     for point in trial_points:
@@ -259,6 +261,8 @@ def _trial_auc(
         if x is None or y is None:
             continue
         points.append((float(x), float(y)))
+    if points and all(x > 0 for x, _ in points):
+        points.insert(0, (0.0, start_value))
     auc = trapezoid_auc(points, duration_s=float(duration_s) if duration_s is not None else None)
     if auc is None:
         return None, None
@@ -271,10 +275,19 @@ def build_trial_rows(
     *,
     reps: list[TrialReport],
     points_by_trial: dict[int, list[dict[str, Any]]],
+    seed_baseline: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     '''Build per-trial metric rows for a fuzzer entry.'''
 
     rows: list[dict[str, Any]] = []
+    # Trials start from the measured seed corpus coverage, or from nothing without seeds.
+    start_values: dict[str, float] = {}
+    for metric in ('regions', 'branches'):
+        covered_key, total_key = SNAPSHOT_COVERAGE_FIELDS[metric]
+        covered = (seed_baseline or {}).get(covered_key)
+        total = (seed_baseline or {}).get(total_key)
+        start_values[f'{metric}_cov'] = float(covered or 0)
+        start_values[f'{metric}_pct'] = pct(covered, total) or 0.0
 
     def sort_key(row: dict[str, Any]) -> tuple[str, int, int]:
         return (
@@ -297,21 +310,25 @@ def build_trial_rows(
             points,
             y_key='regions_cov',
             duration_s=elapsed_seconds,
+            start_value=start_values['regions_cov'],
         )
         branches_cov_auc, branches_cov_auc_norm = _trial_auc(
             points,
             y_key='branches_cov',
             duration_s=elapsed_seconds,
+            start_value=start_values['branches_cov'],
         )
         regions_pct_auc, regions_pct_auc_norm = _trial_auc(
             points,
             y_key='regions_pct',
             duration_s=elapsed_seconds,
+            start_value=start_values['regions_pct'],
         )
         branches_pct_auc, branches_pct_auc_norm = _trial_auc(
             points,
             y_key='branches_pct',
             duration_s=elapsed_seconds,
+            start_value=start_values['branches_pct'],
         )
         convergence_pct = _convergence_pct(
             branches_cov_auc,
@@ -380,7 +397,7 @@ def build_fuzzer_entry(
         build_curve(reps, points_by_trial),
         curve_max_points=curve_max_points,
     )
-    trial_rows = build_trial_rows(reps=reps, points_by_trial=points_by_trial)
+    trial_rows = build_trial_rows(reps=reps, points_by_trial=points_by_trial, seed_baseline=seed_baseline)
     final_summary = _build_final_summary(
         finals=finals,
         trial_rows=trial_rows,

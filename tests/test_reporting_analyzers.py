@@ -470,6 +470,7 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
                     {'idx': 3, 'elapsed_s': 10, 'resource_memory_mib': 4},
                 ]
             },
+            seed_baseline=None,
         )
 
         self.assertEqual(10.0, rows[0]['execs_per_sec'])
@@ -478,6 +479,19 @@ class CoverageAnalysisBehaviorTest(unittest.TestCase):
         self.assertEqual(7.0, rows[0]['branches_cov_auc_norm'])
         self.assertEqual(70.0, rows[0]['convergence_pct'])
         self.assertEqual('coverage/trial/html/index.html', rows[0]['coverage_html_rel'])
+
+    def test_build_trial_rows_start_auc_from_seed_baseline_or_zero(self) -> None:
+        for seed_baseline, expected_auc in (
+            ({'cov_branches_covered': 10, 'cov_branches_total': 200}, 3300.0),
+            (None, 3000.0),
+        ):
+            rows = coverage_curves.build_trial_rows(
+                reps=[trial_report(trial_id=1, elapsed_seconds=60, branches_cov=100)],
+                points_by_trial={1: [{'idx': 1, 'elapsed_s': 60, 'branches_cov': 100}]},
+                seed_baseline=seed_baseline,
+            )
+
+            self.assertEqual(expected_auc, rows[0]['branches_cov_auc'])
 
     def test_collect_target_view_groups_trials_bugs_versions_and_baselines(self) -> None:
         targets = coverage_curves.collect_target_view(
