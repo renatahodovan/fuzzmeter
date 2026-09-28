@@ -16,6 +16,7 @@ from fuzzmeter.reporting.analyzers import bug_analysis, coverage_curves, target_
 from fuzzmeter.reporting.metrics import median
 from fuzzmeter.reporting.payload import _PayloadBuilder
 from fuzzmeter.reporting.set_comparison import (
+    novelty_scores,
     pairwise_matrix,
     relative_containment_matrix,
     trial_set_comparison,
@@ -361,6 +362,14 @@ class TrialSetComparisonTest(unittest.TestCase):
         self.assertEqual(0, result['pairwise_unique_all'][0][1])
         self.assertEqual(0, result['exclusive']['exclusive_any'][0])
         self.assertEqual(0, result['exclusive']['exclusive_all'][0])
+
+    def test_novelty_scores_average_over_every_usable_trial(self) -> None:
+        scores = novelty_scores(
+            ['alpha', 'beta', 'gamma'],
+            {'alpha': [{'alpha-only'}, set()], 'beta': [set(), None], 'gamma': [None]},
+        )
+
+        self.assertEqual({'alpha': 1.0, 'beta': 0.0}, scores)
 
     def test_relative_containment_preserves_measured_zero(self) -> None:
         result = relative_containment_matrix(

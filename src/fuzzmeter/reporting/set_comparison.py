@@ -370,8 +370,7 @@ def novelty_scores(
     index = index or trial_set_index(labels, trial_sets_by_label)
     scores: dict[str, float] = {}
     for label in labels:
-        trial_sets = index.trials_by_label[label]
-        denominator = sum(1 for values in trial_sets if values)
+        denominator = index.reps[label]
         if denominator <= 0:
             continue
         scores[label] = sum(
