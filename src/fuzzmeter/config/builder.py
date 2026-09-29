@@ -165,7 +165,7 @@ def _load_campaign_settings(data: dict[str, Any]) -> CampaignSettings:
         snapshot_export_every_ticks=_normalized_int_value(
             'snapshot.export_every_ticks',
             snap_data.get('export_every_ticks', CampaignSettings.snapshot_export_every_ticks),
-            1,
+            0,
         ),
         memory=run_data.get('memory', '') or None,
         memory_swap=run_data.get('memory_swap', '') or None,
