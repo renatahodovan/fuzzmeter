@@ -1162,14 +1162,16 @@ function renderStatisticsBlock(section) {
     ? ` Trials ran for different times (${formatDuration(Math.min(...elapsed))} to `
       + `${formatDuration(Math.max(...elapsed))}); treat significance as provisional.`
     : '';
+  const pairs = (target.fuzzers || []).length * ((target.fuzzers || []).length - 1) / 2;
   renderMatrixCard(statistics.mwuCard, resolveCoverageMatrix(target.branch_mwu_matrix, 'branches'), {
     formatter: 'float',
     fractionDigits: 4,
     emptyMessage: 'No branch Mann-Whitney U data.',
     styleForValue: branchPValueCellStyle,
     title: 'Branch MWU p-value matrix',
-    subtitle: 'Green cells indicate a significant pairwise difference in final per-trial branch coverage (p <= 0.05), '
-      + `comparable only between trials of equal runtime.${runtimeNote}`,
+    subtitle: 'Green cells mark nominal p <= 0.05 per pair on final per-trial branch coverage, without '
+      + `multiple-testing correction; with ${pairs} pairs, about ${fmt(0.05 * pairs, 2)} cells can turn green `
+      + `by chance. Comparable only between trials of equal runtime.${runtimeNote}`,
     exportName: `${section.target.key}-branch-mwu-pvalue-matrix`,
   });
   renderMatrixCard(statistics.a12Card, resolveCoverageMatrix(target.branch_a12_matrix, 'branches'), {
