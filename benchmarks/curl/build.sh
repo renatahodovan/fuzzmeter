@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd /src/curl_fuzzer
 
+# Build and package only the configured target instead of all curl-fuzzer targets.
+export CURL_FUZZ_TARGET="${TARGET_NAME:?TARGET_NAME must be set}"
+
 build_jobs="${FM_BUILD_JOBS:-$(nproc)}"
 export CMAKE_BUILD_PARALLEL_LEVEL="${build_jobs}"
 # curl-fuzzer appends `nproc` to MAKEFLAGS for its nested dependency builds.
