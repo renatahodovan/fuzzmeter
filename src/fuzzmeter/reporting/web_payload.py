@@ -16,7 +16,7 @@ from typing import Any, Sequence, get_args
 from .plugin_api import ChartSeries, ChartSpec, ChartType, DataPoint, ExtraSection, MatrixData
 
 ALLOWED_CHART_TYPES = set(get_args(ChartType))
-ALLOWED_FILTER_MODES = {'series', 'recompute', 'static'}
+ALLOWED_FILTER_MODES = {'series', 'static'}
 ALLOWED_SCOPES = {'target', 'fuzzer'}
 
 
@@ -157,7 +157,6 @@ def _serialize_chart(chart: ChartSpec) -> dict[str, Any]:
         'subtitle': chart.subtitle,
         'x_axis': chart.x_axis,
         'y_axis': chart.y_axis,
-        'metric_key': chart.metric_key,
         'filter_mode': chart.filter_mode,
         'series': [_serialize_series(series) for series in chart.series],
         'matrix': _serialize_matrix(chart.matrix),

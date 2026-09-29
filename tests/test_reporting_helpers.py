@@ -238,7 +238,6 @@ class WebPayloadTest(unittest.TestCase):
                             'subtitle': None,
                             'x_axis': None,
                             'y_axis': None,
-                            'metric_key': None,
                             'filter_mode': 'static',
                             'series': [
                                 {

@@ -26,7 +26,7 @@ ChartType = Literal[
     'stacked_bar',
     'table',
 ]
-ChartFilterMode = Literal['series', 'recompute', 'static']
+ChartFilterMode = Literal['series', 'static']
 SectionScope = Literal['target', 'fuzzer']
 
 
@@ -83,7 +83,6 @@ class ChartSpec:
     subtitle: str | None = None
     x_axis: str | None = None
     y_axis: str | None = None
-    metric_key: str | None = None
     filter_mode: ChartFilterMode = 'series'
     series: list[ChartSeries] = field(default_factory=list)
     matrix: MatrixData | None = None
