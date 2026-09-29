@@ -419,6 +419,7 @@
 </script>
 
 {% if static_report %}
+<script>window.FM_STATIC_DATA = {{ static_data|tojson }};</script>
 <script src="report.js"></script>
 {% else %}
 <script type="module" src="{{ url_for('static', filename='report.js') }}"></script>

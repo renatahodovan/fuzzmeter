@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
 
@@ -33,12 +32,9 @@ def write_assets(report_dir: Path, payload: dict[str, Any]) -> None:
     if report_html is None:
         raise FileNotFoundError('Could not locate report assets (report.html/report.css/report.js)')
     env = Environment(loader=FileSystemLoader(str(report_html.parent)))
-    rendered_html = env.get_template(report_html.name).render(run_id=None, static_report=True)
-    static_payload_script = f'<script>\nwindow.FM_STATIC_DATA = {json.dumps(payload, ensure_ascii=False)};\n</script>\n'
-    (report_dir / 'report.html').write_text(
-        rendered_html.replace('</body>', f'{static_payload_script}</body>'),
-        encoding='utf-8',
-    )
+    env.policies['json.dumps_kwargs'] = {'sort_keys': False, 'ensure_ascii': False}
+    rendered_html = env.get_template(report_html.name).render(run_id=None, static_report=True, static_data=payload)
+    (report_dir / 'report.html').write_text(rendered_html, encoding='utf-8')
 
     module_dir = _find_report_module_dir(candidates)
     if module_dir is None:

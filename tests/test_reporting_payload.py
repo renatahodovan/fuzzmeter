@@ -23,6 +23,7 @@ from fuzzmeter.db import DB
 from fuzzmeter.db import bug as db_bug
 from fuzzmeter.db.report_views import ReportingDB
 from fuzzmeter.reporting import build_payload, write_report
+from fuzzmeter.reporting.assets import write_assets
 from fuzzmeter.reporting.provenance import attach_measurement_provenance
 from fuzzmeter.web.services.report_service import load_report_payload
 from tests.support.dbs import agg_snapshot_row, reporting_run_db
@@ -374,6 +375,16 @@ class ReportingPayloadTest(unittest.TestCase):
                 'id="comparisonModeAll"',
                 (report_dir / 'report.html').read_text(encoding='utf-8'),
             )
+
+    def test_static_payload_is_escaped_and_defined_before_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            report_dir = Path(tmp)
+            write_assets(report_dir, {'note': '</script><b>'})
+
+            html = (report_dir / 'report.html').read_text(encoding='utf-8')
+            self.assertLess(html.index('window.FM_STATIC_DATA = '), html.index('<script src="report.js"></script>'))
+            self.assertNotIn('</script><b>', html)
+            self.assertIn('\\u003c/script\\u003e', html)
 
     def test_static_and_live_reports_use_the_same_fuzzer_plugin_sections(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
