@@ -472,6 +472,19 @@ Then open the dynamic web UI::
 
 or open the generated static report under the ``report/`` directory of the run.
 
+
+Citations
+=========
+
+Background on *FuzzMeter* is published in:
+
+* Renata Hodovan, Akos Kiss. FuzzMeter: An Experimental Platform for Systematic
+  Fuzzer Benchmarking.
+  In Proceedings of the 42nd IEEE International Conference on Software
+  Maintenance and Evolution (ICSME 2026), Benevento, Italy, September 2026.
+  IEEE.
+  Distinguished paper award.
+
 .. end included documentation
 
 
