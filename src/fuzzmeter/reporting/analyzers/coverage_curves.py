@@ -468,7 +468,6 @@ def collect_target_view(
             'fuzz_target': fuzz_target,
             'key': f'{benchmark}:{fuzz_target}',
             'fuzzers': [],
-            'extra_sections': [],
             'extra_section_debug': [],
         }
         for fuzzer, group in sorted(target_group['fuzzers'].items()):

@@ -162,7 +162,6 @@ class WebPayloadTest(unittest.TestCase):
         valid = ExtraSection(
             id='valid',
             title='Valid',
-            scope='target',
             charts=[
                 ChartSpec(
                     id='valid-chart',
@@ -175,7 +174,6 @@ class WebPayloadTest(unittest.TestCase):
         invalid = ExtraSection(
             id='invalid',
             title='Invalid',
-            scope='target',
             charts=[
                 ChartSpec(
                     id='bad-matrix',
@@ -201,7 +199,6 @@ class WebPayloadTest(unittest.TestCase):
         section = ExtraSection(
             id='section',
             title='Section',
-            scope='fuzzer',
             charts=[
                 ChartSpec(
                     id='chart',
@@ -228,7 +225,6 @@ class WebPayloadTest(unittest.TestCase):
                 {
                     'id': 'section',
                     'title': 'Section',
-                    'scope': 'fuzzer',
                     'charts': [
                         {
                             'id': 'chart',
@@ -465,7 +461,7 @@ class ReportingPluginSectionsTest(unittest.TestCase):
     def test_build_plugin_sections_reports_validation_warnings(self) -> None:
         class InvalidPlugin:
             def build_extra_sections(self, ctx):
-                return [ExtraSection(id='', title='Missing id', scope='target')]
+                return [ExtraSection(id='', title='Missing id')]
 
         sections, debug = _build_plugin_sections(
             plugin=InvalidPlugin(),
@@ -485,7 +481,7 @@ class ReportingPluginSectionsTest(unittest.TestCase):
             def build_extra_sections(self, ctx):
                 series = ChartSeries(id='s', label='S', points=[DataPoint(x=0, y=float('nan'))])
                 chart = ChartSpec(id='c', title='C', type='line', series=[series])
-                return [ExtraSection(id='nan', title='NaN', scope='target', charts=[chart])]
+                return [ExtraSection(id='nan', title='NaN', charts=[chart])]
 
             def build_debug_info(self, ctx):
                 return {'paths': {'a'}}
@@ -515,7 +511,7 @@ class ReportingPluginSectionsTest(unittest.TestCase):
 
         chart = ChartSpec(id='c', title='C', type='line', series=[object()])
         sections, warnings = validate_extra_sections(
-            [ExtraSection(id='s', title='S', scope='target', charts=[chart])]
+            [ExtraSection(id='s', title='S', charts=[chart])]
         )
         self.assertEqual([], sections)
         self.assertRegex(warnings[0], r'^section\[0\]: invalid plugin data: ')

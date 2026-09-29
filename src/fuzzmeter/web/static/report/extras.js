@@ -181,7 +181,7 @@ export function filterExtraSections(extraSections, selectedSet) {
 export function renderExtraSections(host, extraSections) {
   (extraSections || []).forEach((section) => {
     const block = fromTemplate('tplReportBlock');
-    const blockTitle = section.scope === 'fuzzer' && section.owner_fuzzer
+    const blockTitle = section.owner_fuzzer
       ? `${section.title} (${section.owner_fuzzer})`
       : section.title;
     part(block, 'title').textContent = blockTitle;

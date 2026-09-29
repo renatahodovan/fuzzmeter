@@ -314,7 +314,6 @@ export function deriveReportData(rawData, selectedFuzzers) {
           ? cloneMatrixForSelected(target[uniqueBugMatrix], selectedSet)
           : emptyMatrix(),
         [relbugMatrix]: hasPairwiseFuzzers ? cloneMatrixForSelected(target[relbugMatrix], selectedSet) : emptyMatrix(),
-        extra_sections: filterExtraSections(target.extra_sections, selectedSet),
       });
       enrichedTarget.fuzzers = enrichedTarget.fuzzers.map((entry) => ({
         ...entry,

@@ -46,7 +46,6 @@ def attach_extra_sections(
     for target in targets:
         benchmark = str(target.get('benchmark') or '')
         fuzz_target = str(target.get('fuzz_target') or '')
-        target_sections: list[ExtraSection] = []
         target_debug: list[dict[str, Any]] = []
         for fuzzer_entry in target.get('fuzzers') or []:
             fuzzer = str(fuzzer_entry.get('fuzzer') or '')
@@ -83,16 +82,10 @@ def attach_extra_sections(
                 if matched_plugin_name is None:
                     debug_info['status'] = 'load_error'
                     debug_info['error'] = loader.load_errors[-1]['error']
-            fuzzer_entry['extra_sections'] = serialize_extra_sections(
-                [section for section in fuzzer_sections if section.scope == 'fuzzer']
-            )
+            fuzzer_entry['extra_sections'] = serialize_extra_sections(fuzzer_sections)
             debug_info['fuzzer_sections'] = len(fuzzer_entry['extra_sections'])
-            target_only_sections = [section for section in fuzzer_sections if section.scope == 'target']
-            debug_info['target_sections'] = len(target_only_sections)
             fuzzer_entry['extra_section_debug'] = [debug_info]
             target_debug.append(debug_info)
-            target_sections.extend(target_only_sections)
-        target['extra_sections'] = serialize_extra_sections(target_sections)
         target['extra_section_debug'] = target_debug
 
 

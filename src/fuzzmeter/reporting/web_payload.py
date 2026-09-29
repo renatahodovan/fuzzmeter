@@ -17,7 +17,6 @@ from .plugin_api import ChartSeries, ChartSpec, ChartType, DataPoint, ExtraSecti
 
 ALLOWED_CHART_TYPES = set(get_args(ChartType))
 ALLOWED_FILTER_MODES = {'series', 'static'}
-ALLOWED_SCOPES = {'target', 'fuzzer'}
 
 
 def validate_extra_sections(sections: Any) -> tuple[list[ExtraSection], list[str]]:
@@ -50,7 +49,6 @@ def serialize_extra_sections(sections: Sequence[ExtraSection]) -> list[dict[str,
         {
             'id': section.id,
             'title': section.title,
-            'scope': section.scope,
             'charts': [_serialize_chart(chart) for chart in section.charts],
         }
         for section in sections
@@ -64,8 +62,6 @@ def _section_warning(section: Any) -> str | None:
         return 'missing section id'
     if not _is_text(section.title):
         return 'missing section title'
-    if section.scope not in ALLOWED_SCOPES:
-        return f'unsupported scope: {section.scope}'
     if not section.charts:
         return 'section has no charts'
     for index, chart in enumerate(section.charts):

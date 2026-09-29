@@ -27,7 +27,6 @@ ChartType = Literal[
     'table',
 ]
 ChartFilterMode = Literal['series', 'static']
-SectionScope = Literal['target', 'fuzzer']
 
 
 @dataclass(frozen=True)
@@ -96,7 +95,6 @@ class ExtraSection:
 
     id: str
     title: str
-    scope: SectionScope
     charts: list[ChartSpec] = field(default_factory=list)
 
 
@@ -139,6 +137,5 @@ __all__ = [
     'MatrixData',
     'ReportingContext',
     'ReportingPlugin',
-    'SectionScope',
     'TableColumn',
 ]

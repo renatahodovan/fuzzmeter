@@ -33,7 +33,6 @@ def build_extra_sections(ctx: ReportingContext) -> list[ExtraSection]:
         ExtraSection(
             id='afl-mutators',
             title='AFL mutators',
-            scope='fuzzer',
             charts=[
                 ChartSpec(
                     id='mutator-usefulness-ratio',

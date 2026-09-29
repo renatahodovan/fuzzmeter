@@ -1242,12 +1242,9 @@ export function createTargetSection(target) {
   const targetTableExportHost = targetTableExport.parentElement;
 
   const blocks = part(sectionEl, 'blocks');
-  const combinedExtraSections = [
-    ...(target.extra_sections || []),
-    // A fuzzer-scope section belongs to the fuzzer entry that carries it.
-    ...(target.fuzzers || []).flatMap((fuzzer) => (fuzzer.extra_sections || [])
-      .map((extraSection) => ({ ...extraSection, owner_fuzzer: fuzzer.fuzzer }))),
-  ];
+  // A plugin section belongs to the fuzzer entry that carries it.
+  const combinedExtraSections = (target.fuzzers || []).flatMap((fuzzer) => (fuzzer.extra_sections || [])
+    .map((extraSection) => ({ ...extraSection, owner_fuzzer: fuzzer.fuzzer })));
   const trialSummaryBlock = createSummaryTableBlock(section, targetTableExport);
   trialSummaryBlock.id = `t-${targetId}-summary`;
   targetTableExportHost?.remove();
