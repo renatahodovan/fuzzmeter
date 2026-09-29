@@ -1274,6 +1274,10 @@ export function renderDataTable(host, columns, rows) {
  */
 export function renderChartCard(card, spec = {}) {
   if (!card || !spec) return;
+  if (card.canvas) {
+    card.canvas._chartCard = card;
+    card.canvas._chartSpec = spec;
+  }
   if (spec.title !== undefined) card.setTitle?.(spec.title);
   if (spec.subtitle !== undefined) card.setSubtitle?.(spec.subtitle);
   if (spec.exportName !== undefined) card.setExportName?.(spec.exportName);
@@ -1281,6 +1285,12 @@ export function renderChartCard(card, spec = {}) {
   else if (card.canvas && spec.kind) renderCanvasChart(card.canvas, spec);
   if (card.legend && spec.legend !== false) renderLegend(card.legend, spec.legendSeries || spec.series || []);
   if (card.canvas && card.exportHandle) card.exportHandle.surface = updateCanvasExportSurface(card.canvas, card.legend);
+}
+
+export function redrawCharts() {
+  document.querySelectorAll('canvas').forEach((canvas) => {
+    if (canvas._chartCard && canvas._chartSpec) renderChartCard(canvas._chartCard, canvas._chartSpec);
+  });
 }
 
 /**

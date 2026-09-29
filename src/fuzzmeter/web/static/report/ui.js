@@ -145,5 +145,5 @@ export function applyTheme(theme) {
     localStorage.setItem(THEME_STORAGE_KEY, FM_APP.state.theme);
   } catch {}
   syncThemeToggle();
-  FM_APP.redrawAll();
+  FM_APP.redrawCharts();
 }

@@ -30,6 +30,7 @@ import {
 } from './report-utils.js';
 import {
   installElementExportMenu,
+  redrawCharts,
 } from './charts.js';
 import {
   computeSummary,
@@ -528,12 +529,13 @@ async function render() {
   installBenchmarkFilter(data, renderFromState);
   installSummarySorting(renderFromState);
   installComparisonModeControl();
-  FM_APP.redrawAll = () => renderFromState();
+  FM_APP.redrawCharts = redrawCharts;
   byId('searchBox').oninput = applySearch;
   byId('themeToggle').onclick = () => applyTheme(FM_APP.state.theme === 'light' ? 'dark' : 'light');
 
-  window.addEventListener('resize', debounce(() => FM_APP.redrawAll(), 120));
+  window.addEventListener('resize', debounce(redrawCharts, 120));
   applyTheme(preferredTheme());
+  renderFromState();
   installCompositeControls(async () => {
     const previous = FM_APP.rawData;
     const next = await fetchJSON(window.FM_DATA_URL && window.FM_DATA_URL.length ? window.FM_DATA_URL : 'data.json');

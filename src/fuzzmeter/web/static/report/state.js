@@ -26,7 +26,7 @@ export const FM_APP = {
     summarySort: { key: 'coverage_score', direction: 'desc' },
   },
   sections: [],
-  redrawAll: () => {},
+  redrawCharts: () => {},
   activeTocCleanup: null,
   activeNavCleanup: null,
 };
