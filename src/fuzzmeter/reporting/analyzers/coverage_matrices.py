@@ -141,23 +141,31 @@ def compute_branch_stat_matrices(
         for fuzzer in fuzzers
         for value in branch_coverage_by_fuzzer.get(fuzzer, [])
     )
-    note = (
+    missing_note = (
         'Final branch coverage missing for one or more trials; '
         'pairwise branch statistics may be partial.'
     ) if missing_any else None
+    sample_sizes = {fuzzer: len(distribution) for fuzzer, distribution in distributions.items()}
+    mwu_note = ' '.join(filter(None, (
+        missing_note,
+        (
+            'Mann-Whitney U requires at least two measured trials per fuzzer; '
+            f'sample sizes: {", ".join(f"{fuzzer} n={size}" for fuzzer, size in sample_sizes.items())}.'
+        ) if any(size < 2 for size in sample_sizes.values()) else None,
+    ))) or None
     p_value_matrix = pairwise_matrix(
         fuzzers,
         distributions,
         compare=mann_whitney_u_pvalue,
         max_value=1.0,
-        note=note,
+        note=mwu_note,
     )
     a12_matrix = pairwise_matrix(
         fuzzers,
         distributions,
         compare=vargha_delaney_a12,
         max_value=1.0,
-        note=note,
+        note=missing_note,
     )
     p_value_matrix.update(
         {

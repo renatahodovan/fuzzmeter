@@ -310,6 +310,17 @@ class CoverageReportingTest(unittest.TestCase):
         self.assertAlmostEqual(1.0, a12['matrix'][0][1])
         self.assertAlmostEqual(0.0, a12['matrix'][1][0])
 
+        partial_mwu, partial_a12 = coverage_matrices.compute_branch_stat_matrices(
+            fuzzers=['alpha', 'beta'],
+            branch_coverage_by_fuzzer={'alpha': [100], 'beta': [10, 11]},
+        )
+        self.assertEqual(
+            'Mann-Whitney U requires at least two measured trials per fuzzer; '
+            'sample sizes: alpha n=1, beta n=2.',
+            partial_mwu['by_metric']['branches']['note'],
+        )
+        self.assertIsNone(partial_a12['by_metric']['branches']['note'])
+
     def test_relcov_matrix_uses_trial_median_against_column_union(self) -> None:
         matrix_group, scores = coverage_matrices.compute_relcov_matrix(
             cov_metrics=('branches',),
