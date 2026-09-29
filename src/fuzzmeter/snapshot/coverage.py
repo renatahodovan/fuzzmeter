@@ -47,7 +47,6 @@ def process_snapshot_coverage(
     tick_idx: int,
     ts: int,
     jobs: int,
-    merge_jobs: int,
     snapshots: list[TrialCoverageSnapshot],
     campaign_trials: Sequence[TrialInstance],
     docker_runtime: DockerRuntime,
@@ -113,9 +112,9 @@ def process_snapshot_coverage(
     if progress is not None:
         progress.start_coverage(tick_idx=tick_idx, total=len(measurements), phase='Merge')
 
-    # Merges load the whole coverage mapping, so they run within the smaller memory-bound budget.
+    # Each merge loads the whole coverage mapping, so keep them serial to bound memory use.
     summaries = run_parallel_jobs(
-        jobs=merge_jobs,
+        jobs=1,
         total=len(measurements),
         desc=f'#{tick_idx} snapshot coverage merge',
         position=1,

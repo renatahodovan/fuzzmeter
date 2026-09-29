@@ -90,7 +90,6 @@ class SnapshotCoverageTest(unittest.TestCase):
                     tick_idx=1,
                     ts=10,
                     jobs=1,
-                    merge_jobs=1,
                     snapshots=[snapshot],
                     campaign_trials=[trial],
                     docker_runtime=Mock(),
@@ -103,7 +102,7 @@ class SnapshotCoverageTest(unittest.TestCase):
             bootstrap.call_args.kwargs['state_dir'],
         )
 
-    def test_trial_merges_run_within_the_merge_budget(self) -> None:
+    def test_trial_merges_run_serially(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             trial = _trial_instance(root)
@@ -124,7 +123,6 @@ class SnapshotCoverageTest(unittest.TestCase):
                     tick_idx=1,
                     ts=10,
                     jobs=12,
-                    merge_jobs=3,
                     snapshots=[snapshot],
                     campaign_trials=[],
                     docker_runtime=Mock(),
@@ -132,7 +130,7 @@ class SnapshotCoverageTest(unittest.TestCase):
                 )
 
         self.assertEqual(12, execute_batches.call_args.kwargs['jobs'])
-        self.assertEqual(3, run_merges.call_args.kwargs['jobs'])
+        self.assertEqual(1, run_merges.call_args.kwargs['jobs'])
 
     def test_trial_coverage_sets_path_is_stored_without_html_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

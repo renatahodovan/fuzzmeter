@@ -186,7 +186,6 @@ def _run_live_experiment(
             coverage_export_every=campaign_config.settings.snapshot_export_every_ticks,
             docker_runtime=docker_runtime,
             jobs=snap_jobs,
-            merge_jobs=snap_jobs,
             parallel_jobs=campaign_config.settings.parallel_jobs,
             total_trials=len(trial_configs),
             trial_workers=trial_workers,
@@ -272,15 +271,9 @@ def _run_replay_experiment(
     trial_configs: list[ReplayTrialConfig],
 ) -> Path:
     prep_jobs = min(campaign_config.settings.parallel_jobs, len(trial_configs))
-    # No fuzzing competes with replay measurement, so it gets the whole budget. Coverage merges are
-    # memory-bound and stay at the snapshot budget a live run with the same settings would reserve.
+    # No fuzzing competes with replay measurement, so it gets the whole budget.
     snap_jobs = campaign_config.settings.parallel_jobs
-    _, merge_jobs = _live_resource_plan(
-        total_jobs=campaign_config.settings.parallel_jobs,
-        snapshot_jobs=campaign_config.settings.snapshot_jobs,
-    )
-    merge_jobs = max(merge_jobs, 1)
-    LOG.info('Using replay prep_workers=%s snap_jobs=%s merge_jobs=%s', prep_jobs, snap_jobs, merge_jobs)
+    LOG.info('Using replay prep_workers=%s snap_jobs=%s', prep_jobs, snap_jobs)
 
     try:
         with ThreadPoolExecutor(max_workers=prep_jobs) as executor:
@@ -321,7 +314,6 @@ def _run_replay_experiment(
         coverage_export_every=campaign_config.settings.snapshot_export_every_ticks,
         docker_runtime=docker_runtime,
         jobs=snap_jobs,
-        merge_jobs=merge_jobs,
     )
 
     for prepared in prepared_trials:

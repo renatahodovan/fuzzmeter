@@ -58,7 +58,6 @@ class SnapshotScheduler:
         docker_runtime: DockerRuntime,
         coverage_export_every: int = 1,
         jobs: int = 4,
-        merge_jobs: int = 1,
         parallel_jobs: int = 0,
         total_trials: int = 0,
         trial_workers: int = 0,
@@ -72,7 +71,6 @@ class SnapshotScheduler:
         self.every_seconds = every_seconds
         self.coverage_export_every = coverage_export_every
         self.jobs = jobs
-        self.merge_jobs = merge_jobs
         self.parallel_jobs = parallel_jobs
         self.total_trials = total_trials
         self.trial_workers = trial_workers
@@ -386,7 +384,6 @@ class SnapshotScheduler:
                 tick_idx=tick_idx,
                 ts=end_ts,
                 jobs=jobs,
-                merge_jobs=self.merge_jobs,
                 snapshots=coverage_snapshots,
                 campaign_trials=campaign_trials,
                 docker_runtime=self.docker_runtime,
