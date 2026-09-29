@@ -122,8 +122,12 @@ export function applySearch() {
   });
 }
 
+// Theme persistence is a convenience: blocked storage must not stop the report from rendering.
 export function preferredTheme() {
-  const stored = localStorage.getItem(THEME_STORAGE_KEY);
+  let stored = null;
+  try {
+    stored = localStorage.getItem(THEME_STORAGE_KEY);
+  } catch {}
   if (stored === 'light' || stored === 'dark') return stored;
   return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
@@ -137,7 +141,9 @@ function syncThemeToggle() {
 export function applyTheme(theme) {
   FM_APP.state.theme = theme === 'light' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', FM_APP.state.theme);
-  localStorage.setItem(THEME_STORAGE_KEY, FM_APP.state.theme);
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, FM_APP.state.theme);
+  } catch {}
   syncThemeToggle();
   FM_APP.redrawAll();
 }

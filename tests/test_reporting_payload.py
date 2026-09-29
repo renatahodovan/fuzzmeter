@@ -108,7 +108,8 @@ const sandbox = {
   console: { ...console, error: (...args) => errors.push(args.map(String).join(' ')) },
   document,
   getComputedStyle: () => ({ getPropertyValue: () => '', fontWeight: '400', textAlign: 'left' }),
-  localStorage: { getItem: () => null, setItem: () => {} },
+  // Blocked site data: storage access throws, which must not stop rendering.
+  get localStorage() { throw new Error('storage access denied'); },
   setTimeout: () => {},
   window,
 };
