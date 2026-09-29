@@ -161,7 +161,6 @@ def _mutator_series_from_histories(
                 DataPoint(
                     x=elapsed_seconds,
                     y=100.0 * time_counts.get(mutator, 0) / total,
-                    meta={'elapsed_seconds': elapsed_seconds, 'mutator': mutator},
                 )
             )
         if points:

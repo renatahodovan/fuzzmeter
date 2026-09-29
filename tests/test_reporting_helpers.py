@@ -209,7 +209,7 @@ class WebPayloadTest(unittest.TestCase):
                         ChartSeries(
                             id='series',
                             label='Series',
-                            points=[DataPoint(x=1, y=2, lo=0, hi=3, meta={'k': 'v'})],
+                            points=[DataPoint(x=1, y=2, lo=0, hi=3)],
                             values=[1.5],
                             color_hint='#fff',
                         )
@@ -238,7 +238,7 @@ class WebPayloadTest(unittest.TestCase):
                                 {
                                     'id': 'series',
                                     'label': 'Series',
-                                    'points': [{'x': 1, 'y': 2, 'lo': 0, 'hi': 3, 'meta': {'k': 'v'}}],
+                                    'points': [{'x': 1, 'y': 2, 'lo': 0, 'hi': 3}],
                                     'values': [1.5],
                                     'color_hint': '#fff',
                                 }

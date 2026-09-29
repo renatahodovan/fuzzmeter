@@ -37,7 +37,6 @@ class DataPoint:
     y: int | float | None
     lo: int | float | None = None
     hi: int | float | None = None
-    meta: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

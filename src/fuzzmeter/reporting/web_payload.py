@@ -113,7 +113,6 @@ def _serialize_point(point: DataPoint) -> dict[str, Any]:
         'y': point.y,
         'lo': point.lo,
         'hi': point.hi,
-        'meta': dict(point.meta),
     }
 
 
