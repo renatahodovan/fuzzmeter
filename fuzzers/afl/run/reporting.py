@@ -39,8 +39,8 @@ def build_extra_sections(ctx: ReportingContext) -> list[ExtraSection]:
                     type='stacked_area',
                     title='Mutator usefulness ratio',
                     subtitle='Percentage distribution of AFL custom mutators across snapshot corpora.',
-                    x_axis='elapsed seconds',
-                    y_axis='percent',
+                    x_mode='time',
+                    y_mode='percent',
                     filter_mode='static',
                     series=series,
                 )

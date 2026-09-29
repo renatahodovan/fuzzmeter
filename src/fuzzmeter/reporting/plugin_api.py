@@ -27,6 +27,8 @@ ChartType = Literal[
     'table',
 ]
 ChartFilterMode = Literal['series', 'static']
+ChartXMode = Literal['index', 'time']
+ChartYMode = Literal['absolute', 'percent']
 
 
 @dataclass(frozen=True)
@@ -79,8 +81,8 @@ class ChartSpec:
     type: ChartType
     title: str
     subtitle: str | None = None
-    x_axis: str | None = None
-    y_axis: str | None = None
+    x_mode: ChartXMode = 'index'
+    y_mode: ChartYMode = 'absolute'
     filter_mode: ChartFilterMode = 'series'
     series: list[ChartSeries] = field(default_factory=list)
     matrix: MatrixData | None = None
@@ -131,6 +133,8 @@ __all__ = [
     'ChartSeries',
     'ChartSpec',
     'ChartType',
+    'ChartXMode',
+    'ChartYMode',
     'DataPoint',
     'ExtraSection',
     'MatrixData',

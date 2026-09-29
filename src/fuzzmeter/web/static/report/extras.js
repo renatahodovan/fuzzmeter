@@ -39,11 +39,6 @@ export const ALLOWED_CHART_TYPES = [
 
 const LINE_CHART_TYPES = new Set(ALLOWED_CHART_TYPES.filter((chartType) => chartType.startsWith('line')));
 
-function hasTimeXAxis(chart) {
-  const axis = String(chart?.x_axis || '').toLowerCase();
-  return axis.includes('elapsed') || axis.includes('time') || axis.includes('second');
-}
-
 function normalizeSeries(series) {
   return (series || []).map((entry) => ({
     ...entry,
@@ -105,8 +100,8 @@ function createExtraChartCard(section, chart) {
     exportName: `${section.id}-${chart.id}`,
   });
   const series = normalizeSeries(chart.series);
-  const percentAxis = String(chart.y_axis || '').toLowerCase().includes('percent');
-  const xMode = hasTimeXAxis(chart) ? 'time' : 'index';
+  const percentAxis = chart.y_mode === 'percent';
+  const xMode = chart.x_mode === 'time' ? 'time' : 'index';
   return {
     card: card.card,
     render() {
@@ -114,7 +109,7 @@ function createExtraChartCard(section, chart) {
       if (LINE_CHART_TYPES.has(chart.type)) {
         spec = { kind: 'line', series, options: { xMode, yClampPct: percentAxis } };
       } else if (chart.type === 'stacked_area') {
-        spec = { kind: 'stackedArea', series, options: { xMode, yMax: 100 } };
+        spec = { kind: 'stackedArea', series, options: { xMode, yMax: percentAxis ? 100 : undefined } };
       } else if (chart.type === 'bar') {
         spec = { kind: 'bar', rows: normalizeBarRows(chart), options: { yClampPct: percentAxis } };
       } else if (chart.type === 'stacked_bar') {

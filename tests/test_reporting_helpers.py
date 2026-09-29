@@ -231,8 +231,8 @@ class WebPayloadTest(unittest.TestCase):
                             'type': 'table',
                             'title': 'Chart',
                             'subtitle': None,
-                            'x_axis': None,
-                            'y_axis': None,
+                            'x_mode': 'index',
+                            'y_mode': 'absolute',
                             'filter_mode': 'static',
                             'series': [
                                 {

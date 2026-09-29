@@ -269,7 +269,8 @@ function chartBounds(spec) {
   }
   if (spec.kind === 'stackedArea') {
     const xs = Array.from(new Set(spec.series.flatMap((entry) => entry.points.map((point) => point.x)))).sort((a, b) => a - b);
-    return { xMax: xs.at(-1), xMin: xs[0], xValues: xs, yMax: number(spec.options.yMax, 100), yMin: 0 };
+    const totals = xs.map((x) => spec.series.reduce((sum, entry) => sum + number(entry.points.find((point) => point.x === x)?.y), 0));
+    return { xMax: xs.at(-1), xMin: xs[0], xValues: xs, yMax: number(spec.options.yMax, Math.max(0, ...totals) * 1.08), yMin: 0 };
   }
   const bounds = seriesBounds(spec);
   const pad = (bounds.yMax - bounds.yMin) * 0.08;
