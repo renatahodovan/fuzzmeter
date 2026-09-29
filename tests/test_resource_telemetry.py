@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import tempfile
 import unittest
 
@@ -118,6 +119,22 @@ class ResourceTelemetryTest(unittest.TestCase):
                 corpus_disk_usage_bytes=2 * 1024,
             ),
         )
+
+    def test_docker_stats_failure_keeps_disk_telemetry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            trial = _active_trial(Path(tmp_dir))
+
+            upsert_target = 'fuzzmeter.snapshot.resource_telemetry.db_resource_telemetry.upsert_resource_telemetry'
+            failure = subprocess.CalledProcessError(1, 'docker', stderr='No such container: container')
+            with (
+                patch('fuzzmeter.snapshot.resource_telemetry.subprocess.run', side_effect=failure),
+                patch.object(ResourceTelemetryCollector, '_du_sk', return_value=2),
+                patch(upsert_target) as upsert,
+            ):
+                ResourceTelemetryCollector().collect(db=None, tick_idx=1, ts=100, active_trials=[trial])
+
+        self.assertIsNone(upsert.call_args.args[1].cpu_percent)
+        self.assertEqual(2 * 1024, upsert.call_args.args[1].corpus_disk_usage_bytes)
 
 
 if __name__ == '__main__':

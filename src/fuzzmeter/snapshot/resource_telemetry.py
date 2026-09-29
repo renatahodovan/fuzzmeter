@@ -73,7 +73,7 @@ class ResourceTelemetryCollector:
         '''Collect and persist one resource sample for each active trial.'''
         stats_by_container = self._docker_stats_by_container([trial.container_name for trial in active_trials])
         for trial in active_trials:
-            stats = stats_by_container.get(trial.container_name)
+            stats = {} if stats_by_container is None else stats_by_container.get(trial.container_name)
             if stats is None:
                 LOG.warning('Container %s exited before resource telemetry collection', trial.container_name)
                 stats = {}
@@ -95,7 +95,7 @@ class ResourceTelemetryCollector:
             )
 
     @staticmethod
-    def _docker_stats_by_container(container_names: list[str]) -> dict[str, dict[str, Any]]:
+    def _docker_stats_by_container(container_names: list[str]) -> dict[str, dict[str, Any]] | None:
         try:
             result = subprocess.run(
                 ['docker', 'stats', '--no-stream', '--format', '{{json .}}', *container_names],
@@ -114,7 +114,8 @@ class ResourceTelemetryCollector:
             }
         except (KeyError, RuntimeError, TypeError, ValueError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
             message = (getattr(exc, 'stderr', '') or '').strip() or str(exc) or 'docker stats failed'
-            raise RuntimeError(f'Docker stats failed for {len(container_names)} container(s): {message}') from exc
+            LOG.warning('Docker stats failed for %d container(s): %s', len(container_names), message)
+            return None
 
     @staticmethod
     def _memory_usage_bytes(stats: dict[str, Any]) -> int | None:
