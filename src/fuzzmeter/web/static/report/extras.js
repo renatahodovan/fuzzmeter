@@ -36,12 +36,6 @@ export const ALLOWED_CHART_TYPES = [
   'stacked_bar',
   'table',
 ];
-export const ALLOWED_PLACEMENTS = [
-  'after:coverage',
-  'after:performance',
-  'after:bugs',
-  'after:target',
-];
 
 const LINE_CHART_TYPES = new Set(ALLOWED_CHART_TYPES.filter((chartType) => chartType.startsWith('line')));
 
@@ -142,11 +136,6 @@ function createExtraChartCard(section, chart) {
   };
 }
 
-function placementOrder(placement) {
-  const index = ALLOWED_PLACEMENTS.indexOf(placement);
-  return index < 0 ? ALLOWED_PLACEMENTS.length : index;
-}
-
 export function filterExtraSections(extraSections, selectedSet) {
   const filterSeries = (series) => (series || []).filter((entry) => {
     const key = String(entry.id || entry.label || '');
@@ -190,9 +179,7 @@ export function filterExtraSections(extraSections, selectedSet) {
 }
 
 export function renderExtraSections(host, extraSections) {
-  const sections = [...(extraSections || [])]
-    .sort((left, right) => placementOrder(left.placement) - placementOrder(right.placement));
-  sections.forEach((section) => {
+  (extraSections || []).forEach((section) => {
     const block = fromTemplate('tplReportBlock');
     const blockTitle = section.scope === 'fuzzer' && section.owner_fuzzer
       ? `${section.title} (${section.owner_fuzzer})`

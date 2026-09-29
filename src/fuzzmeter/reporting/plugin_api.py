@@ -28,7 +28,6 @@ ChartType = Literal[
 ]
 ChartFilterMode = Literal['series', 'recompute', 'static']
 SectionScope = Literal['target', 'fuzzer']
-SectionPlacement = Literal['after:coverage', 'after:performance', 'after:bugs', 'after:target']
 
 
 @dataclass(frozen=True)
@@ -99,7 +98,6 @@ class ExtraSection:
     id: str
     title: str
     scope: SectionScope
-    placement: SectionPlacement
     owner_fuzzer: str | None = None
     charts: list[ChartSpec] = field(default_factory=list)
 
@@ -143,7 +141,6 @@ __all__ = [
     'MatrixData',
     'ReportingContext',
     'ReportingPlugin',
-    'SectionPlacement',
     'SectionScope',
     'TableColumn',
 ]

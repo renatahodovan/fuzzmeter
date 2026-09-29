@@ -29,7 +29,6 @@ from fuzzmeter.reporting.plugin_api import (
     ExtraSection,
     MatrixData,
     ReportingContext,
-    SectionPlacement,
     TableColumn,
 )
 from fuzzmeter.reporting.plugin_sections import (
@@ -44,7 +43,6 @@ from fuzzmeter.reporting.plugins.loader import (
 )
 from fuzzmeter.reporting.web_payload import (
     ALLOWED_CHART_TYPES,
-    ALLOWED_PLACEMENTS,
     serialize_extra_sections,
     validate_extra_sections,
 )
@@ -156,7 +154,6 @@ class WebPayloadTest(unittest.TestCase):
 
     def test_runtime_constraints_come_from_public_literal_types(self) -> None:
         self.assertEqual(set(get_args(ChartType)), ALLOWED_CHART_TYPES)
-        self.assertEqual(set(get_args(SectionPlacement)), ALLOWED_PLACEMENTS)
 
     def test_rejects_non_list_plugin_output(self) -> None:
         self.assertEqual(([], ['plugin output is not a list']), validate_extra_sections({'not': 'a list'}))
@@ -166,7 +163,6 @@ class WebPayloadTest(unittest.TestCase):
             id='valid',
             title='Valid',
             scope='target',
-            placement='after:coverage',
             charts=[
                 ChartSpec(
                     id='valid-chart',
@@ -180,7 +176,6 @@ class WebPayloadTest(unittest.TestCase):
             id='invalid',
             title='Invalid',
             scope='target',
-            placement='after:coverage',
             charts=[
                 ChartSpec(
                     id='bad-matrix',
@@ -207,7 +202,6 @@ class WebPayloadTest(unittest.TestCase):
             id='section',
             title='Section',
             scope='fuzzer',
-            placement='after:target',
             charts=[
                 ChartSpec(
                     id='chart',
@@ -235,7 +229,6 @@ class WebPayloadTest(unittest.TestCase):
                     'id': 'section',
                     'title': 'Section',
                     'scope': 'fuzzer',
-                    'placement': 'after:target',
                     'owner_fuzzer': 'fz',
                     'charts': [
                         {
@@ -474,7 +467,7 @@ class ReportingPluginSectionsTest(unittest.TestCase):
     def test_build_plugin_sections_reports_validation_warnings(self) -> None:
         class InvalidPlugin:
             def build_extra_sections(self, ctx):
-                return [ExtraSection(id='', title='Missing id', scope='target', placement='after:coverage')]
+                return [ExtraSection(id='', title='Missing id', scope='target')]
 
         sections, debug = _build_plugin_sections(
             plugin=InvalidPlugin(),
@@ -494,7 +487,7 @@ class ReportingPluginSectionsTest(unittest.TestCase):
             def build_extra_sections(self, ctx):
                 series = ChartSeries(id='s', label='S', points=[DataPoint(x=0, y=float('nan'))])
                 chart = ChartSpec(id='c', title='C', type='line', series=[series])
-                return [ExtraSection(id='nan', title='NaN', scope='target', placement='after:coverage', charts=[chart])]
+                return [ExtraSection(id='nan', title='NaN', scope='target', charts=[chart])]
 
             def build_debug_info(self, ctx):
                 return {'paths': {'a'}}
@@ -524,7 +517,7 @@ class ReportingPluginSectionsTest(unittest.TestCase):
 
         chart = ChartSpec(id='c', title='C', type='line', series=[object()])
         sections, warnings = validate_extra_sections(
-            [ExtraSection(id='s', title='S', scope='target', placement='after:coverage', charts=[chart])]
+            [ExtraSection(id='s', title='S', scope='target', charts=[chart])]
         )
         self.assertEqual([], sections)
         self.assertRegex(warnings[0], r'^section\[0\]: invalid plugin data: ')

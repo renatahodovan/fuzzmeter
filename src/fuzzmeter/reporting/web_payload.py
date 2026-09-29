@@ -13,11 +13,10 @@ import json
 
 from typing import Any, Sequence, get_args
 
-from .plugin_api import ChartSeries, ChartSpec, ChartType, DataPoint, ExtraSection, MatrixData, SectionPlacement
+from .plugin_api import ChartSeries, ChartSpec, ChartType, DataPoint, ExtraSection, MatrixData
 
 ALLOWED_CHART_TYPES = set(get_args(ChartType))
 ALLOWED_FILTER_MODES = {'series', 'recompute', 'static'}
-ALLOWED_PLACEMENTS = set(get_args(SectionPlacement))
 ALLOWED_SCOPES = {'target', 'fuzzer'}
 
 
@@ -56,7 +55,6 @@ def serialize_extra_sections(
             'id': section.id,
             'title': section.title,
             'scope': section.scope,
-            'placement': section.placement,
             'owner_fuzzer': section.owner_fuzzer or (default_owner_fuzzer if section.scope == 'fuzzer' else None),
             'charts': [_serialize_chart(chart) for chart in section.charts],
         }
@@ -73,8 +71,6 @@ def _section_warning(section: Any) -> str | None:
         return 'missing section title'
     if section.scope not in ALLOWED_SCOPES:
         return f'unsupported scope: {section.scope}'
-    if section.placement not in ALLOWED_PLACEMENTS:
-        return f'unsupported placement: {section.placement}'
     if not section.charts:
         return 'section has no charts'
     for index, chart in enumerate(section.charts):

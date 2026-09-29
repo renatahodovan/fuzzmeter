@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import get_args
 
 from fuzzmeter.reporting.keys import COV_METRICS, MATRIX_PAYLOAD_KEYS
-from fuzzmeter.reporting.plugin_api import ChartType, SectionPlacement
+from fuzzmeter.reporting.plugin_api import ChartType
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -61,7 +61,6 @@ class ReportFrontendTest(unittest.TestCase):
         self.assertEqual(COV_METRICS, coverage_metrics)
         self.assertEqual(MATRIX_PAYLOAD_KEYS, matrix_keys)
         self.assertEqual(get_args(ChartType), _javascript_string_array(extras, 'ALLOWED_CHART_TYPES'))
-        self.assertEqual(get_args(SectionPlacement), _javascript_string_array(extras, 'ALLOWED_PLACEMENTS'))
         self.assertIn('return COVERAGE_METRICS.find(([metric]) => hasMetricData(metric))', page)
         self.assertIn(
             'if (!isFiniteNumber(value)) return null;',
