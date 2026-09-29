@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 from pathlib import Path
@@ -136,6 +137,7 @@ def _build_plugin_sections(
     if callable(debug_builder):
         try:
             plugin_debug = debug_builder(ctx)
+            json.dumps(plugin_debug, allow_nan=False)
         except Exception as exc:
             debug_info['debug_error'] = str(exc)
         else:

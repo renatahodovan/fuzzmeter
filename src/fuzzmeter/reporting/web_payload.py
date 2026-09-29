@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import json
+
 from typing import Any, Sequence, get_args
 
 from .plugin_api import ChartSeries, ChartSpec, ChartType, DataPoint, ExtraSection, MatrixData, SectionPlacement
@@ -75,6 +77,10 @@ def _section_warning(section: Any) -> str | None:
         warning = _chart_warning(chart)
         if warning:
             return f'chart[{index}]: {warning}'
+    try:
+        json.dumps(serialize_extra_sections([section]), allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        return f'not JSON-serializable: {exc}'
     return None
 
 

@@ -489,6 +489,29 @@ class ReportingPluginSectionsTest(unittest.TestCase):
         self.assertEqual(['section[0]: missing section id'], debug['validation_warnings'])
         self.assertEqual('plugin_returned_no_sections', debug['reason'])
 
+    def test_build_plugin_sections_drops_non_json_output(self) -> None:
+        class NonJsonPlugin:
+            def build_extra_sections(self, ctx):
+                series = ChartSeries(id='s', label='S', points=[DataPoint(x=0, y=float('nan'))])
+                chart = ChartSpec(id='c', title='C', type='line', series=[series])
+                return [ExtraSection(id='nan', title='NaN', scope='target', placement='after:coverage', charts=[chart])]
+
+            def build_debug_info(self, ctx):
+                return {'paths': {'a'}}
+
+        sections, debug = _build_plugin_sections(
+            plugin=NonJsonPlugin(),
+            matched_plugin_name='fz',
+            plugin_candidates=['fz'],
+            base_name=None,
+            ctx=_context(),
+        )
+
+        self.assertEqual([], sections)
+        self.assertRegex(debug['validation_warnings'][0], r'^section\[0\]: not JSON-serializable: ')
+        self.assertNotIn('paths', debug)
+        self.assertIn('debug_error', debug)
+
 
 def _context() -> ReportingContext:
     return ReportingContext(
