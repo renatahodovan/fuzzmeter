@@ -243,8 +243,8 @@ class SnapshotScheduler:
         with self._lock:
             return len(self._active)
 
-    def _coverage_jobs(self) -> int:
-        '''Return coverage workers after reclaiming final-wave trial slots.'''
+    def _tick_jobs(self) -> int:
+        '''Return the tick's job budget after reclaiming final-wave trial slots.'''
         with self._lock:
             if self.total_trials and len(self._campaign_trials) == self.total_trials:
                 return max(self.jobs, self.parallel_jobs - len(self._active))
@@ -360,7 +360,7 @@ class SnapshotScheduler:
         render_heavy: bool = False,
     ) -> None:
         active_trials = list(selected_trials)
-        coverage_jobs = self._coverage_jobs()
+        jobs = self._tick_jobs()
         write_export = render_heavy or (
             self.coverage_export_every > 0 and tick_idx % self.coverage_export_every == 0
         )
@@ -374,7 +374,7 @@ class SnapshotScheduler:
             end_ts=end_ts,
             active_trials=active_trials,
             replay_mode=replay_mode,
-            jobs=self.jobs,
+            jobs=jobs,
         )
 
         if coverage_snapshots:
@@ -385,8 +385,8 @@ class SnapshotScheduler:
                 run_id=self.run_id,
                 tick_idx=tick_idx,
                 ts=end_ts,
-                jobs=self.merge_jobs,
-                coverage_jobs=coverage_jobs,
+                jobs=jobs,
+                merge_jobs=self.merge_jobs,
                 snapshots=coverage_snapshots,
                 campaign_trials=campaign_trials,
                 docker_runtime=self.docker_runtime,
@@ -402,7 +402,7 @@ class SnapshotScheduler:
                 db_path=self.db_path,
                 run_id=self.run_id,
                 tick_idx=tick_idx,
-                jobs=self.jobs,
+                jobs=jobs,
                 snapshots=crash_snapshots,
                 docker_runtime=self.docker_runtime,
                 progress=self._progress,

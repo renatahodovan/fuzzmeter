@@ -47,7 +47,7 @@ def process_snapshot_coverage(
     tick_idx: int,
     ts: int,
     jobs: int,
-    coverage_jobs: int | None = None,
+    merge_jobs: int,
     snapshots: list[TrialCoverageSnapshot],
     campaign_trials: Sequence[TrialInstance],
     docker_runtime: DockerRuntime,
@@ -55,8 +55,6 @@ def process_snapshot_coverage(
     progress: SnapshotProgress | None = None,
 ) -> None:
     '''Process every coverage snapshot scheduled for a tick.'''
-    coverage_jobs = jobs if coverage_jobs is None else coverage_jobs
-
     # Plan every trial batch before sharing the coverage execution pool.
     measurements: list[tuple[TrialCoverageSnapshot, list[CoverageBatch]]] = []
     coverage_batches: list[CoverageBatch] = []
@@ -108,16 +106,16 @@ def process_snapshot_coverage(
         execute_coverage_batches(
             docker_runtime=docker_runtime,
             batches=coverage_batches,
-            jobs=coverage_jobs,
+            jobs=jobs,
             on_batch_done=progress.step_coverage if progress is not None else None,
         )
 
     if progress is not None:
         progress.start_coverage(tick_idx=tick_idx, total=len(measurements), phase='Merge')
 
-    # Merge trials in parallel after every coverage batch has finished.
+    # Merges load the whole coverage mapping, so they run within the smaller memory-bound budget.
     summaries = run_parallel_jobs(
-        jobs=jobs,
+        jobs=merge_jobs,
         total=len(measurements),
         desc=f'#{tick_idx} snapshot coverage merge',
         position=1,

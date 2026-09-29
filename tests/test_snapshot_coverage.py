@@ -90,6 +90,7 @@ class SnapshotCoverageTest(unittest.TestCase):
                     tick_idx=1,
                     ts=10,
                     jobs=1,
+                    merge_jobs=1,
                     snapshots=[snapshot],
                     campaign_trials=[trial],
                     docker_runtime=Mock(),
@@ -101,6 +102,37 @@ class SnapshotCoverageTest(unittest.TestCase):
             trial.layout.snapshots_dir / '.state' / 'coverage',
             bootstrap.call_args.kwargs['state_dir'],
         )
+
+    def test_trial_merges_run_within_the_merge_budget(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            trial = _trial_instance(root)
+            snapshot_dir = root / 'snapshot'
+            (snapshot_dir / 'corpus').mkdir(parents=True)
+            snapshot = TrialCoverageSnapshot(trial=trial, snapshot_id=1, snapshot_dir=snapshot_dir, tick_idx=1)
+
+            with patch('fuzzmeter.snapshot.coverage.bootstrap_from_seed_baseline'), \
+                 patch('fuzzmeter.snapshot.coverage.collect_inputs', return_value=[root / 'input']), \
+                 patch('fuzzmeter.snapshot.coverage.build_coverage_batches', return_value=[Mock()]), \
+                 patch('fuzzmeter.snapshot.coverage.execute_coverage_batches') as execute_batches, \
+                 patch('fuzzmeter.snapshot.coverage.apply_snapshot_summary'), \
+                 patch('fuzzmeter.snapshot.coverage.run_parallel_jobs', return_value=[{}]) as run_merges:
+                process_snapshot_coverage(
+                    db=Mock(),
+                    run_dir=root / 'run',
+                    run_id='run',
+                    tick_idx=1,
+                    ts=10,
+                    jobs=12,
+                    merge_jobs=3,
+                    snapshots=[snapshot],
+                    campaign_trials=[],
+                    docker_runtime=Mock(),
+                    write_export=True,
+                )
+
+        self.assertEqual(12, execute_batches.call_args.kwargs['jobs'])
+        self.assertEqual(3, run_merges.call_args.kwargs['jobs'])
 
     def test_trial_coverage_sets_path_is_stored_without_html_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
