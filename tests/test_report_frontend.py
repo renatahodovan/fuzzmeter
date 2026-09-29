@@ -292,6 +292,20 @@ class ReportFrontendTest(unittest.TestCase):
             const alphaOnly = computeSummary([{ ...enriched, fuzzers: [enriched.fuzzers[0]] }], 'any');
             assert.equal(alphaOnly.rankings[0].relcov_score, 2);
             assert.equal(alphaOnly.rankings[0].relbug_score, 0);
+
+            // Targets that not every fuzzer ran stay out of the ranking.
+            const partial = computeSummary([
+              { ...enriched, key: 'bench:t1' },
+              { ...enriched, key: 'bench:t2', fuzzers: [enriched.fuzzers[1]] },
+            ], 'any');
+            assert.deepEqual(partial.ranked_target_keys, ['bench:t1']);
+            assert.deepEqual(partial.unranked_targets, [{ key: 'bench:t2', missing: ['alpha'] }]);
+            assert.equal(partial.rankings.find((row) => row.fuzzer === 'beta').unique_bug_count, 1);
+            const disjoint = computeSummary([
+              { ...enriched, key: 'bench:t1', fuzzers: [enriched.fuzzers[0]] },
+              { ...enriched, key: 'bench:t2', fuzzers: [enriched.fuzzers[1]] },
+            ], 'any');
+            assert.deepEqual(disjoint.rankings, []);
         '''
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],

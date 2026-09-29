@@ -107,6 +107,22 @@ function syncPairwiseRankingColumns(data) {
 function buildSummaryRows(data) {
   const rankingsBody = byId('tblRankings');
   rankingsBody.textContent = '';
+  const scope = byId('rankingScope');
+  const unranked = data.summary?.unranked_targets || [];
+  scope.textContent = '';
+  scope.hidden = !unranked.length;
+  if (unranked.length) {
+    const rankedCount = (data.summary?.ranked_target_keys || []).length;
+    scope.append(
+      `Ranked on ${rankedCount} of ${rankedCount + unranked.length} visible targets that every visible fuzzer ran. Not ranked: `,
+    );
+    unranked.forEach((target, index) => {
+      const link = el('a', null, target.key);
+      link.href = `#t-${sanitizeId(target.key)}`;
+      scope.append(index ? ', ' : '', link, ` (not run by ${target.missing.join(', ')})`);
+    });
+    scope.append('.');
+  }
   const showPairwiseColumns = syncPairwiseRankingColumns(data);
 
   const rows = [...(data.summary?.rankings || [])].sort((left, right) => (
@@ -209,7 +225,11 @@ function buildWinnerCards(data) {
   host.textContent = '';
 
   const rankingRows = data.summary?.rankings || [];
-  const execRows = summarizeTargetMetric(data.targets || [], (entry) => entry.final?.execs_per_sec_median);
+  const rankedKeys = new Set(data.summary?.ranked_target_keys || []);
+  const execRows = summarizeTargetMetric(
+    (data.targets || []).filter((target) => rankedKeys.has(target.key)),
+    (entry) => entry.final?.execs_per_sec_median,
+  );
   const relCovRows = rankingRows.map((row) => ({ fuzzer: row.fuzzer, value: row.relcov_score }));
   const exclusiveCoverageRows = rankingRows.map((row) => ({
     fuzzer: row.fuzzer,

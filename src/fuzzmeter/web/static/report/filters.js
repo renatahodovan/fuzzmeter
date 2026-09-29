@@ -195,6 +195,9 @@ export function computeSummary(targets, comparisonMode = FM_APP.state.comparison
   const fuzzers = Array.from(new Set(
     targets.flatMap((target) => (target.fuzzers || []).map((entry) => entry.fuzzer)),
   )).sort();
+  // Rank only on targets that every fuzzer ran, so averages and sums compare the same target set.
+  const hasFuzzer = (target, fuzzer) => (target.fuzzers || []).some((entry) => entry.fuzzer === fuzzer);
+  const rankedTargets = targets.filter((target) => fuzzers.every((fuzzer) => hasFuzzer(target, fuzzer)));
   const scores = new Map(fuzzers.map((fuzzer) => [fuzzer, []]));
   const aucScores = new Map(fuzzers.map((fuzzer) => [fuzzer, []]));
   const relcovScores = new Map(fuzzers.map((fuzzer) => [fuzzer, []]));
@@ -209,7 +212,7 @@ export function computeSummary(targets, comparisonMode = FM_APP.state.comparison
     { value: 0, bound: 'exact', hasValue: false, unknown: false },
   ]));
   const execs = new Map(fuzzers.map((fuzzer) => [fuzzer, []]));
-  targets.forEach((target) => {
+  rankedTargets.forEach((target) => {
     const medians = (target.fuzzers || [])
       .map((entry) => entry.final?.regions_pct_median)
       .filter((value) => Number.isFinite(Number(value)))
@@ -247,7 +250,11 @@ export function computeSummary(targets, comparisonMode = FM_APP.state.comparison
     });
   });
   return {
-    rankings: fuzzers.map((fuzzer) => {
+    ranked_target_keys: rankedTargets.map((target) => target.key),
+    unranked_targets: targets
+      .filter((target) => !rankedTargets.includes(target))
+      .map((target) => ({ key: target.key, missing: fuzzers.filter((fuzzer) => !hasFuzzer(target, fuzzer)) })),
+    rankings: (rankedTargets.length ? fuzzers : []).map((fuzzer) => {
       const coverageExclusive = comparisonTotal(exclusiveCoverage, fuzzer);
       const bugExclusive = comparisonTotal(exclusiveBugs, fuzzer);
       return {
