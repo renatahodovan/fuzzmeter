@@ -229,7 +229,6 @@ class WebPayloadTest(unittest.TestCase):
                     'id': 'section',
                     'title': 'Section',
                     'scope': 'fuzzer',
-                    'owner_fuzzer': 'fz',
                     'charts': [
                         {
                             'id': 'chart',
@@ -255,7 +254,7 @@ class WebPayloadTest(unittest.TestCase):
                     ],
                 }
             ],
-            serialize_extra_sections([section], default_owner_fuzzer='fz'),
+            serialize_extra_sections([section]),
         )
 
 

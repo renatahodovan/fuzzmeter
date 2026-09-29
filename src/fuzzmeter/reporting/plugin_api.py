@@ -97,7 +97,6 @@ class ExtraSection:
     id: str
     title: str
     scope: SectionScope
-    owner_fuzzer: str | None = None
     charts: list[ChartSpec] = field(default_factory=list)
 
 

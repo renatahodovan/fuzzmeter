@@ -43,11 +43,7 @@ def validate_extra_sections(sections: Any) -> tuple[list[ExtraSection], list[str
     return valid_sections, warnings
 
 
-def serialize_extra_sections(
-    sections: Sequence[ExtraSection],
-    *,
-    default_owner_fuzzer: str | None = None,
-) -> list[dict[str, Any]]:
+def serialize_extra_sections(sections: Sequence[ExtraSection]) -> list[dict[str, Any]]:
     '''Serialize validated extra sections for the web report payload.'''
 
     return [
@@ -55,7 +51,6 @@ def serialize_extra_sections(
             'id': section.id,
             'title': section.title,
             'scope': section.scope,
-            'owner_fuzzer': section.owner_fuzzer or (default_owner_fuzzer if section.scope == 'fuzzer' else None),
             'charts': [_serialize_chart(chart) for chart in section.charts],
         }
         for section in sections

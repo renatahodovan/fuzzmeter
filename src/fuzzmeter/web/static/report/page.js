@@ -1244,7 +1244,9 @@ export function createTargetSection(target) {
   const blocks = part(sectionEl, 'blocks');
   const combinedExtraSections = [
     ...(target.extra_sections || []),
-    ...(target.fuzzers || []).flatMap((fuzzer) => fuzzer.extra_sections || []),
+    // A fuzzer-scope section belongs to the fuzzer entry that carries it.
+    ...(target.fuzzers || []).flatMap((fuzzer) => (fuzzer.extra_sections || [])
+      .map((extraSection) => ({ ...extraSection, owner_fuzzer: fuzzer.fuzzer }))),
   ];
   const trialSummaryBlock = createSummaryTableBlock(section, targetTableExport);
   trialSummaryBlock.id = `t-${targetId}-summary`;

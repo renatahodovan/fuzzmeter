@@ -84,8 +84,7 @@ def attach_extra_sections(
                     debug_info['status'] = 'load_error'
                     debug_info['error'] = loader.load_errors[-1]['error']
             fuzzer_entry['extra_sections'] = serialize_extra_sections(
-                [section for section in fuzzer_sections if section.scope == 'fuzzer'],
-                default_owner_fuzzer=fuzzer,
+                [section for section in fuzzer_sections if section.scope == 'fuzzer']
             )
             debug_info['fuzzer_sections'] = len(fuzzer_entry['extra_sections'])
             target_only_sections = [section for section in fuzzer_sections if section.scope == 'target']
