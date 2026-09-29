@@ -204,7 +204,6 @@ class WebPayloadTest(unittest.TestCase):
                     id='chart',
                     title='Chart',
                     type='table',
-                    filter_mode='static',
                     series=[
                         ChartSeries(
                             id='series',
@@ -233,7 +232,6 @@ class WebPayloadTest(unittest.TestCase):
                             'subtitle': None,
                             'x_mode': 'index',
                             'y_mode': 'absolute',
-                            'filter_mode': 'static',
                             'series': [
                                 {
                                     'id': 'series',

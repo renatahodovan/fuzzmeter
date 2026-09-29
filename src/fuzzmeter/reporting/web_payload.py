@@ -16,7 +16,6 @@ from typing import Any, Sequence, get_args
 from .plugin_api import ChartSeries, ChartSpec, ChartType, ChartXMode, ChartYMode, DataPoint, ExtraSection, MatrixData
 
 ALLOWED_CHART_TYPES = set(get_args(ChartType))
-ALLOWED_FILTER_MODES = {'series', 'static'}
 ALLOWED_X_MODES = set(get_args(ChartXMode))
 ALLOWED_Y_MODES = set(get_args(ChartYMode))
 
@@ -86,8 +85,6 @@ def _chart_warning(chart: Any) -> str | None:
         return 'missing chart title'
     if chart.type not in ALLOWED_CHART_TYPES:
         return f'unsupported chart type: {chart.type}'
-    if chart.filter_mode not in ALLOWED_FILTER_MODES:
-        return f'unsupported filter mode: {chart.filter_mode}'
     if chart.x_mode not in ALLOWED_X_MODES:
         return f'unsupported x mode: {chart.x_mode}'
     if chart.y_mode not in ALLOWED_Y_MODES:
@@ -153,7 +150,6 @@ def _serialize_chart(chart: ChartSpec) -> dict[str, Any]:
         'subtitle': chart.subtitle,
         'x_mode': chart.x_mode,
         'y_mode': chart.y_mode,
-        'filter_mode': chart.filter_mode,
         'series': [_serialize_series(series) for series in chart.series],
         'matrix': _serialize_matrix(chart.matrix),
         'columns': [{'key': column.key, 'label': column.label, 'kind': column.kind} for column in chart.columns],

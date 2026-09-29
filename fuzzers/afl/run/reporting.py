@@ -41,7 +41,6 @@ def build_extra_sections(ctx: ReportingContext) -> list[ExtraSection]:
                     subtitle='Percentage distribution of AFL custom mutators across snapshot corpora.',
                     x_mode='time',
                     y_mode='percent',
-                    filter_mode='static',
                     series=series,
                 )
             ],

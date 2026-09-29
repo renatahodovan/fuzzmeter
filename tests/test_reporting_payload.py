@@ -28,7 +28,7 @@ from fuzzmeter.reporting.provenance import attach_measurement_provenance
 from fuzzmeter.web.services.report_service import load_report_payload
 from tests.support.dbs import agg_snapshot_row, reporting_run_db
 
-PAYLOAD_HASH = 'd401018135bd96ee49511b4d50679dd1852aa1bfabefc90d032492157940fd82'
+PAYLOAD_HASH = '5e6df4509622f0b67cdded007de25ccaf2874188767f108e0d8f40061bec15c8'
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _BUNDLE_SMOKE_SCRIPT = r'''
 import fs from 'node:fs';

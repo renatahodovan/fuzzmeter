@@ -23,8 +23,6 @@ import {
   renderDataTable,
   renderMatrixTable,
 } from './charts.js';
-import { cloneMatrixForSelected } from './matrix.js';
-
 export const ALLOWED_CHART_TYPES = [
   'bar',
   'distribution',
@@ -125,48 +123,6 @@ function createExtraChartCard(section, chart) {
       renderChartCard(card, spec);
     },
   };
-}
-
-export function filterExtraSections(extraSections, selectedSet) {
-  const filterSeries = (series) => (series || []).filter((entry) => {
-    const key = String(entry.id || entry.label || '');
-    return !selectedSet.size || selectedSet.has(key) || selectedSet.has(String(entry.label || ''));
-  });
-
-  const filterRows = (rows) => (rows || []).filter((row) => {
-    const fuzzer = row?.fuzzer || row?.owner_fuzzer;
-    return !fuzzer || !selectedSet.size || selectedSet.has(String(fuzzer));
-  });
-
-  return (extraSections || [])
-    .map((section) => {
-      const charts = (section.charts || [])
-        .filter((chart) => ALLOWED_CHART_TYPES.includes(chart.type))
-        .map((chart) => {
-          if (chart.filter_mode === 'static') return chart;
-          if (chart.type === 'matrix') {
-            const matrix = cloneMatrixForSelected(chart.matrix, selectedSet);
-            return matrix?.fuzzers?.length ? { ...chart, matrix } : null;
-          }
-          if (chart.type === 'table') {
-            const rows = filterRows(chart.rows);
-            return rows.length ? { ...chart, rows } : null;
-          }
-          if (chart.type === 'bar' && chart.rows?.length) {
-            const rows = filterRows(chart.rows);
-            return rows.length ? { ...chart, rows } : null;
-          }
-          if (chart.type === 'stacked_area') {
-            const series = filterSeries(chart.series);
-            return series.length ? { ...chart, series } : null;
-          }
-          const series = filterSeries(chart.series);
-          return series.length ? { ...chart, series } : null;
-        })
-        .filter(Boolean);
-      return charts.length ? { ...section, charts } : null;
-    })
-    .filter(Boolean);
 }
 
 export function renderExtraSections(host, extraSections) {

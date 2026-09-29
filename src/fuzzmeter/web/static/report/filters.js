@@ -21,7 +21,6 @@ import {
   el,
   rankdataDesc,
 } from './report-utils.js';
-import { filterExtraSections } from './extras.js';
 import { cloneMatrixForSelected } from './matrix.js';
 import { finiteOrNull, isFiniteNumber } from './stats.js';
 
@@ -315,10 +314,6 @@ export function deriveReportData(rawData, selectedFuzzers) {
           : emptyMatrix(),
         [relbugMatrix]: hasPairwiseFuzzers ? cloneMatrixForSelected(target[relbugMatrix], selectedSet) : emptyMatrix(),
       });
-      enrichedTarget.fuzzers = enrichedTarget.fuzzers.map((entry) => ({
-        ...entry,
-        extra_sections: filterExtraSections(entry.extra_sections, selectedSet),
-      }));
       return enrichedTarget;
     })
     .filter(Boolean);

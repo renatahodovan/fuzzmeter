@@ -24,7 +24,6 @@ ChartType = Literal[
     'stacked_bar',
     'table',
 ]
-ChartFilterMode = Literal['series', 'static']
 ChartXMode = Literal['index', 'time']
 ChartYMode = Literal['absolute', 'percent']
 
@@ -81,7 +80,6 @@ class ChartSpec:
     subtitle: str | None = None
     x_mode: ChartXMode = 'index'
     y_mode: ChartYMode = 'absolute'
-    filter_mode: ChartFilterMode = 'series'
     series: list[ChartSeries] = field(default_factory=list)
     matrix: MatrixData | None = None
     columns: list[TableColumn] = field(default_factory=list)
@@ -127,7 +125,6 @@ class ReportingPlugin(Protocol):
 
 
 __all__ = [
-    'ChartFilterMode',
     'ChartSeries',
     'ChartSpec',
     'ChartType',
