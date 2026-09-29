@@ -449,7 +449,7 @@ export function installFuzzerFilter(data, onChange) {
     setFilterPanelOpen(willOpen);
   });
   selectAll.addEventListener('click', () => {
-    names.forEach((name) => FM_APP.state.selectedFuzzers.add(name));
+    allFuzzerNames(FM_APP.rawData).forEach((name) => FM_APP.state.selectedFuzzers.add(name));
     renderFuzzerFilterOptions(data, onChange);
     onChange();
   });
@@ -485,7 +485,7 @@ export function installBenchmarkFilter(data, onChange) {
     setBenchmarkFilterPanelOpen(willOpen);
   });
   selectAll.addEventListener('click', () => {
-    names.forEach((name) => FM_APP.state.selectedBenchmarks.add(name));
+    allBenchmarkNames(FM_APP.rawData).forEach((name) => FM_APP.state.selectedBenchmarks.add(name));
     renderBenchmarkFilterOptions(data, onChange);
     onChange();
   });
