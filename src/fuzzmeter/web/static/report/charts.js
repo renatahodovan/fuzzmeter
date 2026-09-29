@@ -612,10 +612,10 @@ function installLineTooltip(canvas) {
     });
     if (!anchor) return hideTooltip(canvas);
     const rows = payload.series.map((entry) => {
-      const nearest = entry.points.reduce((best, point) => (
-        !best || Math.abs(point.x - anchor.x) < Math.abs(best.x - anchor.x) ? point : best
+      const latest = entry.points.reduce((best, point) => (
+        point.x <= anchor.x && (!best || point.x > best.x) ? point : best
       ), null);
-      return nearest ? { color: entry.color, label: entry.label, value: nearest.y } : null;
+      return latest ? { color: entry.color, label: entry.label, value: latest.y } : null;
     }).filter(Boolean).sort((left, right) => right.value - left.value);
     const tip = tooltip(canvas);
     tip.textContent = '';
