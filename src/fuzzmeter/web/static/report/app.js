@@ -47,6 +47,7 @@ import {
 import { createTargetSection } from './page.js';
 import { tickFailureNotice } from './report-data.js';
 import { compareNumericRows } from './sort.js';
+import { cleanFloats, isFiniteNumber } from './stats.js';
 
 function updateSummarySortIndicators() {
   document.querySelectorAll('[data-sort-arrow]').forEach((node) => {
@@ -88,7 +89,7 @@ function installRankingExport() {
 
 function hasPairwiseRankingScores(data) {
   return (data.summary?.rankings || []).some((row) => (
-    Number.isFinite(Number(row.relcov_score)) || Number.isFinite(Number(row.relbug_score))
+    isFiniteNumber(row.relcov_score) || isFiniteNumber(row.relbug_score)
   ));
 }
 
@@ -167,7 +168,7 @@ function buildSummaryRows(data) {
 }
 
 function formatComparisonCount(value, bound) {
-  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
+  if (!isFiniteNumber(value)) return '—';
   if (bound === 'lower') return `≥${fmtInt(value)}`;
   if (bound === 'upper') return `≤${fmtInt(value)}`;
   if (bound === 'indeterminate') return `~${fmtInt(value)}`;
@@ -176,7 +177,7 @@ function formatComparisonCount(value, bound) {
 
 function bestRowByKey(rows, key) {
   return [...rows]
-    .filter((row) => Number.isFinite(Number(row?.[key])))
+    .filter((row) => isFiniteNumber(row?.[key]))
     .sort((left, right) => compareNumericRows(left, right, key, 'desc'))[0] || null;
 }
 
@@ -185,7 +186,7 @@ function summarizeTargetMetric(targets, extractor) {
   targets.forEach((target) => {
     (target.fuzzers || []).forEach((entry) => {
       const value = extractor(entry);
-      if (!Number.isFinite(Number(value))) return;
+      if (!isFiniteNumber(value)) return;
       const bucket = valuesByFuzzer.get(entry.fuzzer) || [];
       bucket.push(Number(value));
       valuesByFuzzer.set(entry.fuzzer, bucket);
@@ -294,7 +295,7 @@ function buildWinnerCards(data) {
   cards.forEach((card) => {
     if (!card.winner) return;
     const value = card.key === 'value' ? card.winner.value : card.winner[card.key];
-    if (!Number.isFinite(Number(value))) return;
+    if (!isFiniteNumber(value)) return;
     host.appendChild(winnerCard(card.title, card.description, { fuzzer: card.winner.fuzzer, value }, card.formatter));
   });
 }
@@ -302,7 +303,7 @@ function buildWinnerCards(data) {
 function comparisonSampleSizes(data) {
   return (data.targets || []).flatMap((target) => {
     const matrixSizes = target.unique_bug_matrix?.sample_sizes;
-    if (Array.isArray(matrixSizes)) return matrixSizes.map(Number).filter(Number.isFinite);
+    if (Array.isArray(matrixSizes)) return cleanFloats(matrixSizes);
     return (target.fuzzers || []).map((entry) => (entry.trials || []).length);
   });
 }

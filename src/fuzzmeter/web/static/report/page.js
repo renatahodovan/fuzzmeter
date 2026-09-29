@@ -56,6 +56,7 @@ import {
 } from './charts.js';
 import { renderExtraSections } from './extras.js';
 import { compareNumericRows } from './sort.js';
+import { cleanFloats, finiteOrNull, isFiniteNumber } from './stats.js';
 
 function createReportBlock({ title, subtitle = '', bodyClass = '' }) {
   const block = fromTemplate('tplReportBlock');
@@ -99,7 +100,7 @@ function createFuzzerTable(section) {
 }
 
 function aggregateCellContent(primaryValue, distributionValues, formatter, detailLabels = ['min', 'max', 'median']) {
-  const values = (distributionValues || []).filter((value) => Number.isFinite(Number(value))).map(Number);
+  const values = (distributionValues || []).filter((value) => isFiniteNumber(value)).map(Number);
   const primaryText = formatter(primaryValue);
   if (!values.length) {
     return { primaryText, detailsText: [] };
@@ -124,7 +125,7 @@ function appendAggregateCell(tr, primaryValue, distributionValues, formatter, de
 }
 
 function appendDerivedAggregateCell(tr, values, formatter, detailLabels = ['min', 'max'], primaryLabel = null) {
-  const numericValues = (values || []).filter((value) => Number.isFinite(Number(value))).map(Number);
+  const numericValues = (values || []).filter((value) => isFiniteNumber(value)).map(Number);
   const primaryValue = median(numericValues);
   const cell = el('td', 'num');
   const { primaryText, detailsText } = aggregateCellContent(primaryValue, numericValues, formatter, detailLabels);
@@ -134,7 +135,7 @@ function appendDerivedAggregateCell(tr, values, formatter, detailLabels = ['min'
 
 function appendCustomAggregateCell(tr, primaryText, values, formatter, detailLabels = ['min', 'max', 'median']) {
   const cell = el('td', 'num');
-  const numericValues = (values || []).filter((value) => Number.isFinite(Number(value))).map(Number);
+  const numericValues = (values || []).filter((value) => isFiniteNumber(value)).map(Number);
   const { detailsText } = aggregateCellContent(numericValues[0], numericValues, formatter, detailLabels);
   tr.appendChild(renderAggregateCell(cell, primaryText, detailsText));
 }
@@ -158,10 +159,10 @@ function exclusiveCoverageStats(target, fuzzer) {
   const matrix = resolveCoverageMatrix(target.unique_matrix, 'branches');
   const index = (matrix?.fuzzers || []).map(String).indexOf(String(fuzzer.fuzzer || ''));
   if (index < 0) return {};
-  const value = Number((matrix.unique_counts || [])[index]);
+  const value = finiteOrNull((matrix.unique_counts || [])[index]);
   return {
-    exclusive_any: Number.isFinite(value) ? value : null,
-    exclusive_any_bound: Number.isFinite(value) ? 'exact' : 'unknown',
+    exclusive_any: value,
+    exclusive_any_bound: value === null ? 'unknown' : 'exact',
   };
 }
 
@@ -180,8 +181,8 @@ function hasMultipleFuzzers(target) {
 
 function hasResourceTelemetry(target) {
   return (target.fuzzers || []).some((fuzzer) => (fuzzer.curve || []).some((point) => (
-    Number.isFinite(Number(point.resource_memory_mib_median))
-    || Number.isFinite(Number(point.resource_corpus_disk_mib_median))
+    isFiniteNumber(point.resource_memory_mib_median)
+    || isFiniteNumber(point.resource_corpus_disk_mib_median)
   )));
 }
 
@@ -365,11 +366,10 @@ function renderFuzzerTable(section) {
   if (fuzzerTable.compatibilityHead) fuzzerTable.compatibilityHead.hidden = !showCompatibility;
 
   // Same AUC score as the overview ranking: time-averaged coverage relative to the best visible median.
-  const bestAucNorm = Math.max(0, ...(target.fuzzers || [])
-    .map((fuzzer) => Number(fuzzer.final?.branches_cov_auc_norm_median))
-    .filter(Number.isFinite));
+  const bestAucNorm = Math.max(0, ...cleanFloats((target.fuzzers || [])
+    .map((fuzzer) => fuzzer.final?.branches_cov_auc_norm_median)));
   const aucScores = (fuzzer) => (fuzzer.trials || []).map((trial) => (
-    bestAucNorm > 0 && Number.isFinite(Number(trial.branches_cov_auc_norm))
+    bestAucNorm > 0 && isFiniteNumber(trial.branches_cov_auc_norm)
       ? 100 * Number(trial.branches_cov_auc_norm) / bestAucNorm
       : null
   ));
@@ -798,7 +798,7 @@ function renderUniqueCoverageMatrix(host, uniqueMatrix, metric, mode) {
   const rendered = mode === 'pct' ? {
     ...matrix,
     matrix: (matrix.matrix || []).map((row, rowIndex) => row.map((value) => {
-      if (value === null || value === undefined || !Number.isFinite(Number(value))) return null;
+      if (!isFiniteNumber(value)) return null;
       const denominator = Number((matrix.covered_counts || [])[rowIndex] || 0);
       return denominator > 0 ? 100 * Number(value) / denominator : 0;
     })),
@@ -827,14 +827,14 @@ function renderCoverageComparison(section) {
 }
 
 function branchPValueCellStyle(value) {
-  if (!Number.isFinite(Number(value)) || Number(value) > 0.05) return '';
+  if (!isFiniteNumber(value) || Number(value) > 0.05) return '';
   const clamped = Math.max(0, Math.min(0.05, Number(value)));
   const alpha = 0.10 + (0.55 * (1 - (clamped / 0.05)));
   return `background:rgba(78,183,118,${alpha.toFixed(3)}); font-weight:700;`;
 }
 
 function branchA12CellStyle(value) {
-  if (!Number.isFinite(Number(value))) return '';
+  if (!isFiniteNumber(value)) return '';
   const effect = Math.min(1, Math.abs(Number(value) - 0.5) * 2);
   if (effect <= 0) return '';
   const alpha = 0.10 + (0.55 * effect);
@@ -846,10 +846,10 @@ function lineChartSpec(series, overrides = {}) {
   const overrideOptions = overrides.options || {};
   const usesTime = series.some((entry) => (
     entry.usesElapsed
-    || (entry.points || []).some((point) => Number.isFinite(Number(point.ts)))
+    || (entry.points || []).some((point) => isFiniteNumber(point.ts))
     || (entry.points || []).some((point) => (
-      Number.isFinite(Number(point.idx))
-      && Number.isFinite(Number(point.x))
+      isFiniteNumber(point.idx)
+      && isFiniteNumber(point.x)
       && Number(point.x) !== Number(point.idx)
     ))
   ));
@@ -870,8 +870,8 @@ function renderLineCard(card, series, overrides = {}) {
 }
 
 function uniqueBugHeatColor(elapsedSeconds, plannedDurationSeconds) {
-  if (elapsedSeconds === null || elapsedSeconds === undefined || !Number.isFinite(Number(elapsedSeconds))) return '#ffffff';
-  const duration = Number.isFinite(Number(plannedDurationSeconds)) && Number(plannedDurationSeconds) > 0
+  if (!isFiniteNumber(elapsedSeconds)) return '#ffffff';
+  const duration = isFiniteNumber(plannedDurationSeconds) && Number(plannedDurationSeconds) > 0
     ? Number(plannedDurationSeconds)
     : Math.max(1, Number(elapsedSeconds));
   const ratio = Math.max(0, Math.min(1, Number(elapsedSeconds) / duration));
@@ -882,13 +882,13 @@ function uniqueBugHeatColor(elapsedSeconds, plannedDurationSeconds) {
 
 function uniqueBugCellStyle(elapsedSeconds, plannedDurationSeconds) {
   const background = uniqueBugHeatColor(elapsedSeconds, plannedDurationSeconds);
-  if (elapsedSeconds === null || elapsedSeconds === undefined || !Number.isFinite(Number(elapsedSeconds))) {
+  if (!isFiniteNumber(elapsedSeconds)) {
     return `background:${background}; color:#111827; font-weight:700;`;
   }
-  const duration = Number.isFinite(Number(plannedDurationSeconds)) && Number(plannedDurationSeconds) > 0
+  const duration = isFiniteNumber(plannedDurationSeconds) && Number(plannedDurationSeconds) > 0
     ? Number(plannedDurationSeconds)
     : Math.max(1, Number(elapsedSeconds) || 1);
-  const ratio = !Number.isFinite(Number(elapsedSeconds)) ? 1 : Number(elapsedSeconds) / duration;
+  const ratio = !isFiniteNumber(elapsedSeconds) ? 1 : Number(elapsedSeconds) / duration;
   const useLightText = ratio <= 0.45;
   return `background:${background}; color:${useLightText ? '#f7f8fa' : '#111827'}; font-weight:700;`;
 }
@@ -971,7 +971,7 @@ function renderUniqueBugTable(host, tableData) {
     return;
   }
 
-  const hasSnapshotSeconds = Number.isFinite(Number(tableData.last_snapshot_elapsed_seconds))
+  const hasSnapshotSeconds = isFiniteNumber(tableData.last_snapshot_elapsed_seconds)
     && Number(tableData.last_snapshot_elapsed_seconds) > 0;
   const scaleSeconds = hasSnapshotSeconds
     ? Number(tableData.last_snapshot_elapsed_seconds)
@@ -1155,9 +1155,8 @@ function renderStatisticsBlock(section) {
   const { target, statistics } = section;
   if (!statistics) return;
   // Final coverage is comparable only between trials that ran equally long, e.g. not mid-run with trial waves.
-  const elapsed = (target.fuzzers || [])
-    .flatMap((fuzzer) => (fuzzer.trials || []).map((trial) => Number(trial.elapsed_seconds)))
-    .filter(Number.isFinite);
+  const elapsed = cleanFloats((target.fuzzers || [])
+    .flatMap((fuzzer) => (fuzzer.trials || []).map((trial) => trial.elapsed_seconds)));
   const runtimeNote = elapsed.length && Math.min(...elapsed) < 0.9 * Math.max(...elapsed)
     ? ` Trials ran for different times (${formatDuration(Math.min(...elapsed))} to `
       + `${formatDuration(Math.max(...elapsed))}); treat significance as provisional.`

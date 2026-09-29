@@ -23,6 +23,7 @@ import {
 } from './report-utils.js';
 import { filterExtraSections } from './extras.js';
 import { cloneMatrixForSelected } from './matrix.js';
+import { finiteOrNull, isFiniteNumber } from './stats.js';
 
 const {
   uniqueMatrix,
@@ -89,7 +90,7 @@ export function cloneUniqueBugTableForSelected(tableData, selectedSet) {
       const cells = indices.map(([, index]) => {
         const value = (row.cells || [])[index];
         if (value === null || value === undefined) return null;
-        return Number.isFinite(Number(value)) ? Number(value) : null;
+        return finiteOrNull(value);
       });
       const hitCounts = indices.map(([, index]) => Number((row.hit_counts || [])[index] || 0));
       if (!cells.some((value) => value !== null)) return null;
@@ -156,7 +157,7 @@ export function enrichTargetForSelection(target) {
   COVERAGE_METRICS.forEach(([metric]) => {
     const values = fuzzers.map((fuzzer) => {
       const value = fuzzer.final?.[`${metric}_pct_median`];
-      return Number.isFinite(Number(value)) ? Number(value) : null;
+      return finiteOrNull(value);
     });
     const ranks = rankdataDesc(values);
     fuzzers.forEach((fuzzer, index) => {
@@ -215,27 +216,27 @@ export function computeSummary(targets, comparisonMode = FM_APP.state.comparison
   rankedTargets.forEach((target) => {
     const medians = (target.fuzzers || [])
       .map((entry) => entry.final?.regions_pct_median)
-      .filter((value) => Number.isFinite(Number(value)))
+      .filter((value) => isFiniteNumber(value))
       .map(Number);
     const aucMedians = (target.fuzzers || [])
       .map((entry) => entry.final?.branches_cov_auc_norm_median)
-      .filter((value) => Number.isFinite(Number(value)))
+      .filter((value) => isFiniteNumber(value))
       .map(Number);
     const best = medians.length ? Math.max(...medians) : null;
     const bestAuc = aucMedians.length ? Math.max(...aucMedians) : null;
     (target.fuzzers || []).forEach((entry) => {
       const medianValue = entry.final?.regions_pct_median;
-      if (best != null && best > 0 && Number.isFinite(Number(medianValue))) {
+      if (best != null && best > 0 && isFiniteNumber(medianValue)) {
         scores.get(entry.fuzzer)?.push(100 * Number(medianValue) / best);
       }
       const aucValue = entry.final?.branches_cov_auc_norm_median;
-      if (bestAuc != null && bestAuc > 0 && Number.isFinite(Number(aucValue))) {
+      if (bestAuc != null && bestAuc > 0 && isFiniteNumber(aucValue)) {
         aucScores.get(entry.fuzzer)?.push(100 * Number(aucValue) / bestAuc);
       }
-      if (Number.isFinite(Number(target[relcovScoreByFuzzer]?.[entry.fuzzer]))) {
+      if (isFiniteNumber(target[relcovScoreByFuzzer]?.[entry.fuzzer])) {
         relcovScores.get(entry.fuzzer)?.push(Number(target[relcovScoreByFuzzer][entry.fuzzer]));
       }
-      if (Number.isFinite(Number(target[relbugScoreByFuzzer]?.[entry.fuzzer]))) {
+      if (isFiniteNumber(target[relbugScoreByFuzzer]?.[entry.fuzzer])) {
         relbugScores.get(entry.fuzzer)?.push(Number(target[relbugScoreByFuzzer][entry.fuzzer]));
       }
       addComparisonTotal(exclusiveCoverage, entry.fuzzer, entry.exclusive_coverage, comparisonMode);
@@ -244,7 +245,7 @@ export function computeSummary(targets, comparisonMode = FM_APP.state.comparison
         Number(uniqueBugs.get(entry.fuzzer) || 0) + Number(entry.final?.accumulated_bug_count || 0),
       );
       addComparisonTotal(exclusiveBugs, entry.fuzzer, entry.exclusive_bugs, comparisonMode);
-      if (Number.isFinite(Number(entry.final?.execs_done_median))) {
+      if (isFiniteNumber(entry.final?.execs_done_median)) {
         execs.get(entry.fuzzer)?.push(Number(entry.final.execs_done_median));
       }
     });

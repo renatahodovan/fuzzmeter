@@ -12,6 +12,7 @@
  */
 
 import { FM_APP } from './state.js';
+import { cleanFloats, finiteOrNull, isFiniteNumber } from './stats.js';
 
 export function tickFailureNotice(overview) {
   const count = Number(overview?.failed_snapshot_ticks || 0);
@@ -24,13 +25,13 @@ export function comparisonMetric(stats, mode) {
   const valueKey = strict ? 'exclusive_all' : 'exclusive_any';
   const boundKey = `${valueKey}_bound`;
   const value = stats?.[valueKey];
-  if (value !== null && value !== undefined && Number.isFinite(Number(value))) {
+  if (isFiniteNumber(value)) {
     return {
       value: Number(value),
       bound: String(stats?.[boundKey] || 'exact'),
     };
   }
-  if (!strict && stats?.total !== null && stats?.total !== undefined && Number.isFinite(Number(stats.total))) {
+  if (!strict && isFiniteNumber(stats?.total)) {
     return { value: Number(stats.total), bound: 'exact' };
   }
   return { value: null, bound: 'unknown' };
@@ -45,7 +46,7 @@ export function comparisonMatrix(matrixData, mode) {
     ? matrixData[matrixKey]
     : (!strict && Array.isArray(matrixData.matrix) ? matrixData.matrix : []);
   const numericValues = selected.flat().filter((value) => (
-    value !== null && value !== undefined && Number.isFinite(Number(value))
+    isFiniteNumber(value)
   )).map(Number);
   return {
     ...matrixData,
@@ -104,8 +105,8 @@ export function pctValue(covered, total) {
   if (
     covered == null ||
     total == null ||
-    !Number.isFinite(Number(covered)) ||
-    !Number.isFinite(Number(total)) ||
+    !isFiniteNumber(covered) ||
+    !isFiniteNumber(total) ||
     Number(total) <= 0
   ) {
     return null;
@@ -167,10 +168,10 @@ export function buildCoverageSeries(fuzzers, metric, mode) {
   return (fuzzers || []).map((fuzzer) => {
     const baseline = fuzzer.seed_baseline || {};
     const curve = fuzzer.curve || [];
-    const elapsedValues = curve.map((point) => Number(point.elapsed_s)).filter((value) => Number.isFinite(value));
+    const elapsedValues = cleanFloats(curve.map((point) => point.elapsed_s));
     const baselineY = mode === 'pct'
       ? pctValue(baseline[`cov_${metric}_covered`], baseline[`cov_${metric}_total`])
-      : (Number.isFinite(Number(baseline[`cov_${metric}_covered`])) ? Number(baseline[`cov_${metric}_covered`]) : null);
+      : finiteOrNull(baseline[`cov_${metric}_covered`]);
     return {
       label: fuzzer.fuzzer,
       color: fuzzerColor(fuzzer.fuzzer),
@@ -178,18 +179,18 @@ export function buildCoverageSeries(fuzzers, metric, mode) {
       usesElapsed: elapsedValues.length > 0,
       points: curve
         .map((point) => ({
-          x: Number.isFinite(Number(point.elapsed_s)) ? Number(point.elapsed_s) : Number(point.idx),
+          x: isFiniteNumber(point.elapsed_s) ? Number(point.elapsed_s) : Number(point.idx),
           y: mode === 'pct'
-            ? (Number.isFinite(Number(point[pctKey])) ? Number(point[pctKey]) : null)
-            : (Number.isFinite(Number(point[coveredKey])) ? Number(point[coveredKey]) : null),
+            ? finiteOrNull(point[pctKey])
+            : finiteOrNull(point[coveredKey]),
           lo: mode === 'pct'
-            ? (Number.isFinite(Number(point[lowPctKey])) ? Number(point[lowPctKey]) : null)
-            : (Number.isFinite(Number(point[lowCoveredKey])) ? Number(point[lowCoveredKey]) : null),
+            ? finiteOrNull(point[lowPctKey])
+            : finiteOrNull(point[lowCoveredKey]),
           hi: mode === 'pct'
-            ? (Number.isFinite(Number(point[highPctKey])) ? Number(point[highPctKey]) : null)
-            : (Number.isFinite(Number(point[highCoveredKey])) ? Number(point[highCoveredKey]) : null),
-          idx: Number.isFinite(Number(point.idx)) ? Number(point.idx) : null,
-          ts: Number.isFinite(Number(point.ts_median)) ? Number(point.ts_median) : null,
+            ? finiteOrNull(point[highPctKey])
+            : finiteOrNull(point[highCoveredKey]),
+          idx: finiteOrNull(point.idx),
+          ts: finiteOrNull(point.ts_median),
           tooltipLabel: point.t || null,
         }))
         .filter((point) => point.y != null && Number.isFinite(point.y)),
@@ -203,19 +204,19 @@ export function buildCurveSeries(fuzzers, baseKey) {
   const highKey = `${baseKey}_max`;
   return (fuzzers || []).map((fuzzer) => {
     const curve = fuzzer.curve || [];
-    const elapsedValues = curve.map((point) => Number(point.elapsed_s)).filter((value) => Number.isFinite(value));
+    const elapsedValues = cleanFloats(curve.map((point) => point.elapsed_s));
     return {
       label: fuzzer.fuzzer,
       color: fuzzerColor(fuzzer.fuzzer),
       usesElapsed: elapsedValues.length > 0,
       points: curve
         .map((point) => ({
-          x: Number.isFinite(Number(point.elapsed_s)) ? Number(point.elapsed_s) : Number(point.idx),
-          y: Number.isFinite(Number(point[centerKey])) ? Number(point[centerKey]) : null,
-          lo: Number.isFinite(Number(point[lowKey])) ? Number(point[lowKey]) : null,
-          hi: Number.isFinite(Number(point[highKey])) ? Number(point[highKey]) : null,
-          idx: Number.isFinite(Number(point.idx)) ? Number(point.idx) : null,
-          ts: Number.isFinite(Number(point.ts_median)) ? Number(point.ts_median) : null,
+          x: isFiniteNumber(point.elapsed_s) ? Number(point.elapsed_s) : Number(point.idx),
+          y: finiteOrNull(point[centerKey]),
+          lo: finiteOrNull(point[lowKey]),
+          hi: finiteOrNull(point[highKey]),
+          idx: finiteOrNull(point.idx),
+          ts: finiteOrNull(point.ts_median),
           tooltipLabel: point.t || null,
         }))
         .filter((point) => point.y != null && Number.isFinite(point.y)),
@@ -234,20 +235,20 @@ export function metricTotalKey(metric) {
 export function finalMetricValue(fuzzer, metric, mode) {
   if (mode === 'pct') {
     const percent = fuzzer.final?.[`${metric}_pct_median`];
-    return Number.isFinite(Number(percent)) ? Number(percent) : null;
+    return finiteOrNull(percent);
   }
   const covered = fuzzer.final?.[`${metricCovKey(metric)}_median`];
-  return Number.isFinite(Number(covered)) ? Number(covered) : null;
+  return finiteOrNull(covered);
 }
 
 export function distributionValues(fuzzer, metric, mode) {
   if (mode === 'pct') {
     return (fuzzer.distribution?.[`${metric}_pct`] || [])
-      .filter((value) => Number.isFinite(Number(value)))
+      .filter((value) => isFiniteNumber(value))
       .map(Number);
   }
   return (fuzzer.distribution?.[metricCovKey(metric)] || [])
-    .filter((value) => Number.isFinite(Number(value)))
+    .filter((value) => isFiniteNumber(value))
     .map(Number);
 }
 
@@ -259,8 +260,8 @@ export function per10kExec(covered, execsDone) {
   if (
     covered == null ||
     execsDone == null ||
-    !Number.isFinite(Number(covered)) ||
-    !Number.isFinite(Number(execsDone)) ||
+    !isFiniteNumber(covered) ||
+    !isFiniteNumber(execsDone) ||
     Number(execsDone) <= 0
   ) {
     return null;

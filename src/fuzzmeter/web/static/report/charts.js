@@ -24,6 +24,7 @@ import {
   part,
   quantile,
 } from './report-utils.js';
+import { cleanFloats, isFiniteNumber } from './stats.js';
 
 const FONT = '12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
 const NUMERIC_KINDS = new Set(['int', 'float', 'pct', 'short', 'text-num']);
@@ -63,12 +64,8 @@ function withAlpha(color, alpha) {
   return color;
 }
 
-function finite(value) {
-  return Number.isFinite(Number(value));
-}
-
 function number(value, fallback = 0) {
-  return finite(value) ? Number(value) : fallback;
+  return isFiniteNumber(value) ? Number(value) : fallback;
 }
 
 function labelFor(entry, index) {
@@ -115,7 +112,7 @@ function formatDateTime(value) {
 }
 
 function formatExact(value, suffix = '') {
-  if (!finite(value)) return '-';
+  if (!isFiniteNumber(value)) return '-';
   const n = Number(value);
   const abs = Math.abs(n);
   const maximumFractionDigits = abs >= 1000 ? 0 : (abs >= 100 ? 1 : (abs >= 10 ? 2 : 3));
@@ -149,16 +146,16 @@ function xTicks(min, max, options = {}) {
 
 function normalizeSeries(series = []) {
   return series.map((entry, index) => ({
-    baselineY: finite(entry.baselineY) ? Number(entry.baselineY) : null,
+    baselineY: isFiniteNumber(entry.baselineY) ? Number(entry.baselineY) : null,
     color: colorFor(entry, index),
     label: labelFor(entry, index),
     points: (entry.points || [])
-      .filter((point) => finite(point.x) && finite(point.y))
+      .filter((point) => isFiniteNumber(point.x) && isFiniteNumber(point.y))
       .map((point) => ({
-        hi: finite(point.hi) ? Number(point.hi) : null,
-        lo: finite(point.lo) ? Number(point.lo) : null,
+        hi: isFiniteNumber(point.hi) ? Number(point.hi) : null,
+        lo: isFiniteNumber(point.lo) ? Number(point.lo) : null,
         tooltipLabel: point.tooltipLabel,
-        ts: finite(point.ts) ? Number(point.ts) : null,
+        ts: isFiniteNumber(point.ts) ? Number(point.ts) : null,
         x: Number(point.x),
         y: Number(point.y),
       })),
@@ -170,7 +167,7 @@ function normalizeRows(rows = []) {
     color: colorFor(row, index),
     label: labelFor(row, index),
     value: Number(row.value),
-  })).filter((row) => finite(row.value));
+  })).filter((row) => isFiniteNumber(row.value));
 }
 
 function normalizeGroups(groups = []) {
@@ -188,12 +185,12 @@ function normalizeDistributions(rows = []) {
   return rows.map((row, index) => ({
     color: colorFor(row, index),
     label: labelFor(row, index),
-    values: (row.values || []).map(Number).filter(Number.isFinite).sort((left, right) => left - right),
+    values: cleanFloats(row.values).sort((left, right) => left - right),
   })).filter((row) => row.values.length);
 }
 
 export function distributionDensitySegments(values = [], yMin = 0, yMax = 1, bins = 18) {
-  const cleanValues = values.map(Number).filter(Number.isFinite);
+  const cleanValues = cleanFloats(values);
   const binCount = Math.max(1, Math.floor(number(bins, 18)));
   const min = number(yMin, 0);
   const span = number(yMax, min + 1) - min || 1;
@@ -225,7 +222,7 @@ export function distributionDensitySegments(values = [], yMin = 0, yMax = 1, bin
 }
 
 export function shouldDrawDistributionViolin(values = []) {
-  return values.map(Number).filter(Number.isFinite).length >= MIN_DISTRIBUTION_VIOLIN_VALUES;
+  return cleanFloats(values).length >= MIN_DISTRIBUTION_VIOLIN_VALUES;
 }
 
 function normalizeSpec(spec = {}) {
@@ -239,8 +236,8 @@ function normalizeSpec(spec = {}) {
 
 function seriesBounds(spec) {
   const values = spec.series.flatMap((entry) => [
-    ...entry.points.flatMap((point) => [point.y, point.lo, point.hi].filter(finite).map(Number)),
-    ...[entry.baselineY].filter(finite).map(Number),
+    ...entry.points.flatMap((point) => cleanFloats([point.y, point.lo, point.hi])),
+    ...cleanFloats([entry.baselineY]),
   ]);
   const xs = spec.series.flatMap((entry) => entry.points.map((point) => point.x));
   return {
@@ -284,7 +281,7 @@ function chartBounds(spec) {
     yMin = Math.max(0, yMin);
     yMax = Math.min(100, yMax);
   }
-  if (!finite(yMin) || !finite(yMax) || yMin === yMax) {
+  if (!isFiniteNumber(yMin) || !isFiniteNumber(yMax) || yMin === yMax) {
     yMin = spec.options.yClampPct ? Math.max(0, number(bounds.yMin, 50) - 1) : 0;
     yMax = spec.options.yClampPct ? Math.min(100, number(bounds.yMax, 50) + 1) : 1;
   }
@@ -400,7 +397,7 @@ function drawWrappedLabel(ctx, text, centerX, topY, maxWidth, maxLines = 3, line
 function drawLine(frame) {
   const { ctx, spec } = frame;
   spec.series.forEach((entry) => {
-    const band = entry.points.filter((point) => finite(point.lo) && finite(point.hi));
+    const band = entry.points.filter((point) => isFiniteNumber(point.lo) && isFiniteNumber(point.hi));
     if (band.length > 1) {
       ctx.fillStyle = withAlpha(entry.color, 0.16);
       ctx.beginPath();
@@ -424,7 +421,7 @@ function drawLine(frame) {
       else ctx.lineTo(x, y);
     });
     ctx.stroke();
-    if (finite(entry.baselineY)) {
+    if (isFiniteNumber(entry.baselineY)) {
       ctx.save();
       ctx.setLineDash([6, 4]);
       ctx.strokeStyle = withAlpha(entry.color, 0.85);
@@ -1287,7 +1284,7 @@ export function renderMatrixCard(card, matrixData, options = {}) {
 }
 
 function matrixStyle(value, maxValue, tint) {
-  if (!finite(value) || value <= 0 || !finite(maxValue) || maxValue <= 0) return '';
+  if (!isFiniteNumber(value) || value <= 0 || !isFiniteNumber(maxValue) || maxValue <= 0) return '';
   return `background:${tint.replace('ALPHA', (0.10 + 0.55 * (value / maxValue)).toFixed(3))}; font-weight:700;`;
 }
 
@@ -1309,7 +1306,7 @@ export function renderMatrixTable(host, matrixData, options = {}) {
   }
   if (matrixData.note) host.appendChild(el('div', 'matrix-note muted small', matrixData.note));
   const labels = matrixData.fuzzers;
-  const maxValue = finite(matrixData.max_value) ? Number(matrixData.max_value) : Math.max(0, ...matrixData.matrix.flat().map(number));
+  const maxValue = isFiniteNumber(matrixData.max_value) ? Number(matrixData.max_value) : Math.max(0, ...matrixData.matrix.flat().map(number));
   const table = el('table', 'table matrix');
   const thead = el('thead');
   const headerRow = el('tr');
@@ -1323,7 +1320,7 @@ export function renderMatrixTable(host, matrixData, options = {}) {
     tr.appendChild(el('td', null, rowLabel));
     labels.forEach((colLabel, colIndex) => {
       const rawValue = (matrixData.matrix[rowIndex] || [])[colIndex];
-      const unknown = rawValue === null || rawValue === undefined || !finite(rawValue);
+      const unknown = !isFiniteNumber(rawValue);
       const value = unknown ? null : number(rawValue);
       const self = rowIndex === colIndex;
       const bound = (matrixData.cell_bounds?.[rowIndex] || [])[colIndex] || 'exact';

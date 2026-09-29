@@ -7,6 +7,8 @@
  * according to those terms.
  */
 
+import { finiteOrNull, isFiniteNumber } from './stats.js';
+
 /**
  * Filters report matrix payloads to selected fuzzers.
  */
@@ -21,7 +23,7 @@ export function cloneMatrixForSelected(matrixData, selectedSet) {
     Array.isArray(matrix)
       ? indices.map(([, rowIndex]) => indices.map(([, colIndex]) => {
         const value = (matrix[rowIndex] || [])[colIndex];
-        return value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Number(value);
+        return finiteOrNull(value);
       }))
       : undefined
   );
@@ -36,7 +38,7 @@ export function cloneMatrixForSelected(matrixData, selectedSet) {
     Array.isArray(values)
       ? indices.map(([, index]) => {
         const value = values[index];
-        if (value === null || value === undefined || !Number.isFinite(Number(value))) return defaultValue;
+        if (!isFiniteNumber(value)) return defaultValue;
         return Number(value);
       })
       : undefined
@@ -47,7 +49,7 @@ export function cloneMatrixForSelected(matrixData, selectedSet) {
   const numericValues = [filteredMatrix, pairwiseAny, pairwiseAll]
     .filter(Array.isArray)
     .flat(2)
-    .filter((value) => value !== null && Number.isFinite(Number(value)))
+    .filter((value) => isFiniteNumber(value))
     .map(Number);
   const exclusive = matrixData.exclusive ? {
     ...matrixData.exclusive,

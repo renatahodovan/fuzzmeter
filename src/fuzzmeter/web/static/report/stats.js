@@ -11,6 +11,17 @@
  * DOM-independent statistical helpers for report data.
  */
 
+// Missing values (null, undefined, '') stay missing: Number() would silently turn them into 0.
+export function finiteOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+export function isFiniteNumber(value) {
+  return finiteOrNull(value) !== null;
+}
+
 export function quantile(sorted, q) {
   if (!sorted.length) return null;
   const pos = (sorted.length - 1) * q;
@@ -22,20 +33,20 @@ export function quantile(sorted, q) {
 }
 
 export function median(values) {
-  const sorted = (values || []).filter((value) => Number.isFinite(Number(value))).map(Number).sort((a, b) => a - b);
+  const sorted = (values || []).filter((value) => isFiniteNumber(value)).map(Number).sort((a, b) => a - b);
   return quantile(sorted, 0.5);
 }
 
 export function cleanFloats(values) {
   return (values || [])
-    .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
+    .filter((value) => isFiniteNumber(value))
     .map(Number);
 }
 
 export function rankdataDesc(values) {
   const indexed = values
     .map((value, index) => [index, value])
-    .filter(([, value]) => Number.isFinite(Number(value)))
+    .filter(([, value]) => isFiniteNumber(value))
     .map(([index, value]) => [index, Number(value)]);
   if (!indexed.length) return values.map(() => null);
   indexed.sort((left, right) => right[1] - left[1]);

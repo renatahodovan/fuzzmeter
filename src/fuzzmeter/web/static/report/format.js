@@ -11,7 +11,7 @@
  * Number and duration formatters for report views.
  */
 
-import { cleanFloats } from './stats.js';
+import { cleanFloats, isFiniteNumber } from './stats.js';
 
 export function fmt(value, digits = 2) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
@@ -27,13 +27,13 @@ export function fmtInt(value) {
 }
 
 export function formatGroupedNumber(value, options = {}) {
-  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
+  if (!isFiniteNumber(value)) return '—';
   const parts = new Intl.NumberFormat(undefined, options).formatToParts(Number(value));
   return parts.map((part) => (part.type === 'group' ? ' ' : part.value)).join('');
 }
 
 export function formatShortNumber(value) {
-  if (value == null || !Number.isFinite(Number(value))) return '';
+  if (!isFiniteNumber(value)) return '';
   const n = Number(value);
   const abs = Math.abs(n);
   if (abs < 1000) return String(Math.round(n));
@@ -53,7 +53,7 @@ export function minimum(values) {
 }
 
 export function formatExecCount(value) {
-  if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
+  if (!isFiniteNumber(value)) return '—';
   const n = Number(value);
   const abs = Math.abs(n);
   if (abs < 1e3) return fmtInt(n);
@@ -76,7 +76,7 @@ export function formatDuration(seconds, { coarse = false } = {}) {
     const hours = Math.round((value % 86400) / 3600);
     return hours ? `${days}d ${hours}h` : `${days}d`;
   }
-  if (seconds == null || !Number.isFinite(Number(seconds))) return '—';
+  if (!isFiniteNumber(seconds)) return '—';
   const value = Math.max(0, Math.round(Number(seconds)));
   const days = Math.floor(value / 86400);
   const hours = Math.floor((value % 86400) / 3600);

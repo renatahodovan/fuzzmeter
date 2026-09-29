@@ -64,7 +64,7 @@ class ReportFrontendTest(unittest.TestCase):
         self.assertEqual(get_args(SectionPlacement), _javascript_string_array(extras, 'ALLOWED_PLACEMENTS'))
         self.assertIn('return COVERAGE_METRICS.find(([metric]) => hasMetricData(metric))', page)
         self.assertIn(
-            'if (value === null || value === undefined || !Number.isFinite(Number(value))) return null;',
+            'if (!isFiniteNumber(value)) return null;',
             page,
         )
 
@@ -306,6 +306,12 @@ class ReportFrontendTest(unittest.TestCase):
               { ...enriched, key: 'bench:t2', fuzzers: [enriched.fuzzers[1]] },
             ], 'any');
             assert.deepEqual(disjoint.rankings, []);
+
+            // A missing value stays missing instead of scoring as zero.
+            const betaMissing = { ...enriched.fuzzers[1], final: { ...enriched.fuzzers[1].final, regions_pct_median: null, execs_done_median: null } };
+            const missing = computeSummary([{ ...enriched, fuzzers: [enriched.fuzzers[0], betaMissing] }], 'any');
+            assert.equal(missing.rankings.find((row) => row.fuzzer === 'beta').coverage_score, null);
+            assert.equal(missing.rankings.find((row) => row.fuzzer === 'beta').median_execs_done, null);
         '''
         subprocess.run(
             ['node', '--no-warnings', '--input-type=module', '-e', script],
@@ -452,6 +458,7 @@ class ReportFrontendTest(unittest.TestCase):
             assert.deepEqual(cleanFloats([1, '2', null, Number.NaN, 'x']), [1, 2]);
             assert.equal(quantile([1, 3, 5], 0.5), 3);
             assert.equal(median([5, 1, 3]), 3);
+            assert.equal(median([null, '', 10]), 10);
             assert.equal(pctValue(3, 4), 75);
             const sortable = [
               { fuzzer: 'missing', value: null },
@@ -469,6 +476,7 @@ class ReportFrontendTest(unittest.TestCase):
               fuzzer: 'alpha',
               curve: [
                 { idx: 1, elapsed_s: 10, execs_done_median: 100, execs_done_min: 80, execs_done_max: 120 },
+                { idx: 2, elapsed_s: 20, execs_done_median: null },
               ],
               distribution: { branches_cov: [3, 4, null], branches_pct: [30, 40, 'x'] },
               final: { branches_cov_median: 4, branches_pct_median: 40 },
