@@ -1154,13 +1154,22 @@ function renderTrialTableBlock(section) {
 function renderStatisticsBlock(section) {
   const { target, statistics } = section;
   if (!statistics) return;
+  // Final coverage is comparable only between trials that ran equally long, e.g. not mid-run with trial waves.
+  const elapsed = (target.fuzzers || [])
+    .flatMap((fuzzer) => (fuzzer.trials || []).map((trial) => Number(trial.elapsed_seconds)))
+    .filter(Number.isFinite);
+  const runtimeNote = elapsed.length && Math.min(...elapsed) < 0.9 * Math.max(...elapsed)
+    ? ` Trials ran for different times (${formatDuration(Math.min(...elapsed))} to `
+      + `${formatDuration(Math.max(...elapsed))}); treat significance as provisional.`
+    : '';
   renderMatrixCard(statistics.mwuCard, resolveCoverageMatrix(target.branch_mwu_matrix, 'branches'), {
     formatter: 'float',
     fractionDigits: 4,
     emptyMessage: 'No branch Mann-Whitney U data.',
     styleForValue: branchPValueCellStyle,
     title: 'Branch MWU p-value matrix',
-    subtitle: 'Green cells indicate a significant pairwise difference in final per-trial branch coverage (p <= 0.05).',
+    subtitle: 'Green cells indicate a significant pairwise difference in final per-trial branch coverage (p <= 0.05), '
+      + `comparable only between trials of equal runtime.${runtimeNote}`,
     exportName: `${section.target.key}-branch-mwu-pvalue-matrix`,
   });
   renderMatrixCard(statistics.a12Card, resolveCoverageMatrix(target.branch_a12_matrix, 'branches'), {
@@ -1169,7 +1178,8 @@ function renderStatisticsBlock(section) {
     emptyMessage: 'No branch Vargha-Delaney A12 data.',
     styleForValue: branchA12CellStyle,
     title: 'Branch Vargha-Delaney A12 matrix',
-    subtitle: 'Cells above 0.5 favor the row fuzzer, cells below 0.5 favor the column fuzzer.',
+    subtitle: 'Effect sizes on final per-trial branch coverage. Cells above 0.5 favor the row fuzzer, '
+      + `cells below 0.5 favor the column fuzzer.${runtimeNote}`,
     exportName: `${section.target.key}-branch-a12-matrix`,
   });
 }
