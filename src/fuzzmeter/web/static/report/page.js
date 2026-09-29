@@ -219,6 +219,7 @@ function installTargetTableSorting(section) {
       } else {
         section.tableSort = { key, direction: 'desc' };
       }
+      FM_APP.state.targetTableSort.set(section.target.key, section.tableSort);
       renderFuzzerTable(section);
     });
     th.dataset.bound = '1';
@@ -1212,7 +1213,7 @@ export function createTargetSection(target) {
     target,
     el: sectionEl,
     coverageState: { ...(FM_APP.state.coverageByTarget.get(target.key) || { metric: defaultCoverageMetric(target), value: 'abs' }) },
-    tableSort: { key: 'branches_union', direction: 'desc' },
+    tableSort: FM_APP.state.targetTableSort.get(target.key) || { key: 'branches_union', direction: 'desc' },
     renderCoverage() { renderCoverageBlock(section); },
     renderPerformance() { renderPerformanceBlock(section); },
     renderBugs() { renderBugBlock(section); },
