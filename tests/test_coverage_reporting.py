@@ -25,6 +25,7 @@ from fuzzmeter.db.snapshot import (
     update_agg_snapshot_coverage,
     upsert_agg_snapshot,
 )
+from fuzzmeter.reporting import write_report
 from fuzzmeter.reporting.analyzers import coverage_curves, coverage_matrices
 from fuzzmeter.reporting.metrics import (
     clean_floats,
@@ -446,6 +447,10 @@ class CoverageReportingTest(unittest.TestCase):
             fuzzer = payload['targets'][0]['fuzzers'][0]
             self.assertEqual('../coverage/fz/bench/target/campaign/html/index.html', fuzzer['coverage_report'])
             self.assertEqual(1, fuzzer['aggregate']['branches_covered'])
+
+            report_dir = write_report(run_dir, out_dir=run_dir / 'nested' / 'out')
+            fuzzer = json.loads((report_dir / 'data.json').read_text(encoding='utf-8'))['targets'][0]['fuzzers'][0]
+            self.assertEqual('../../coverage/fz/bench/target/campaign/html/index.html', fuzzer['coverage_report'])
 
     def test_single_fuzzer_report_skips_pairwise_matrices(self) -> None:
         builder = _PayloadBuilder.__new__(_PayloadBuilder)
