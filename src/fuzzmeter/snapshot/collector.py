@@ -346,6 +346,7 @@ def _read_stats(trial: TrialInstance, *, tick_ts: int) -> dict[str, Any]:
             .stats(trial.layout.trial_dir, cutoff_elapsed_s=tick_ts - trial.start_ts)
             or {}
         )
+        json.dumps(stats, allow_nan=False, default=str)
         return stats if isinstance(stats, dict) else {}
     except Exception as exc:
         LOG.warning(
@@ -359,7 +360,7 @@ def _read_stats(trial: TrialInstance, *, tick_ts: int) -> dict[str, Any]:
 
 def _read_custom_metrics(trial: TrialInstance, *, snapshot_dir: Path, tick_ts: int) -> Any:
     try:
-        return (
+        custom_metrics = (
             FuzzerLoader(trial.fuzzer_dirs)
             .load(trial.config.case.fuzzer.name)
             .custom_metrics(
@@ -368,6 +369,8 @@ def _read_custom_metrics(trial: TrialInstance, *, snapshot_dir: Path, tick_ts: i
                 cutoff_elapsed_s=tick_ts - trial.start_ts,
             )
         )
+        json.dumps(custom_metrics, allow_nan=False, default=str)
+        return custom_metrics
     except Exception as exc:
         LOG.warning(
             'Failed to get custom metrics from %s adapter for trial_row_id=%s: %s',
