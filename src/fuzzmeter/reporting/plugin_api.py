@@ -19,8 +19,6 @@ ChartType = Literal[
     'bar',
     'distribution',
     'line',
-    'line_shadow',
-    'lines_with_shadows',
     'matrix',
     'stacked_area',
     'stacked_bar',

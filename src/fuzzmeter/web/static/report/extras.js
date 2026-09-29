@@ -29,15 +29,11 @@ export const ALLOWED_CHART_TYPES = [
   'bar',
   'distribution',
   'line',
-  'line_shadow',
-  'lines_with_shadows',
   'matrix',
   'stacked_area',
   'stacked_bar',
   'table',
 ];
-
-const LINE_CHART_TYPES = new Set(ALLOWED_CHART_TYPES.filter((chartType) => chartType.startsWith('line')));
 
 function normalizeSeries(series) {
   return (series || []).map((entry) => ({
@@ -96,7 +92,7 @@ function createExtraChartCard(section, chart) {
   const card = makeCanvasCard({
     title: chart.title,
     subtitle: chart.subtitle || '',
-    withLegend: LINE_CHART_TYPES.has(chart.type) || chart.type === 'stacked_area' || chart.type === 'stacked_bar',
+    withLegend: chart.type === 'line' || chart.type === 'stacked_area' || chart.type === 'stacked_bar',
     exportName: `${section.id}-${chart.id}`,
   });
   const series = normalizeSeries(chart.series);
@@ -106,7 +102,7 @@ function createExtraChartCard(section, chart) {
     card: card.card,
     render() {
       let spec = null;
-      if (LINE_CHART_TYPES.has(chart.type)) {
+      if (chart.type === 'line') {
         spec = { kind: 'line', series, options: { xMode, yClampPct: percentAxis } };
       } else if (chart.type === 'stacked_area') {
         spec = { kind: 'stackedArea', series, options: { xMode, yMax: percentAxis ? 100 : undefined } };
