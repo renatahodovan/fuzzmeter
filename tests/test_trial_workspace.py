@@ -16,6 +16,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+from fuzzmeter.docker import DockerImagePathMissingError
 from fuzzmeter.trial import workspace
 from tests.support.trials import make_campaign_case
 
@@ -27,7 +28,7 @@ class _SeedDocker:
     def copy_from_image(self, *, image: str, src_path: str, dst_path: str | Path) -> None:
         self.probed.append(src_path)
         if src_path != '/out/sqlite_seed_corpus.zip':
-            raise RuntimeError(f'Docker image path is missing in {image}: {src_path}')
+            raise DockerImagePathMissingError(f'Docker image path is missing in {image}: {src_path}')
         with zipfile.ZipFile(dst_path, 'w') as archive:
             archive.writestr('seed.sql', 'select 1;\n')
 
@@ -49,6 +50,16 @@ class TrialWorkspaceTest(unittest.TestCase):
             self.assertIsNotNone(seed_root)
             assert seed_root is not None
             self.assertEqual('select 1;\n', (seed_root / 'seed.sql').read_text(encoding='utf-8'))
+
+    def test_missing_seed_corpus_starts_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch('fuzzmeter.trial.workspace.DockerClient', return_value=_SeedDocker()):
+                seed_root = workspace.extract_seed_corpus_from_image(
+                    case=make_campaign_case(fuzzer='grafl', benchmark='re2', fuzz_target='re2_fuzzer'),
+                    out_dir=Path(tmp_dir),
+                )
+
+            self.assertIsNone(seed_root)
 
 
 if __name__ == '__main__':

@@ -11,13 +11,14 @@ from .bake import (
     INSTRUMENTATION_PROFILES,
     generate_run_bake_hcl,
 )
-from .client import ContainerSpec, DockerClient, DockerTimeoutError
+from .client import ContainerSpec, DockerClient, DockerImagePathMissingError, DockerTimeoutError
 from .runtime import DockerRuntime
 
 __all__ = [
     'INSTRUMENTATION_PROFILES',
     'ContainerSpec',
     'DockerClient',
+    'DockerImagePathMissingError',
     'DockerRuntime',
     'DockerTimeoutError',
     'generate_run_bake_hcl',

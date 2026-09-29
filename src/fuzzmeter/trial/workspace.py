@@ -18,7 +18,7 @@ from pathlib import Path
 
 from ..config import CampaignCase
 from ..config.models import seed_dir_name
-from ..docker import DockerClient, DockerRuntime
+from ..docker import DockerClient, DockerImagePathMissingError, DockerRuntime
 from .models import TrialConfig, TrialLayout
 
 LOG = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ def extract_seed_corpus_from_image(
         )
     except RuntimeError as exc:
         shutil.rmtree(tmp_root, ignore_errors=True)
-        if 'is missing' in str(exc):
+        if isinstance(exc, DockerImagePathMissingError):
             LOG.info('No seed corpus zip found in %s for %s', image, case.seed_dir_name)
             return None
         raise

@@ -19,7 +19,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import call, patch
 
 from fuzzmeter.config.models import Benchmark, CampaignCase, Fuzzer, FuzzTarget
-from fuzzmeter.docker import DockerClient, DockerTimeoutError
+from fuzzmeter.docker import DockerClient, DockerImagePathMissingError, DockerTimeoutError
 from fuzzmeter.docker.bake import _entry_args, generate_run_bake_hcl
 from fuzzmeter.docker.client import DEFAULT_DOCKER_TIMEOUT_S
 from fuzzmeter.docker.runtime import DockerRuntime
@@ -464,6 +464,21 @@ class DockerHelperTest(unittest.TestCase):
         ):
             with self.assertRaises(DockerTimeoutError):
                 client.is_running('c1')
+
+    def test_copy_from_image_reports_missing_path_distinctly(self) -> None:
+        client = DockerClient()
+        missing = subprocess.CalledProcessError(
+            1,
+            ['docker', 'cp'],
+            stderr='Error response from daemon: Could not find the file /out/re2_fuzzer_seed_corpus.zip in container c1\n',
+        )
+        with (
+            TemporaryDirectory() as tmp,
+            patch.object(client, 'create', return_value='c1'),
+            patch('fuzzmeter.docker.client.subprocess.run', side_effect=[missing, subprocess.CompletedProcess([], 0)]),
+        ):
+            with self.assertRaises(DockerImagePathMissingError):
+                client.copy_from_image(image='img', src_path='/out/re2_fuzzer_seed_corpus.zip', dst_path=Path(tmp) / 'x')
 
     def test_image_id_returns_immutable_local_digest(self) -> None:
         client = DockerClient()

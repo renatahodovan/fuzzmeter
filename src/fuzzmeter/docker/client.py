@@ -25,9 +25,16 @@ logger = logging.getLogger(__name__)
 # containers that do the actual measuring and for cleanup that has to complete.
 DEFAULT_DOCKER_TIMEOUT_S = 30
 
+# docker cp reports a missing source path with one of these, depending on the Docker version.
+_MISSING_PATH_MARKERS = ('Could not find the file', 'No such container:path')
+
 
 class DockerTimeoutError(RuntimeError):
     '''Report a Docker CLI command that exceeded its deadline.'''
+
+
+class DockerImagePathMissingError(RuntimeError):
+    '''Report a path that does not exist in a Docker image.'''
 
 
 @dataclass(frozen=True)
@@ -229,6 +236,10 @@ class DockerClient:
         container_id = self.create(image, kind='build')
         try:
             self._run(['docker', 'cp', f'{container_id}:{src_path}', str(dst_path)], check=True, capture=True)
+        except RuntimeError as exc:
+            if any(marker in str(exc) for marker in _MISSING_PATH_MARKERS):
+                raise DockerImagePathMissingError(f'Docker image path is missing in {image}: {src_path}') from exc
+            raise
         finally:
             self._run(['docker', 'rm', '-f', container_id], check=False, capture=True)
 
