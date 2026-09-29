@@ -154,8 +154,6 @@ function normalizeSeries(series = []) {
       .map((point) => ({
         hi: isFiniteNumber(point.hi) ? Number(point.hi) : null,
         lo: isFiniteNumber(point.lo) ? Number(point.lo) : null,
-        tooltipLabel: point.tooltipLabel,
-        ts: isFiniteNumber(point.ts) ? Number(point.ts) : null,
         x: Number(point.x),
         y: Number(point.y),
       })),
@@ -619,7 +617,7 @@ function installLineTooltip(canvas) {
     }).filter(Boolean).sort((left, right) => right.value - left.value);
     const tip = tooltip(canvas);
     tip.textContent = '';
-    tip.appendChild(el('div', 'chart-tooltip-title', payload.options.xMode === 'time' ? formatX(anchor.x, payload.options) : String(anchor.tooltipLabel || Math.round(anchor.x))));
+    tip.appendChild(el('div', 'chart-tooltip-title', payload.options.xMode === 'time' ? formatX(anchor.x, payload.options) : String(Math.round(anchor.x))));
     const list = el('div', 'chart-tooltip-list');
     rows.forEach((row) => {
       const item = el('div', 'chart-tooltip-row');

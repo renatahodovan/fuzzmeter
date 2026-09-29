@@ -12,7 +12,7 @@
  */
 
 import { FM_APP } from './state.js';
-import { cleanFloats, finiteOrNull, isFiniteNumber } from './stats.js';
+import { finiteOrNull, isFiniteNumber } from './stats.js';
 
 export function tickFailureNotice(overview) {
   const count = Number(overview?.failed_snapshot_ticks || 0);
@@ -167,8 +167,6 @@ export function buildCoverageSeries(fuzzers, metric, mode) {
 
   return (fuzzers || []).map((fuzzer) => {
     const baseline = fuzzer.seed_baseline || {};
-    const curve = fuzzer.curve || [];
-    const elapsedValues = cleanFloats(curve.map((point) => point.elapsed_s));
     const baselineY = mode === 'pct'
       ? pctValue(baseline[`cov_${metric}_covered`], baseline[`cov_${metric}_total`])
       : finiteOrNull(baseline[`cov_${metric}_covered`]);
@@ -176,10 +174,9 @@ export function buildCoverageSeries(fuzzers, metric, mode) {
       label: fuzzer.fuzzer,
       color: fuzzerColor(fuzzer.fuzzer),
       baselineY,
-      usesElapsed: elapsedValues.length > 0,
-      points: curve
+      points: (fuzzer.curve || [])
         .map((point) => ({
-          x: isFiniteNumber(point.elapsed_s) ? Number(point.elapsed_s) : Number(point.idx),
+          x: Number(point.elapsed_s),
           y: mode === 'pct'
             ? finiteOrNull(point[pctKey])
             : finiteOrNull(point[coveredKey]),
@@ -189,9 +186,6 @@ export function buildCoverageSeries(fuzzers, metric, mode) {
           hi: mode === 'pct'
             ? finiteOrNull(point[highPctKey])
             : finiteOrNull(point[highCoveredKey]),
-          idx: finiteOrNull(point.idx),
-          ts: finiteOrNull(point.ts_median),
-          tooltipLabel: point.t || null,
         }))
         .filter((point) => point.y != null && Number.isFinite(point.y)),
     };
@@ -203,21 +197,15 @@ export function buildCurveSeries(fuzzers, baseKey) {
   const lowKey = `${baseKey}_min`;
   const highKey = `${baseKey}_max`;
   return (fuzzers || []).map((fuzzer) => {
-    const curve = fuzzer.curve || [];
-    const elapsedValues = cleanFloats(curve.map((point) => point.elapsed_s));
     return {
       label: fuzzer.fuzzer,
       color: fuzzerColor(fuzzer.fuzzer),
-      usesElapsed: elapsedValues.length > 0,
-      points: curve
+      points: (fuzzer.curve || [])
         .map((point) => ({
-          x: isFiniteNumber(point.elapsed_s) ? Number(point.elapsed_s) : Number(point.idx),
+          x: Number(point.elapsed_s),
           y: finiteOrNull(point[centerKey]),
           lo: finiteOrNull(point[lowKey]),
           hi: finiteOrNull(point[highKey]),
-          idx: finiteOrNull(point.idx),
-          ts: finiteOrNull(point.ts_median),
-          tooltipLabel: point.t || null,
         }))
         .filter((point) => point.y != null && Number.isFinite(point.y)),
     };

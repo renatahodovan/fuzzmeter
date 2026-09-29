@@ -485,7 +485,7 @@ class ReportFrontendTest(unittest.TestCase):
             assert.equal(finalMetricValue(fuzzer, 'branches', 'abs'), 4);
             assert.deepEqual(distributionValues(fuzzer, 'branches', 'pct'), [30, 40]);
             assert.deepEqual(buildCurveSeries([fuzzer], 'execs_done')[0].points, [
-              { x: 10, y: 100, lo: 80, hi: 120, idx: 1, ts: null, tooltipLabel: null },
+              { x: 10, y: 100, lo: 80, hi: 120 },
             ]);
 
             const sparseSegments = distributionDensitySegments([16263, 16780], 15900, 20600, 18);

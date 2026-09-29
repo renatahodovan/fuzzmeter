@@ -13,7 +13,6 @@ from typing import Any
 
 from ..keys import FINAL_DIST_KEYS, SNAPSHOT_COVERAGE_FIELDS
 from ..metrics import (
-    dt,
     maximum,
     mean,
     median,
@@ -187,16 +186,8 @@ def build_curve(
     trial_series: list[tuple[int, dict[float, dict[str, Any]]]] = []
     all_elapsed: set[float] = set()
     for trial in reps:
-        points = sorted(
-            points_by_trial.get(trial.trial_id, []),
-            key=lambda point: (
-                float(point.get('elapsed_s'))
-                if isinstance(point.get('elapsed_s'), (int, float))
-                else float(point.get('ordinal') or point.get('idx') or 0)
-            ),
-        )
         point_map: dict[float, dict[str, Any]] = {}
-        for point in points:
+        for point in points_by_trial.get(trial.trial_id, []):
             elapsed_s = point.get('elapsed_s')
             if not isinstance(elapsed_s, (int, float)):
                 continue
@@ -207,18 +198,14 @@ def build_curve(
 
     last_seen_per_trial: dict[int, dict[str, Any]] = {}
     curve: list[dict[str, Any]] = []
-    for idx, elapsed_key in enumerate(sorted(all_elapsed), start=1):
-        curve_item: dict[str, Any] = {'idx': idx, 'elapsed_s': elapsed_key}
-        ts_values: list[float] = []
+    for elapsed_key in sorted(all_elapsed):
+        curve_item: dict[str, Any] = {'elapsed_s': elapsed_key}
         values: dict[str, list[float]] = {key: [] for key in FINAL_DIST_KEYS}
 
         for trial_id, point_map in trial_series:
             state = last_seen_per_trial.setdefault(trial_id, {})
             point = point_map.get(elapsed_key)
             if point is not None:
-                ts = safe_int(point.get('ts'))
-                if ts is not None:
-                    ts_values.append(float(ts))
                 for key in FINAL_DIST_KEYS:
                     value = point.get(key)
                     if value is not None:
@@ -228,12 +215,6 @@ def build_curve(
             for key in FINAL_DIST_KEYS:
                 if key in state:
                     values[key].append(float(state[key]))
-
-        if ts_values:
-            ts_median = median(ts_values)
-            curve_item['ts_median'] = ts_median
-            if ts_median is not None:
-                curve_item['t'] = dt(int(ts_median))
 
         for key, clean in values.items():
             if not clean:

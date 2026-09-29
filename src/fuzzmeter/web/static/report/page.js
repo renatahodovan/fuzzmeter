@@ -844,22 +844,14 @@ function branchA12CellStyle(value) {
 
 function lineChartSpec(series, overrides = {}) {
   const overrideOptions = overrides.options || {};
-  const usesTime = series.some((entry) => (
-    entry.usesElapsed
-    || (entry.points || []).some((point) => isFiniteNumber(point.ts))
-    || (entry.points || []).some((point) => (
-      isFiniteNumber(point.idx)
-      && isFiniteNumber(point.x)
-      && Number(point.x) !== Number(point.idx)
-    ))
-  ));
+  // Aggregated curves are always keyed by elapsed campaign time.
   return {
     kind: 'line',
     series,
     ...overrides,
     options: {
       yClampPct: false,
-      xMode: usesTime ? 'time' : 'index',
+      xMode: 'time',
       ...overrideOptions,
     },
   };
