@@ -32,7 +32,11 @@ def validate_extra_sections(sections: Any) -> tuple[list[ExtraSection], list[str
     valid_sections = []
     warnings = []
     for index, section in enumerate(sections):
-        warning = _section_warning(section)
+        # Plugin output crosses a trust boundary: malformed nested data drops only its own section.
+        try:
+            warning = _section_warning(section)
+        except Exception as exc:
+            warning = f'invalid plugin data: {exc}'
         if warning:
             warnings.append(f'section[{index}]: {warning}')
             continue

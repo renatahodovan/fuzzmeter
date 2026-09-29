@@ -512,6 +512,23 @@ class ReportingPluginSectionsTest(unittest.TestCase):
         self.assertNotIn('paths', debug)
         self.assertIn('debug_error', debug)
 
+    def test_build_plugin_sections_drops_malformed_plugin_output(self) -> None:
+        class NotAListPlugin:
+            def build_extra_sections(self, ctx):
+                return 1
+
+        _, debug = _build_plugin_sections(
+            plugin=NotAListPlugin(), matched_plugin_name='fz', plugin_candidates=['fz'], base_name=None, ctx=_context(),
+        )
+        self.assertEqual(['plugin output is not a list'], debug['validation_warnings'])
+
+        chart = ChartSpec(id='c', title='C', type='line', series=[object()])
+        sections, warnings = validate_extra_sections(
+            [ExtraSection(id='s', title='S', scope='target', placement='after:coverage', charts=[chart])]
+        )
+        self.assertEqual([], sections)
+        self.assertRegex(warnings[0], r'^section\[0\]: invalid plugin data: ')
+
 
 def _context() -> ReportingContext:
     return ReportingContext(

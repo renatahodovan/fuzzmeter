@@ -131,7 +131,7 @@ def _build_plugin_sections(
         raw_sections = []
     else:
         debug_info['status'] = 'ok'
-        debug_info['returned_sections'] = len(raw_sections or [])
+        debug_info['returned_sections'] = len(raw_sections) if isinstance(raw_sections, list) else 0
 
     debug_builder = getattr(plugin, 'build_debug_info', None)
     if callable(debug_builder):
