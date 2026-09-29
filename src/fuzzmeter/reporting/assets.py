@@ -72,6 +72,8 @@ def _bundle_report_modules(module_dir: Path) -> str:
     order = [
         'state.js',
         'dom.js',
+        'matrix.js',
+        'sort.js',
         'stats.js',
         'format.js',
         'report-data.js',
@@ -85,6 +87,9 @@ def _bundle_report_modules(module_dir: Path) -> str:
         'composite.js',
         'app.js',
     ]
+    unlisted = sorted({path.name for path in module_dir.glob('*.js')} - set(order))
+    if unlisted:
+        raise ValueError(f'Report modules missing from the static bundle order: {unlisted}')
     parts = [
         '/* Auto-generated static bundle for file:// report viewing. */',
         '',
