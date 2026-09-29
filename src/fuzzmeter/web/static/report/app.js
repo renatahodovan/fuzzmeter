@@ -296,7 +296,7 @@ function buildWinnerCards(data) {
     if (!card.winner) return;
     const value = card.key === 'value' ? card.winner.value : card.winner[card.key];
     if (!isFiniteNumber(value)) return;
-    host.appendChild(winnerCard(card.title, card.description, { fuzzer: card.winner.fuzzer, value }, card.formatter));
+    host.appendChild(winnerCard(card.title, card.description, { ...card.winner, value }, card.formatter));
   });
 }
 
