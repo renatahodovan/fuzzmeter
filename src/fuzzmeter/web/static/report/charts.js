@@ -640,11 +640,29 @@ function installLineTooltip(canvas) {
   canvas._lineTooltipInstalled = true;
 }
 
+// A single document listener closes open export menus and tooltips on outside clicks. Listeners bound
+// per widget would keep every replaced report section, canvases included, alive after each re-render.
+let outsideClickCloserInstalled = false;
+
+function installOutsideClickCloser() {
+  if (outsideClickCloserInstalled) return;
+  outsideClickCloserInstalled = true;
+  document.addEventListener('click', (event) => {
+    document.querySelectorAll('.export-menu-host.open').forEach((host) => {
+      if (host.contains(event.target)) return;
+      host.classList.remove('open');
+      host.querySelectorAll(':scope > .export-menu').forEach((menu) => { menu.hidden = true; });
+      host.querySelectorAll(':scope > [aria-haspopup="menu"]').forEach((trigger) => trigger.setAttribute('aria-expanded', 'false'));
+    });
+    document.querySelectorAll('.chart-tooltip:not([hidden])').forEach((tip) => {
+      if (!tip.parentElement.contains(event.target)) tip.hidden = true;
+    });
+  });
+}
+
 function installDistributionTooltip(canvas) {
   if (canvas._distributionTooltipInstalled || !canvas.parentElement) return;
-  document.addEventListener('click', (event) => {
-    if (!canvas.parentElement.contains(event.target)) hideTooltip(canvas);
-  });
+  installOutsideClickCloser();
   canvas.addEventListener('click', (event) => {
     const payload = canvas._distributionPayload;
     if (!payload?.hitboxes?.length) return hideTooltip(canvas);
@@ -1090,12 +1108,7 @@ function installExportMenu(triggerButton, onSelect) {
     host.classList.toggle('open', open);
     triggerButton.setAttribute('aria-expanded', String(open));
   });
-  document.addEventListener('click', (event) => {
-    if (host.contains(event.target)) return;
-    menu.hidden = true;
-    host.classList.remove('open');
-    triggerButton.setAttribute('aria-expanded', 'false');
-  });
+  installOutsideClickCloser();
 }
 
 /**
