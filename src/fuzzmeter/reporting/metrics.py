@@ -190,7 +190,7 @@ def mann_whitney_u_pvalue(x: Sequence[float], y: Sequence[float]) -> float | Non
     sigma_sq = (n1 * n2 / 12.0) * (n + 1 - tie_sum / (n * (n - 1)))
     if sigma_sq <= 0:
         return None
-    z = (u - mu + 0.5) / math.sqrt(sigma_sq)
+    z = min(0.0, (u - mu + 0.5) / math.sqrt(sigma_sq))
     p_one = 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
     return float(max(0.0, min(1.0, 2.0 * min(p_one, 1.0 - p_one))))
 

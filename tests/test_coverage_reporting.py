@@ -125,6 +125,7 @@ class ReportingMetricsTest(unittest.TestCase):
     def test_pairwise_statistics_preserve_tie_behavior(self) -> None:
         self.assertAlmostEqual(0.12118327283746333, mann_whitney_u_pvalue([1, 2, 3], [3, 4, 5]))
         self.assertAlmostEqual(0.6192567541768622, mann_whitney_u_pvalue([1, 1, 2], [1, 2, 2]))
+        self.assertEqual(1.0, mann_whitney_u_pvalue([1, 4], [2, 3]))
         self.assertIsNone(mann_whitney_u_pvalue([1], [2, 3]))
         self.assertIsNone(mann_whitney_u_pvalue([1, 1], [1, 1]))
 
