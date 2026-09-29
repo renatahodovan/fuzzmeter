@@ -70,6 +70,7 @@ class FakeElement {
   setAttribute(name, value) { this[name] = value; }
 }
 
+const errors = [];
 const elements = new Map();
 const document = {
   documentElement: new FakeElement('html'),
@@ -100,9 +101,11 @@ const sandbox = {
   Blob,
   Element: FakeElement,
   HTMLTemplateElement: class {},
+  IntersectionObserver: class { observe() {} unobserve() {} disconnect() {} },
   TextEncoder,
   URL: { createObjectURL: () => 'blob:test', revokeObjectURL: () => {} },
-  console,
+  // render() catches its own failures and reports them here.
+  console: { ...console, error: (...args) => errors.push(args.map(String).join(' ')) },
   document,
   getComputedStyle: () => ({ getPropertyValue: () => '', fontWeight: '400', textAlign: 'left' }),
   localStorage: { getItem: () => null, setItem: () => {} },
@@ -112,6 +115,11 @@ const sandbox = {
 sandbox.globalThis = sandbox;
 
 vm.runInNewContext(bundle, sandbox, { filename: process.argv[1] });
+await new Promise((resolve) => setImmediate(resolve));
+if (errors.length) {
+  console.error(errors.join('\n'));
+  process.exit(1);
+}
 '''
 
 
