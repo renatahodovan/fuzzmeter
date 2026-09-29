@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import subprocess
 
@@ -47,9 +48,10 @@ def _parse_percent(value: Any) -> float | None:
     if not text:
         return None
     try:
-        return float(text)
+        number = float(text)
     except ValueError:
         return None
+    return number if math.isfinite(number) else None
 
 
 def _parse_size(value: Any) -> int | None:
