@@ -1,0 +1,22 @@
+<!-- Simplified high-contrast FuzzMeter favicon for small browser tab sizes. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title id="title">FuzzMeter</title>
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="#ffffff" stroke="#000000" stroke-width="10" />
+
+  <g fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M104 82 C100 60 88 48 72 44" stroke-width="13" />
+    <path d="M152 82 C156 60 168 48 184 44" stroke-width="13" />
+    <path d="M78 116 H52 L36 102" stroke-width="15" />
+    <path d="M68 146 H34" stroke-width="15" />
+    <path d="M78 176 H52 L36 192" stroke-width="15" />
+    <path d="M178 116 H204 L220 102" stroke-width="15" />
+    <path d="M188 146 H222" stroke-width="15" />
+    <path d="M178 176 H204 L220 192" stroke-width="15" />
+    <path d="M86 105 C88 79 104 66 128 66 C152 66 168 79 170 105" fill="#ffffff" stroke-width="13" />
+    <circle cx="128" cy="146" r="65" fill="#ffffff" stroke-width="13" />
+    <path d="M128 101 V114 M83 146 H96 M160 146 H173" stroke-width="11" />
+    <path d="M128 146 L166 109" stroke-width="22" />
+    <path d="M128 146 L166 109" stroke="#0867f2" stroke-width="13" />
+    <circle cx="128" cy="146" r="13" fill="#0867f2" stroke-width="6" />
+  </g>
+</svg>

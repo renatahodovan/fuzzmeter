@@ -1,0 +1,157 @@
+/*
+ * Copyright (c) 2026 Renata Hodovan, Akos Kiss.
+ *
+ * Licensed under the BSD 3-Clause License
+ * <LICENSE.rst or https://opensource.org/licenses/BSD-3-Clause>.
+ * This file may not be copied, modified, or distributed except
+ * according to those terms.
+ */
+
+/**
+ * Renders user-provided extra report sections from plugin chart specs.
+ */
+
+import {
+  fromTemplate,
+  fuzzerColor,
+  part,
+} from './report-utils.js';
+import {
+  makeCanvasCard,
+  makeMatrixCard,
+  renderChartCard,
+  renderDataTable,
+  renderMatrixTable,
+} from './charts.js';
+export const ALLOWED_CHART_TYPES = [
+  'bar',
+  'distribution',
+  'line',
+  'matrix',
+  'stacked_area',
+  'stacked_bar',
+  'table',
+];
+
+function normalizeSeries(series) {
+  return (series || []).map((entry) => ({
+    ...entry,
+    color: entry.color_hint || fuzzerColor(entry.label || entry.id),
+  }));
+}
+
+function normalizeBarRows(chart) {
+  const rows = chart.rows?.length ? chart.rows : chart.series;
+  return (rows || []).map((row) => ({
+    label: row.label || row.id || row.fuzzer || row.name,
+    value: row.value ?? row.y ?? row.values?.[0] ?? row.points?.at(-1)?.y,
+    color: row.color_hint || row.color || fuzzerColor(row.label || row.id || row.fuzzer || row.name),
+  }));
+}
+
+function normalizeStackedGroups(chart) {
+  if (chart.groups?.length) return chart.groups;
+  const series = normalizeSeries(chart.series);
+  const labels = Array.from(new Set(
+    series.flatMap((entry) => (entry.points || []).map((point) => String(point.x ?? point.label))),
+  ));
+  return labels.map((label) => ({
+    label,
+    segments: series.map((entry) => {
+      const point = (entry.points || []).find((candidate) => String(candidate.x ?? candidate.label) === label);
+      return { label: entry.label, value: point?.y ?? 0, color: entry.color };
+    }),
+  }));
+}
+
+function createExtraChartCard(section, chart) {
+  if (!ALLOWED_CHART_TYPES.includes(chart.type)) {
+    return null;
+  }
+  if (chart.type === 'matrix') {
+    const card = makeMatrixCard({ title: chart.title, subtitle: chart.subtitle || '' });
+    return {
+      card: card.card,
+      render() {
+        renderMatrixTable(card.body, chart.matrix || null);
+      },
+    };
+  }
+  if (chart.type === 'table') {
+    const card = makeMatrixCard({ title: chart.title, subtitle: chart.subtitle || '' });
+    return {
+      card: card.card,
+      render() {
+        renderDataTable(card.body, chart.columns || [], chart.rows || []);
+      },
+    };
+  }
+
+  const card = makeCanvasCard({
+    title: chart.title,
+    subtitle: chart.subtitle || '',
+    withLegend: chart.type === 'line' || chart.type === 'stacked_area' || chart.type === 'stacked_bar',
+    exportName: `${section.id}-${chart.id}`,
+  });
+  const series = normalizeSeries(chart.series);
+  const percentAxis = chart.y_mode === 'percent';
+  const xMode = chart.x_mode === 'time' ? 'time' : 'index';
+  return {
+    card: card.card,
+    render() {
+      let spec = null;
+      if (chart.type === 'line') {
+        spec = { kind: 'line', series, options: { xMode, yClampPct: percentAxis } };
+      } else if (chart.type === 'stacked_area') {
+        spec = { kind: 'stackedArea', series, options: { xMode, yMax: percentAxis ? 100 : undefined } };
+      } else if (chart.type === 'bar') {
+        spec = { kind: 'bar', rows: normalizeBarRows(chart), options: { yClampPct: percentAxis } };
+      } else if (chart.type === 'stacked_bar') {
+        spec = {
+          groups: normalizeStackedGroups(chart),
+          kind: 'stackedBar',
+          legendSeries: series,
+          options: { yClampPct: percentAxis, yMax: percentAxis ? 100 : undefined },
+        };
+      } else if (chart.type === 'distribution') {
+        spec = {
+          kind: 'distribution',
+          options: { mode: percentAxis ? 'pct' : 'abs' },
+          rows: series.map((entry) => ({ color: entry.color, label: entry.label, values: entry.values || [] })),
+        };
+      }
+      renderChartCard(card, spec);
+    },
+  };
+}
+
+export function renderExtraSections(host, extraSections) {
+  (extraSections || []).forEach((section) => {
+    const block = fromTemplate('tplReportBlock');
+    const blockTitle = section.owner_fuzzer
+      ? `${section.title} (${section.owner_fuzzer})`
+      : section.title;
+    part(block, 'title').textContent = blockTitle;
+    part(block, 'subtitle').hidden = true;
+    part(block, 'controls').hidden = true;
+
+    const singleStackedArea = section.charts.length === 1 && section.charts[0]?.type === 'stacked_area';
+    const gridClass = singleStackedArea
+      ? 'block-grid-2'
+      : (section.charts.length === 1 ? 'block-grid-1'
+        : (section.charts.length === 2 ? 'block-grid-2' : 'block-grid-3'));
+    const grid = part(block, 'body');
+    grid.className = gridClass;
+    const renderers = [];
+    (section.charts || []).forEach((chart) => {
+      const chartCard = createExtraChartCard(section, chart);
+      if (!chartCard) return;
+      grid.appendChild(chartCard.card);
+      renderers.push(chartCard.render);
+    });
+    host.appendChild(block);
+    requestAnimationFrame(() => {
+      renderers.forEach((render) => render());
+    });
+  });
+}
