@@ -224,7 +224,8 @@ class ReportingPayloadTest(unittest.TestCase):
                     )
                 for bug_key, first_snapshot, first_ts, hits in (
                     ('shared', 10, 120, {10: 2, 11: 1, 40: 4, 30: 2}),
-                    ('later', 30, 250, {40: 0, 30: 1}),
+                    # Preprocessed crash files get their mtime after the snapshot.
+                    ('later', 30, 290, {40: 0, 30: 1}),
                 ):
                     bug_id = db_bug.ensure_bug(db, db_bug.BugRecord(
                         run_id='run', fuzzer='fz', benchmark='bench', fuzz_target='target',
@@ -244,6 +245,7 @@ class ReportingPayloadTest(unittest.TestCase):
         self.assertEqual([1.0, 2.0], fuzzer['distribution']['unique_bugs_total'])
         self.assertEqual(1.5, fuzzer['final']['unique_bugs_total_mean'])
         self.assertEqual([1.0, 1.5], [point['unique_bugs_total_mean'] for point in fuzzer['curve']])
+        self.assertEqual(60, {bug['bug_key']: bug['first_seen_elapsed_seconds'] for bug in fuzzer['bugs']}['later'])
 
     def test_curve_points_carry_the_resource_series_the_report_plots(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
