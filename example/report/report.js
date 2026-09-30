@@ -2188,15 +2188,14 @@ function normalizeBarRows(chart) {
 }
 
 function normalizeStackedGroups(chart) {
-  if (chart.groups?.length) return chart.groups;
   const series = normalizeSeries(chart.series);
   const labels = Array.from(new Set(
-    series.flatMap((entry) => (entry.points || []).map((point) => String(point.x ?? point.label))),
+    series.flatMap((entry) => (entry.points || []).map((point) => String(point.x))),
   ));
   return labels.map((label) => ({
     label,
     segments: series.map((entry) => {
-      const point = (entry.points || []).find((candidate) => String(candidate.x ?? candidate.label) === label);
+      const point = (entry.points || []).find((candidate) => String(candidate.x) === label);
       return { label: entry.label, value: point?.y ?? 0, color: entry.color };
     }),
   }));
@@ -4662,10 +4661,15 @@ function renderView(data) {
   FM_APP.data = data;
   const meta = data.meta || {};
   const overview = data.overview || {};
-  const subtitleParts = [meta.run_id || overview.run_id || 'run'];
-  if (overview.elapsed_human) subtitleParts.push(`running for ${overview.elapsed_human}`);
-  else if (overview.created_at || meta.generated_at) subtitleParts.push(overview.created_at || meta.generated_at);
+  const subtitleParts = [];
+  if (overview.elapsed_human) {
+    subtitleParts.push(`fuzzing time ${overview.elapsed_human}`);
+    if (overview.wall_elapsed_human) subtitleParts.push(`wall time ${overview.wall_elapsed_human}`);
+  } else if (overview.created_at || meta.generated_at) subtitleParts.push(overview.created_at || meta.generated_at);
+  // Put the run id last so a narrow header truncates the id, not the times.
+  subtitleParts.push(meta.run_id || overview.run_id || 'run');
   byId('runSubtitle').textContent = subtitleParts.join(' • ');
+  byId('runSubtitle').title = subtitleParts.join(' • ');
   const tickFailureWarning = byId('tickFailureWarning');
   const tickFailureMessage = tickFailureNotice(overview);
   tickFailureWarning.textContent = tickFailureMessage || '';

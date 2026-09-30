@@ -50,15 +50,14 @@ function normalizeBarRows(chart) {
 }
 
 function normalizeStackedGroups(chart) {
-  if (chart.groups?.length) return chart.groups;
   const series = normalizeSeries(chart.series);
   const labels = Array.from(new Set(
-    series.flatMap((entry) => (entry.points || []).map((point) => String(point.x ?? point.label))),
+    series.flatMap((entry) => (entry.points || []).map((point) => String(point.x))),
   ));
   return labels.map((label) => ({
     label,
     segments: series.map((entry) => {
-      const point = (entry.points || []).find((candidate) => String(candidate.x ?? candidate.label) === label);
+      const point = (entry.points || []).find((candidate) => String(candidate.x) === label);
       return { label: entry.label, value: point?.y ?? 0, color: entry.color };
     }),
   }));

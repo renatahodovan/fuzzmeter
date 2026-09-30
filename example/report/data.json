@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generated_at": "2026-09-30 08:16:44 UTC",
+    "generated_at": "2026-09-30 09:29:11 UTC",
     "run_id": "040fb028-192e-4e2a-8f30-ae16ab315f35"
   },
   "overview": {
@@ -13074,9 +13074,9 @@
         ]
       },
       "relcov_score_by_fuzzer": {
-        "aflplusplus": 1044.400000000013,
-        "grafl": 3598.400000000036,
-        "libfuzzer": 299.19999999999754
+        "aflplusplus": 1044.4000000000149,
+        "grafl": 3598.400000000037,
+        "libfuzzer": 299.1999999999976
       },
       "branch_mwu_matrix": {
         "by_metric": {
@@ -14053,9 +14053,9 @@
         "aggregation": "per-trial median unique bug sets"
       },
       "relbug_score_by_fuzzer": {
-        "aflplusplus": 3.6,
+        "aflplusplus": 3.6000000000000005,
         "grafl": 10.600000000000003,
-        "libfuzzer": 3.0
+        "libfuzzer": 2.9999999999999996
       }
     },
     {
@@ -25843,9 +25843,9 @@
         ]
       },
       "relcov_score_by_fuzzer": {
-        "aflplusplus": 2559.1999999999102,
-        "grafl": 15767.599999999882,
-        "libfuzzer": 115.8000000000003
+        "aflplusplus": 2559.1999999999075,
+        "grafl": 15767.599999999875,
+        "libfuzzer": 115.80000000000028
       },
       "branch_mwu_matrix": {
         "by_metric": {

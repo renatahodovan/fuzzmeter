@@ -150,6 +150,7 @@ a:hover{ text-decoration:underline; }
   gap:6px;
   font-weight:600;
 }
+.btn[hidden]{ display:none; }
 .btn:hover,.input:hover,.select:hover{ border-color:var(--border-strong); }
 .btn:focus-visible,.input:focus-visible,.select:focus-visible{ border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 
