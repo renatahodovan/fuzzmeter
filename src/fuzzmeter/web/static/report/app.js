@@ -455,10 +455,15 @@ function renderView(data) {
   FM_APP.data = data;
   const meta = data.meta || {};
   const overview = data.overview || {};
-  const subtitleParts = [meta.run_id || overview.run_id || 'run'];
-  if (overview.elapsed_human) subtitleParts.push(`running for ${overview.elapsed_human}`);
-  else if (overview.created_at || meta.generated_at) subtitleParts.push(overview.created_at || meta.generated_at);
+  const subtitleParts = [];
+  if (overview.elapsed_human) {
+    subtitleParts.push(`fuzzing time ${overview.elapsed_human}`);
+    if (overview.wall_elapsed_human) subtitleParts.push(`wall time ${overview.wall_elapsed_human}`);
+  } else if (overview.created_at || meta.generated_at) subtitleParts.push(overview.created_at || meta.generated_at);
+  // Put the run id last so a narrow header truncates the id, not the times.
+  subtitleParts.push(meta.run_id || overview.run_id || 'run');
   byId('runSubtitle').textContent = subtitleParts.join(' • ');
+  byId('runSubtitle').title = subtitleParts.join(' • ');
   const tickFailureWarning = byId('tickFailureWarning');
   const tickFailureMessage = tickFailureNotice(overview);
   tickFailureWarning.textContent = tickFailureMessage || '';
