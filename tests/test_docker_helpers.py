@@ -236,7 +236,7 @@ class DockerHelperTest(unittest.TestCase):
     def test_runner_contexts_are_scoped_to_each_fuzzer(self) -> None:
         """Verify one fuzzer's runner does not depend on another fuzzer's copied sources."""
         with TemporaryDirectory() as root:
-            root_path = Path(root)
+            root_path = Path(root).resolve()
             fuzzers_root = root_path / 'fuzzers'
             benchmarks_root = root_path / 'benchmarks'
             resources_root = root_path / 'docker'

@@ -399,7 +399,7 @@ fuzz_targets:
     def test_replay_trials_are_scoped_to_the_fuzzer_and_fuzz_target_pair(self) -> None:
         """Verify that replay trials follow the fuzz target spec and are not a fuzzer property."""
         with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
+            root = Path(tmp_dir).resolve()
             ignored, jerry, sqlite = root / 'ignored', root / 'jerry', root / 'sqlite'
             for path in (ignored, jerry, sqlite):
                 path.mkdir()
@@ -454,7 +454,7 @@ fuzz_targets:
     def test_replay_trials_must_cover_every_case_with_one_directory_per_repetition(self) -> None:
         """Verify that a run is either fully replayed with repetitions directories, or fully live."""
         with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
+            root = Path(tmp_dir).resolve()
             _write_fuzzer(root, 'plain', '')
             _write_benchmark(root, 'jerryscript', 'jerry')
             _write_benchmark(root, 'sqlite3', 'ossfuzz')

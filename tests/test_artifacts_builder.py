@@ -42,7 +42,7 @@ class ArtifactBuilderTest(unittest.TestCase):
         '''Verify that generated bake contexts do not rely on a repository cwd.'''
         with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as out_dir:
             repo_root = Path(repo_dir)
-            run_dir = Path(out_dir) / 'run'
+            run_dir = Path(out_dir).resolve() / 'run'
             run_dir.mkdir(parents=True)
             _write_repo_sources(repo_root)
 
@@ -94,7 +94,7 @@ class ArtifactBuilderTest(unittest.TestCase):
         '''Verify that changing the campaign fuzzer set does not change unrelated fuzzer contexts.'''
         with tempfile.TemporaryDirectory() as repo_dir, tempfile.TemporaryDirectory() as out_dir:
             repo_root = Path(repo_dir)
-            run_dir = Path(out_dir) / 'run'
+            run_dir = Path(out_dir).resolve() / 'run'
             run_dir.mkdir(parents=True)
             _write_repo_sources(repo_root, fuzzers=('other', 'plain'))
 
