@@ -137,8 +137,8 @@ def measure_seed_baselines(
         jobs=jobs,
     )
 
-    # Merge baselines in parallel only after every batch has finished.
-    with cf.ThreadPoolExecutor(max_workers=min(jobs, len(measurements))) as executor:
+    # Merge baselines only after every batch has finished, one at a time: each merge loads the whole coverage mapping.
+    with cf.ThreadPoolExecutor(max_workers=1) as executor:
         futures = [
             executor.submit(
                 _merge_seed_baseline,
