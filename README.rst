@@ -15,6 +15,8 @@
    :target: LICENSE.rst
 .. image:: https://img.shields.io/badge/docker-required-2496ed?logo=docker&logoColor=white
    :target: https://www.docker.com/
+.. image:: https://img.shields.io/badge/demo-live%20report-brightgreen
+   :target: https://renatahodovan.github.io/fuzzmeter/example/
 
 .. start included documentation
 
@@ -29,6 +31,12 @@ to help researchers and practitioners analyze different aspects of fuzzer
 behavior: coverage growth, bug discovery, corpus evolution, execution speed,
 resource usage, statistical comparisons, replayed artifacts, and fuzzer-specific
 measurements.
+
+**Live demo:** browse an `example report
+<https://renatahodovan.github.io/fuzzmeter/example/>`_ generated from a small
+demo campaign (AFL++, libFuzzer, and Grammarinator-based AFL++ on JerryScript
+and SQLite, 5 x 1 h trials each) defined in ``configs/demo.yaml``. It illustrates
+the report features and is not a benchmark result.
 
 +--------------------------------------------------------------------------+
 | **TL;DR - KEY FEATURES**                                                 |

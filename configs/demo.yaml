@@ -1,0 +1,26 @@
+fuzzers:
+  - aflplusplus
+  - libfuzzer
+  - id: grafl
+    parent: afl_grammarinator
+    runtime:
+      env:
+        GRAFL_MEMO_SIZE: 1000
+        GRAFL_MAX_DEPTH: 25
+        GRAFL_MAX_TOKENS: 500
+        GRAFL_MAX_TRIM_STEPS: 200
+        GRAFL_RANDOM_MUTATORS: 1
+fuzz_targets:
+  - jerryscript:jerry
+  - sqlite3:sqlite
+build:
+  jobs: 6
+  compile_jobs: 2
+run:
+  time_seconds: 3600
+  repetitions: 5
+  parallel_jobs: 12
+  snapshot:
+    every_seconds: 120
+    export_every_ticks: 0
+    jobs: 3
