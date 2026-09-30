@@ -664,11 +664,11 @@ function createBugBlock(section) {
   }) : null;
   topRow.appendChild(growthCard.card);
   topRow.appendChild(crashesCard.card);
-  if (matrixCard) bottomStack.appendChild(matrixCard.card);
   if (pairwiseCard) bottomStack.appendChild(pairwiseCard.card);
   if (relCard) bottomStack.appendChild(relCard.card);
   body.appendChild(topRow);
-  if (matrixCard || relCard) body.appendChild(bottomStack);
+  if (matrixCard) body.appendChild(matrixCard.card);
+  if (pairwiseCard || relCard) body.appendChild(bottomStack);
 
   matrixCard?.setExportName(`${section.target.key}-unique-bug-matrix`);
   pairwiseCard?.setExportName(`${section.target.key}-pairwise-unique-bug-matrix`);
